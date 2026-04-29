@@ -49,13 +49,22 @@ async function render(size, outPath) {
 }
 
 (async () => {
-  console.log('Generating macOS iconset...');
-  for (const [name, size] of macSizes) {
-    await render(size, path.join(ICONSET, name));
-  }
+  // iconutil ships only with Xcode CLT, so .icns generation is Mac-only.
+  // Linux/Windows runners use icon.png and icon.ico instead — electron-builder
+  // skips icon.icns when building for those targets.
+  const isMac = process.platform === 'darwin';
 
-  console.log('Building icon.icns...');
-  execSync(`iconutil -c icns "${ICONSET}" -o "${path.join(BUILD, 'icon.icns')}"`);
+  if (isMac) {
+    console.log('Generating macOS iconset...');
+    for (const [name, size] of macSizes) {
+      await render(size, path.join(ICONSET, name));
+    }
+
+    console.log('Building icon.icns...');
+    execSync(`iconutil -c icns "${ICONSET}" -o "${path.join(BUILD, 'icon.icns')}"`);
+  } else {
+    console.log('Skipping macOS iconset/.icns (non-darwin host).');
+  }
 
   console.log('Generating icon.png (512x512) for linux/win...');
   await render(512, path.join(BUILD, 'icon.png'));
