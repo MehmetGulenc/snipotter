@@ -35,8 +35,14 @@ export function AppShell(): JSX.Element {
 
   return (
     <div className="flex h-[100svh] flex-col bg-background text-foreground">
-      {/* Header */}
-      <header className="flex shrink-0 items-center gap-3 border-b border-border bg-card/40 px-4 py-2.5">
+      {/* Header.
+          `pt-[calc(env(safe-area-inset-top)+0.625rem)]` extends the header's
+          background up under the iOS status bar / Dynamic Island so the title
+          and search field never collide with the system clock or camera
+          cutout when the app runs as a homescreen-installed PWA. */}
+      <header
+        className="flex shrink-0 items-center gap-3 border-b border-border bg-card/40 px-4 pb-2.5 pt-[calc(env(safe-area-inset-top)+0.625rem)]"
+      >
         <Logo size={24} />
         <div className="font-semibold">Snipotter</div>
         {view !== 'settings' && (

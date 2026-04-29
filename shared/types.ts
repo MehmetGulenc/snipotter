@@ -186,6 +186,8 @@ export const IPC = {
   UPDATER_CHECK_NOW: 'updater:check-now',
   UPDATER_INSTALL_AND_RESTART: 'updater:install-and-restart',
   UPDATER_STATUS_CHANGED: 'updater:status-changed',
+  UPDATER_OPEN_RELEASE_PAGE: 'updater:open-release-page',
+  UPDATER_IS_MANUAL_ONLY: 'updater:is-manual-only',
 } as const
 
 /** Snapshot of the auto-update lifecycle exposed to the renderer. */

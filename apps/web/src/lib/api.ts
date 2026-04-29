@@ -185,11 +185,16 @@ export async function listClipboard(workspaceId: string): Promise<ClipboardItem[
 }
 
 export async function setClipPinned(id: string, pinned: boolean): Promise<void> {
-  await getSupabase().from('clipboard_items').update({ pinned }).eq('id', id)
+  const { error } = await getSupabase().from('clipboard_items').update({ pinned }).eq('id', id)
+  if (error) throw error
 }
 
 export async function deleteClip(id: string): Promise<void> {
-  await getSupabase().from('clipboard_items').delete().eq('id', id)
+  // RLS rejects this silently if the user isn't a workspace member, so we
+  // surface the underlying error to the caller and let the UI revert its
+  // optimistic update.
+  const { error } = await getSupabase().from('clipboard_items').delete().eq('id', id)
+  if (error) throw error
 }
 
 // ---------- Notes ----------
@@ -240,7 +245,8 @@ export async function updateNote(
 }
 
 export async function deleteNote(id: string): Promise<void> {
-  await getSupabase().from('notes').delete().eq('id', id)
+  const { error } = await getSupabase().from('notes').delete().eq('id', id)
+  if (error) throw error
 }
 
 // ---------- Realtime ----------

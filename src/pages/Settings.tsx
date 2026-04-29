@@ -184,10 +184,16 @@ export function Settings(): JSX.Element {
 
 function UpdateSection(): JSX.Element {
   const [status, setStatus] = useState<UpdaterStatus | null>(null)
+  // True on macOS ad-hoc-signed builds; the in-app installer can't run so we
+  // bounce the user to the GitHub release page instead.
+  const [manualOnly, setManualOnly] = useState(false)
 
   useEffect(() => {
     void window.snipotter.updater.getStatus().then((r) => {
       if (r.ok) setStatus(r.data)
+    })
+    void window.snipotter.updater.isManualOnly().then((r) => {
+      if (r.ok) setManualOnly(r.data)
     })
     const off = window.snipotter.updater.onChanged((s) => setStatus(s))
     return () => {
@@ -205,8 +211,16 @@ function UpdateSection(): JSX.Element {
     await window.snipotter.updater.installAndRestart()
   }
 
+  const openReleasePage = async (): Promise<void> => {
+    await window.snipotter.updater.openReleasePage()
+  }
+
   const cur = status?.currentVersion ?? '—'
   const isBusy = status?.kind === 'checking' || status?.kind === 'downloading'
+  // On manual-only builds we treat both "available" and historical "error"
+  // states (from the old Squirrel signature failure) as "go grab the DMG".
+  const showManualButton =
+    manualOnly && (status?.kind === 'available' || status?.kind === 'error')
 
   return (
     <section className="pt-6">
@@ -221,13 +235,18 @@ function UpdateSection(): JSX.Element {
               <Sparkles className="h-4 w-4 text-primary" />
               Snipotter <span className="font-mono text-xs text-muted-foreground">v{cur}</span>
             </div>
-            <UpdateStatusLine status={status} />
+            <UpdateStatusLine status={status} manualOnly={manualOnly} />
           </div>
 
           {status?.kind === 'downloaded' ? (
             <Button onClick={restartNow} className="shrink-0">
               <Download className="mr-2 h-4 w-4" />
               Yeniden başlat & güncelle
+            </Button>
+          ) : showManualButton ? (
+            <Button onClick={openReleasePage} className="shrink-0">
+              <Download className="mr-2 h-4 w-4" />
+              GitHub'dan indir
             </Button>
           ) : (
             <Button
@@ -259,7 +278,13 @@ function UpdateSection(): JSX.Element {
   )
 }
 
-function UpdateStatusLine({ status }: { status: UpdaterStatus | null }): JSX.Element {
+function UpdateStatusLine({
+  status,
+  manualOnly,
+}: {
+  status: UpdaterStatus | null
+  manualOnly: boolean
+}): JSX.Element {
   if (!status) {
     return <div className="text-xs text-muted-foreground">Durum yükleniyor…</div>
   }
@@ -285,7 +310,10 @@ function UpdateStatusLine({ status }: { status: UpdaterStatus | null }): JSX.Ele
     case 'available':
       return (
         <div className="text-xs">
-          <span className="text-primary">v{status.nextVersion}</span> hazır · indiriliyor…
+          <span className="text-primary">v{status.nextVersion}</span> hazır ·{' '}
+          {manualOnly
+            ? 'Mac\'te imzasız sürüm — DMG\'yi GitHub\'dan indir'
+            : 'indiriliyor…'}
           {status.releaseNotes && (
             <pre className="mt-2 max-h-24 overflow-y-auto whitespace-pre-wrap rounded bg-muted/40 p-2 text-[11px] text-muted-foreground">
               {status.releaseNotes}
@@ -307,6 +335,17 @@ function UpdateStatusLine({ status }: { status: UpdaterStatus | null }): JSX.Ele
         </div>
       )
     case 'error':
+      // The old Squirrel "Code signature did not pass validation" message is
+      // expected and useless on ad-hoc Mac builds — soften it to a manual-
+      // install hint instead of a scary red error block.
+      if (manualOnly) {
+        return (
+          <div className="text-xs text-muted-foreground">
+            Otomatik kurulum desteklenmiyor (imzasız Mac sürüm) · Yeni sürümü
+            GitHub'dan indir
+          </div>
+        )
+      }
       return (
         <div className="flex items-center gap-1.5 text-xs text-destructive">
           <AlertCircle className="h-3 w-3" />

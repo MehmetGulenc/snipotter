@@ -365,6 +365,13 @@ function wireIPC(): void {
       return { ok: false, error: (err as Error).message }
     }
   })
+  ipcMain.handle(IPC.UPDATER_OPEN_RELEASE_PAGE, async () => {
+    updater.openReleasePage()
+    return { ok: true, data: null }
+  })
+  ipcMain.handle(IPC.UPDATER_IS_MANUAL_ONLY, async () => {
+    return { ok: true, data: updater.isManualInstallOnly() }
+  })
   updater.on('changed', (status: UpdaterStatus) => broadcast(IPC.UPDATER_STATUS_CHANGED, status))
 }
 

@@ -15,7 +15,7 @@
  * Updates only run from packaged builds — in dev mode this module is a no-op
  * stub so `npm run dev` doesn't try to fetch a non-existent release.
  */
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 // electron-updater is published as CommonJS, so under ESM (`"type":"module"`)
 // we must default-import the whole module and destructure `autoUpdater` from it.
 // Named runtime imports (`import { autoUpdater } from 'electron-updater'`) throw
@@ -38,6 +38,17 @@ export type UpdaterStatus =
 
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000
 const STARTUP_DELAY_MS = 30 * 1000
+const RELEASES_PAGE = 'https://github.com/MehmetGulenc/snipotter/releases/latest'
+
+/**
+ * macOS Squirrel rejects updates with `Code signature did not pass validation`
+ * unless the .app is signed with a real Developer ID certificate (ad-hoc /
+ * `identity:null` builds always fail this check). When we know we're in that
+ * regime, we skip the download attempt entirely and surface a "download
+ * manually" button instead of looping the user through the same install
+ * failure on every launch.
+ */
+const IS_AD_HOC_MAC = process.platform === 'darwin'
 
 export class UpdaterService extends EventEmitter {
   private status: UpdaterStatus
@@ -74,7 +85,14 @@ export class UpdaterService extends EventEmitter {
               ? info.releaseNotes.map((n) => n.note ?? '').join('\n').trim() || undefined
               : undefined,
       })
-      // Auto-start the download — we only block the install on user confirm.
+      // On ad-hoc-signed macOS builds the in-app installer always fails with
+      // "Code signature did not pass validation", so don't even attempt the
+      // download — the renderer shows a "Download from GitHub" button instead.
+      if (IS_AD_HOC_MAC) {
+        console.info('[updater] mac ad-hoc build — skipping in-app download')
+        return
+      }
+      // Windows / Linux can install in-place, so go ahead and pull the bits.
       void autoUpdater.downloadUpdate().catch((err) => this.emitError(err))
     })
     autoUpdater.on('update-not-available', () => {
@@ -168,6 +186,20 @@ export class UpdaterService extends EventEmitter {
       if (!w.isDestroyed()) w.close()
     })
     autoUpdater.quitAndInstall(false, true)
+  }
+
+  /**
+   * Open the GitHub releases page in the user's default browser. Used as the
+   * manual fallback for ad-hoc-signed macOS builds where in-app updates can't
+   * pass Squirrel's signature check.
+   */
+  openReleasePage(): void {
+    void shell.openExternal(RELEASES_PAGE)
+  }
+
+  /** True when the current process can't auto-install updates (mac ad-hoc). */
+  isManualInstallOnly(): boolean {
+    return IS_AD_HOC_MAC
   }
 
   getStatus(): UpdaterStatus {

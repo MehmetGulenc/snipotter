@@ -120,6 +120,10 @@ const api = {
     getStatus: () => invoke<UpdaterStatus>(IPC.UPDATER_GET_STATUS),
     checkNow: () => invoke<UpdaterStatus>(IPC.UPDATER_CHECK_NOW),
     installAndRestart: () => invoke<null>(IPC.UPDATER_INSTALL_AND_RESTART),
+    openReleasePage: () => invoke<null>(IPC.UPDATER_OPEN_RELEASE_PAGE),
+    /** True on macOS ad-hoc-signed builds, where in-app update install fails
+     *  Squirrel's signature check and the user must download the DMG by hand. */
+    isManualOnly: () => invoke<boolean>(IPC.UPDATER_IS_MANUAL_ONLY),
     onChanged: (cb: (status: UpdaterStatus) => void) => {
       const fn = (_: unknown, status: UpdaterStatus) => cb(status)
       ipcRenderer.on(IPC.UPDATER_STATUS_CHANGED, fn)

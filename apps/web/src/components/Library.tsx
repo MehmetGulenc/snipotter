@@ -92,8 +92,16 @@ function Card({
 
   const onDelete = async () => {
     if (!confirm('Bu öğeyi sil?')) return
+    // Optimistic remove. If the server rejects (RLS, offline, etc.) put the
+    // item back so the UI doesn't lie about a successful delete.
     remove(item.id)
-    await deleteClip(item.id)
+    try {
+      await deleteClip(item.id)
+    } catch (e) {
+      console.warn('delete failed', e)
+      upsert(item)
+      alert('Silme başarısız: ' + (e instanceof Error ? e.message : String(e)))
+    }
   }
 
   const isImage = item.contentType === 'image' && item.text.startsWith('data:image/')
