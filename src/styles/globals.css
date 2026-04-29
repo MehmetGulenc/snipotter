@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 10% 4%;
+    --foreground: 220 14% 96%;
+    --card: 240 10% 7%;
+    --card-foreground: 220 14% 96%;
+    --popover: 240 10% 7%;
+    --popover-foreground: 220 14% 96%;
+    --primary: 263 90% 70%;
+    --primary-foreground: 240 10% 4%;
+    --secondary: 240 5% 18%;
+    --secondary-foreground: 220 14% 96%;
+    --muted: 240 5% 14%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 240 5% 14%;
+    --accent-foreground: 220 14% 96%;
+    --destructive: 0 72% 60%;
+    --destructive-foreground: 240 10% 4%;
+    --border: 240 5% 18%;
+    --input: 240 5% 18%;
+    --ring: 263 90% 70%;
+    --radius: 0.75rem;
+  }
+
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 4%;
+    --primary: 263 80% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 95%;
+    --secondary-foreground: 240 10% 4%;
+    --muted: 240 5% 95%;
+    --muted-foreground: 240 5% 35%;
+    --accent: 240 5% 95%;
+    --accent-foreground: 240 10% 4%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 5% 88%;
+    --input: 240 5% 88%;
+    --ring: 263 80% 50%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html, body, #root {
+    @apply h-full;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Hide scrollbar visually but keep functionality */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+
+  /* Hide default focus rings on mac, replace with our own */
+  *:focus {
+    outline: none;
+  }
+
+  /* Drag region for frameless windows */
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background-color: hsl(var(--card) / 0.7);
+    backdrop-filter: saturate(160%) blur(20px);
+    -webkit-backdrop-filter: saturate(160%) blur(20px);
+  }
+}

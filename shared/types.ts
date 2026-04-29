@@ -1,0 +1,199 @@
+/**
+ * Snipotter — Shared types between main process, preload bridge, and renderer.
+ */
+
+export type ItemKind = 'clipboard' | 'note'
+
+/** Clipboard payload variants we currently support. */
+export type ClipboardContentType = 'text' | 'image' | 'file' | 'rich-text'
+
+export interface SnipotterUser {
+  id: string
+  email: string | null
+  displayName?: string | null
+  avatarUrl?: string | null
+  /** True for Supabase anonymous auth users. */
+  isAnonymous?: boolean
+}
+
+export interface Workspace {
+  id: string
+  name: string
+  createdAt: string
+  /** Convenience flag: is the current user the owner? */
+  isOwner: boolean
+}
+
+export interface WorkspaceMember {
+  userId: string
+  role: 'owner' | 'member'
+  deviceName: string | null
+  joinedAt: string
+  /** True if this row represents the current device. */
+  isSelf: boolean
+}
+
+export interface PairCode {
+  code: string
+  expiresAt: string
+}
+
+export interface AISummary {
+  /** Short AI-generated summary, ≤140 chars. */
+  summary: string
+  /** Up to 5 lowercase tags. */
+  tags: string[]
+  /** AI-detected language (ISO 639-1). */
+  language?: string
+  /** Provider used for this enrichment. */
+  provider: 'claude-haiku' | 'gemini-flash' | 'none'
+  /** Token usage if available. */
+  tokensIn?: number
+  tokensOut?: number
+}
+
+export interface ClipboardItem {
+  id: string
+  userId: string
+  contentType: ClipboardContentType
+  /** Plain-text representation (always populated, used for search). */
+  text: string
+  /** Hash for deduplication. */
+  hash: string
+  /** Original raw HTML for rich-text. */
+  html?: string | null
+  /** Source app bundle identifier or process name. */
+  sourceApp?: string | null
+  /** Set when the user pins the entry; pinned items survive purge. */
+  pinned: boolean
+  /** AI metadata, if processed. */
+  ai?: AISummary | null
+  createdAt: string
+  updatedAt: string
+  /** Synced via realtime; can be set false if local-only. */
+  synced: boolean
+}
+
+export interface Note {
+  id: string
+  userId: string
+  /** Optional title (first line if empty). */
+  title: string | null
+  content: string
+  pinned: boolean
+  /** Source clipboard id if note was promoted from clipboard. */
+  fromClipboardId?: string | null
+  ai?: AISummary | null
+  createdAt: string
+  updatedAt: string
+  synced: boolean
+}
+
+export interface AppSettings {
+  theme: 'system' | 'light' | 'dark'
+  clipboardEnabled: boolean
+  clipboardHistoryLimit: number
+  globalHotkey: string
+  quickNoteHotkey: string
+  /** Auto-enrich items with AI metadata. */
+  aiAutoEnrich: boolean
+  /** Preferred AI provider; will fall back to the other on failure. */
+  aiPrimaryProvider: 'claude-haiku' | 'gemini-flash'
+  /** Run on system startup. */
+  launchAtLogin: boolean
+  /** Mask sensitive content (passwords, tokens) before AI processing. */
+  redactSensitive: boolean
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  theme: 'system',
+  clipboardEnabled: true,
+  clipboardHistoryLimit: 500,
+  globalHotkey: 'CommandOrControl+Shift+V',
+  quickNoteHotkey: 'CommandOrControl+Shift+N',
+  aiAutoEnrich: true,
+  aiPrimaryProvider: 'claude-haiku',
+  launchAtLogin: false,
+  redactSensitive: true,
+}
+
+export interface AuthState {
+  user: SnipotterUser | null
+  isLoading: boolean
+}
+
+/** IPC channel names used between main and renderer. Centralized to prevent typos. */
+export const IPC = {
+  // Auth (anonymous; email login removed in favor of pairing codes)
+  AUTH_GET_STATE: 'auth:get-state',
+  AUTH_SIGN_OUT: 'auth:sign-out',
+  AUTH_STATE_CHANGED: 'auth:state-changed',
+
+  // Workspace / Pairing
+  WORKSPACE_GET: 'workspace:get',
+  WORKSPACE_CREATE: 'workspace:create', // bootstraps anon user + workspace
+  WORKSPACE_LEAVE: 'workspace:leave',
+  WORKSPACE_LIST_MEMBERS: 'workspace:list-members',
+  WORKSPACE_CHANGED: 'workspace:changed',
+  PAIR_CREATE: 'pair:create',
+  PAIR_REDEEM: 'pair:redeem',
+
+  // Clipboard
+  CLIP_LIST: 'clip:list',
+  CLIP_DELETE: 'clip:delete',
+  CLIP_PIN: 'clip:pin',
+  CLIP_COPY: 'clip:copy',
+  CLIP_PROMOTE_TO_NOTE: 'clip:promote-to-note',
+  CLIP_NEW: 'clip:new', // pushed from main
+  CLIP_UPDATED: 'clip:updated', // pushed from main
+
+  // Notes
+  NOTE_LIST: 'note:list',
+  NOTE_CREATE: 'note:create',
+  NOTE_UPDATE: 'note:update',
+  NOTE_DELETE: 'note:delete',
+  NOTE_PIN: 'note:pin',
+  NOTE_UPDATED: 'note:updated', // pushed from main
+
+  // Settings
+  SETTINGS_GET: 'settings:get',
+  SETTINGS_UPDATE: 'settings:update',
+  SETTINGS_CHANGED: 'settings:changed',
+
+  // Window controls
+  WIN_MINIMIZE: 'win:minimize',
+  WIN_CLOSE: 'win:close',
+  WIN_TOGGLE_QUICK_NOTE: 'win:toggle-quick-note',
+
+  // AI
+  AI_REENRICH: 'ai:reenrich',
+  AI_STATUS: 'ai:status',
+
+  // Hotkey recording (so global shortcuts don't intercept the recorder UI)
+  HOTKEY_RECORD_START: 'hotkey:record-start',
+  HOTKEY_RECORD_END: 'hotkey:record-end',
+  HOTKEY_VALIDATE: 'hotkey:validate',
+
+  // Auto-updater
+  UPDATER_GET_STATUS: 'updater:get-status',
+  UPDATER_CHECK_NOW: 'updater:check-now',
+  UPDATER_INSTALL_AND_RESTART: 'updater:install-and-restart',
+  UPDATER_STATUS_CHANGED: 'updater:status-changed',
+} as const
+
+/** Snapshot of the auto-update lifecycle exposed to the renderer. */
+export type UpdaterStatus =
+  | { kind: 'idle'; currentVersion: string }
+  | { kind: 'checking'; currentVersion: string }
+  | { kind: 'not-available'; currentVersion: string; checkedAt: number }
+  | { kind: 'available'; currentVersion: string; nextVersion: string; releaseNotes?: string }
+  | { kind: 'downloading'; currentVersion: string; nextVersion: string; percent: number; bytesPerSecond: number }
+  | { kind: 'downloaded'; currentVersion: string; nextVersion: string }
+  | { kind: 'error'; currentVersion: string; message: string }
+
+export type IpcChannel = (typeof IPC)[keyof typeof IPC]
+
+/** Standard envelope for IPC responses to keep error handling consistent. */
+export type IpcResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string }

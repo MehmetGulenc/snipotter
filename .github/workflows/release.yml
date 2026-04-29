@@ -1,0 +1,85 @@
+name: Release
+
+# Build and publish Snipotter for macOS, Windows, and Linux whenever a
+# semver-style tag (e.g. v0.2.0) is pushed. Workflow uploads installers
+# + auto-update metadata (latest-mac.yml / latest.yml / latest-linux.yml)
+# to the GitHub Release that matches the tag.
+#
+# Required repository secrets:
+#   MAIN_VITE_SUPABASE_URL          - https://<project>.supabase.co
+#   MAIN_VITE_SUPABASE_ANON_KEY     - Supabase anon JWT
+#   MAIN_VITE_ANTHROPIC_API_KEY     - Claude Haiku key (optional, AI fallback)
+#   MAIN_VITE_GEMINI_API_KEY        - Gemini Flash key (optional, AI fallback)
+#
+# GITHUB_TOKEN is provided automatically; electron-builder uses it to upload
+# release assets via the GitHub Releases API.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Generate icons
+        run: npm run icons
+
+      - name: Build (electron-vite)
+        run: npm run build
+        env:
+          MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
+          MAIN_VITE_SUPABASE_ANON_KEY: ${{ secrets.MAIN_VITE_SUPABASE_ANON_KEY }}
+          MAIN_VITE_ANTHROPIC_API_KEY: ${{ secrets.MAIN_VITE_ANTHROPIC_API_KEY }}
+          MAIN_VITE_GEMINI_API_KEY: ${{ secrets.MAIN_VITE_GEMINI_API_KEY }}
+
+      # macOS release
+      - name: Package & publish (macOS)
+        if: matrix.os == 'macos-latest'
+        run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Skip code signing for now — release builds will trigger Gatekeeper
+          # warnings on first launch. Add CSC_LINK / CSC_KEY_PASSWORD secrets
+          # later to ship signed/notarized DMGs.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      # Windows release (NSIS installer + portable exe)
+      - name: Package & publish (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Linux release (AppImage + .deb)
+      - name: Package & publish (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: npx electron-builder --linux --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

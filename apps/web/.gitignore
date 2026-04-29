@@ -1,0 +1,14 @@
+# Local env
+.env.local
+.env.production.local
+
+# Build artifacts
+.next/
+out/
+
+# Deps
+node_modules/
+
+# Misc
+.DS_Store
+*.log

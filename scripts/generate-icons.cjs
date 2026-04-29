@@ -1,0 +1,82 @@
+#!/usr/bin/env node
+/**
+ * Generate app icons from gemini-svg.svg
+ * Produces:
+ *   build/icon.iconset/* (mac sources)
+ *   build/icon.icns (mac)
+ *   build/icon.png (linux/win 512x512)
+ *   build/icon.ico (win — single PNG fallback)
+ *   build/tray-icon.png (system tray 32x32)
+ *   build/tray-icon@2x.png (retina 64x64)
+ */
+const sharp = require('sharp');
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+const ROOT = path.resolve(__dirname, '..');
+const SRC = path.join(ROOT, 'gemini-svg.svg');
+const BUILD = path.join(ROOT, 'build');
+const ICONSET = path.join(BUILD, 'icon.iconset');
+
+if (!fs.existsSync(SRC)) {
+  console.error('Missing source SVG:', SRC);
+  process.exit(1);
+}
+
+fs.mkdirSync(ICONSET, { recursive: true });
+const svgBuffer = fs.readFileSync(SRC);
+
+// macOS iconset sizes (filename → pixel size)
+const macSizes = [
+  ['icon_16x16.png', 16],
+  ['icon_16x16@2x.png', 32],
+  ['icon_32x32.png', 32],
+  ['icon_32x32@2x.png', 64],
+  ['icon_128x128.png', 128],
+  ['icon_128x128@2x.png', 256],
+  ['icon_256x256.png', 256],
+  ['icon_256x256@2x.png', 512],
+  ['icon_512x512.png', 512],
+  ['icon_512x512@2x.png', 1024],
+];
+
+async function render(size, outPath) {
+  await sharp(svgBuffer, { density: 384 })
+    .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toFile(outPath);
+}
+
+(async () => {
+  console.log('Generating macOS iconset...');
+  for (const [name, size] of macSizes) {
+    await render(size, path.join(ICONSET, name));
+  }
+
+  console.log('Building icon.icns...');
+  execSync(`iconutil -c icns "${ICONSET}" -o "${path.join(BUILD, 'icon.icns')}"`);
+
+  console.log('Generating icon.png (512x512) for linux/win...');
+  await render(512, path.join(BUILD, 'icon.png'));
+
+  console.log('Generating tray icons...');
+  // Tray icons: macOS expects template style; for now use full color
+  await render(32, path.join(BUILD, 'tray-icon.png'));
+  await render(64, path.join(BUILD, 'tray-icon@2x.png'));
+
+  console.log('Generating Windows icon.ico...');
+  // Simplest: write 256x256 PNG; electron-builder will accept it
+  await render(256, path.join(BUILD, 'icon.ico'));
+
+  // Cleanup iconset (optional — keep for re-use)
+  console.log('Done.');
+  console.log('Outputs:');
+  for (const f of fs.readdirSync(BUILD)) {
+    const stat = fs.statSync(path.join(BUILD, f));
+    if (stat.isFile()) console.log('  build/' + f, '(' + stat.size + ' bytes)');
+  }
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
