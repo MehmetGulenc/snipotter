@@ -170,6 +170,15 @@ export async function leaveWorkspace(workspaceId: string, userId: string): Promi
     .eq('user_id', userId)
 }
 
+export async function removeWorkspaceMember(workspaceId: string, targetUserId: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from('workspace_members')
+    .delete()
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', targetUserId)
+  if (error) throw error
+}
+
 // ---------- Clipboard ----------
 
 export async function listClipboard(workspaceId: string): Promise<ClipboardItem[]> {

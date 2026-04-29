@@ -36,6 +36,8 @@ const api = {
     create: () => invoke<Workspace | null>(IPC.WORKSPACE_CREATE),
     leave: () => invoke<null>(IPC.WORKSPACE_LEAVE),
     listMembers: () => invoke<WorkspaceMember[]>(IPC.WORKSPACE_LIST_MEMBERS),
+    /** Unpair another device. Throws if RLS rejects (e.g. wrong workspace). */
+    removeMember: (userId: string) => invoke<null>(IPC.WORKSPACE_REMOVE_MEMBER, userId),
     createPairCode: () => invoke<PairCode>(IPC.PAIR_CREATE),
     redeemPairCode: (code: string) => invoke<Workspace | null>(IPC.PAIR_REDEEM, code),
     onChanged: (cb: (ws: Workspace | null) => void) => {

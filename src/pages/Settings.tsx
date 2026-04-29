@@ -14,6 +14,7 @@ import {
   RefreshCcw,
   Sparkles,
   AlertCircle,
+  Trash2,
 } from 'lucide-react'
 import type { AppSettings, WorkspaceMember, UpdaterStatus } from '@shared/types'
 
@@ -363,10 +364,26 @@ function DevicesSection(): JSX.Element {
   const [secondsLeft, setSecondsLeft] = useState(0)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  // userId of the device currently being unpaired, so we can show a spinner
+  // on its row and disable its button without freezing the rest.
+  const [removingId, setRemovingId] = useState<string | null>(null)
 
   const refresh = async () => {
     const r = await window.snipotter.workspace.listMembers()
     if (r.ok) setMembers(r.data)
+  }
+
+  const removeDevice = async (m: WorkspaceMember): Promise<void> => {
+    if (!confirm(`"${m.deviceName || 'Bu cihaz'}" eşleşmeden çıkarılsın mı?`)) return
+    setRemovingId(m.userId)
+    const r = await window.snipotter.workspace.removeMember(m.userId)
+    setRemovingId(null)
+    if (r.ok) {
+      // Optimistic local prune; realtime will also remove it on other clients.
+      setMembers((prev) => prev.filter((x) => x.userId !== m.userId))
+    } else {
+      alert(`Cihaz çıkarılamadı: ${r.error}`)
+    }
   }
 
   useEffect(() => {
@@ -454,6 +471,20 @@ function DevicesSection(): JSX.Element {
                 Katıldı: {new Date(m.joinedAt).toLocaleDateString('tr-TR')}
               </div>
             </div>
+            {!m.isSelf && (
+              <button
+                onClick={() => void removeDevice(m)}
+                disabled={removingId === m.userId}
+                className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                title="Cihazı eşleşmeden çıkar"
+              >
+                {removingId === m.userId ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </button>
+            )}
           </div>
         ))}
       </div>

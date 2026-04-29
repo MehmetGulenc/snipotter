@@ -97,6 +97,18 @@ async function handleClipboardChange(
     return
   }
 
+  // Dedupe by content hash: if the user re-copies a clip we already have,
+  // bump the existing row to the top instead of inserting a duplicate.
+  // QuickPaste and Library both sort by created_at desc, so a touch is
+  // enough to re-promote it visually.
+  const existing = await supabase.findClipboardByHash(draft.hash).catch(() => null)
+  if (existing) {
+    const refreshed = await supabase.touchClipboard(existing.id).catch(() => null)
+    const item = refreshed ?? { ...existing, createdAt: new Date().toISOString() }
+    broadcast(IPC.CLIP_UPDATED, item)
+    return
+  }
+
   const inserted = await supabase.insertClipboard(draft).catch((e) => {
     console.warn('[clip] insert failed', e)
     return null
@@ -180,6 +192,14 @@ function wireIPC(): void {
     try {
       const members = await supabase.listMembers()
       return { ok: true, data: members }
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+  ipcMain.handle(IPC.WORKSPACE_REMOVE_MEMBER, async (_e, userId: string) => {
+    try {
+      await supabase.removeWorkspaceMember(userId)
+      return { ok: true, data: null }
     } catch (err) {
       return { ok: false, error: (err as Error).message }
     }

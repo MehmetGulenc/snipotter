@@ -1,9 +1,9 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { Copy, Check, Loader2, LogOut, Smartphone, KeyRound } from 'lucide-react'
+import { Copy, Check, Loader2, LogOut, Smartphone, KeyRound, Trash2 } from 'lucide-react'
 import { Button } from './ui/Button'
 import { useStore } from '@/lib/store'
-import { listMembers, createPairCode, leaveWorkspace, signOut } from '@/lib/api'
+import { listMembers, createPairCode, leaveWorkspace, signOut, removeWorkspaceMember } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
 import type { WorkspaceMember } from '@/lib/types'
 
@@ -17,11 +17,26 @@ export function Settings(): JSX.Element {
   const [code, setCode] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [removingId, setRemovingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!workspace || !user) return
     void listMembers(workspace.id, user.id).then(setMembers).catch((e) => console.warn(e))
   }, [workspace?.id, user?.id])
+
+  const onRemoveDevice = async (m: WorkspaceMember): Promise<void> => {
+    if (!workspace || !user) return
+    if (!confirm(`"${m.deviceName || 'Bu cihaz'}" eşleşmeden çıkarılsın mı?`)) return
+    setRemovingId(m.userId)
+    try {
+      await removeWorkspaceMember(workspace.id, m.userId)
+      setMembers((prev) => prev.filter((x) => x.userId !== m.userId))
+    } catch (e) {
+      alert('Cihaz çıkarılamadı: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setRemovingId(null)
+    }
+  }
 
   const onGenerate = async () => {
     setBusy(true)
@@ -134,6 +149,20 @@ export function Settings(): JSX.Element {
                   Eklendi {relativeTime(m.joinedAt)}
                 </div>
               </div>
+              {!m.isSelf && (
+                <button
+                  onClick={() => void onRemoveDevice(m)}
+                  disabled={removingId === m.userId}
+                  className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Cihazı eşleşmeden çıkar"
+                >
+                  {removingId === m.userId ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </button>
+              )}
             </li>
           ))}
           {members.length === 0 && (

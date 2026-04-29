@@ -139,6 +139,7 @@ export const IPC = {
   WORKSPACE_CREATE: 'workspace:create', // bootstraps anon user + workspace
   WORKSPACE_LEAVE: 'workspace:leave',
   WORKSPACE_LIST_MEMBERS: 'workspace:list-members',
+  WORKSPACE_REMOVE_MEMBER: 'workspace:remove-member',
   WORKSPACE_CHANGED: 'workspace:changed',
   PAIR_CREATE: 'pair:create',
   PAIR_REDEEM: 'pair:redeem',

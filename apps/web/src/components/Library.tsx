@@ -189,10 +189,16 @@ function Card({
  *   2. iOS Safari requires `navigator.clipboard.write()` to be invoked
  *      synchronously within the user-gesture handler. Any `await` between
  *      the click and the `write` call drops the transient activation and
- *      the platform rejects the call with "The request is not allowed by
- *      the user agent or the platform in the current context".
- *      The fix: pass a `Promise<Blob>` directly to ClipboardItem — the
- *      browser will resolve it itself while keeping the gesture alive.
+ *      the platform rejects with "The request is not allowed by the user
+ *      agent or the platform in the current context".
+ *
+ *      Even passing a Promise<Blob> to ClipboardItem isn't enough on its
+ *      own if we `await` something earlier — the call to clipboard.write
+ *      itself has to fire on the same microtask as the click. So we:
+ *        - parse the data URL into a Blob synchronously (no fetch/await),
+ *        - if it's already PNG, hand the Blob straight in,
+ *        - otherwise hand in a Promise<Blob> that the browser will await
+ *          itself while keeping the activation alive.
  */
 function copyImage(dataUrl: string): Promise<void> {
   if (!navigator.clipboard || typeof window.ClipboardItem !== 'function') {
@@ -201,20 +207,35 @@ function copyImage(dataUrl: string): Promise<void> {
     )
   }
 
-  // Build a Promise that resolves to a PNG Blob. We hand this Promise (not
-  // an awaited Blob) to ClipboardItem so the user-activation token survives.
-  const pngBlob: Promise<Blob> = (async () => {
-    const initial = await (await fetch(dataUrl)).blob()
-    return initial.type === 'image/png' ? initial : encodeAsPng(dataUrl)
-  })()
+  // Synchronous data URL -> Blob conversion. Avoids the async fetch() round
+  // trip that was burning the user-gesture token on iOS Safari.
+  const initial = dataUrlToBlob(dataUrl)
+  const png: Blob | Promise<Blob> =
+    initial.type === 'image/png' ? initial : encodeAsPng(dataUrl)
 
-  // Note: NO `await` between the gesture-firing click and this write call.
+  // No await between the click handler and this call — gesture stays valid.
   return navigator.clipboard
-    .write([new ClipboardItem({ 'image/png': pngBlob })])
+    .write([new ClipboardItem({ 'image/png': png })])
     .catch((err: unknown) => {
       const reason = err instanceof Error ? err.message : String(err)
       throw new Error(`Pano API'si reddetti: ${reason}`)
     })
+}
+
+/** Synchronously decode a `data:<mime>;base64,...` URL into a Blob. */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const match = /^data:([^;,]+)(;base64)?,(.*)$/.exec(dataUrl)
+  if (!match) throw new Error('Geçersiz data URL')
+  const mime = match[1] || 'application/octet-stream'
+  const isBase64 = !!match[2]
+  const payload = match[3]
+  if (isBase64) {
+    const binary = atob(payload)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < bytes.length; i++) bytes[i] = binary.charCodeAt(i)
+    return new Blob([bytes], { type: mime })
+  }
+  return new Blob([decodeURIComponent(payload)], { type: mime })
 }
 
 function encodeAsPng(dataUrl: string): Promise<Blob> {

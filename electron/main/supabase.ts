@@ -271,6 +271,27 @@ export class SupabaseService extends EventEmitter {
     this.workspace = null
   }
 
+  /**
+   * Unpair another device by removing its workspace_members row. Relies on
+   * the `wm member delete` RLS policy (migration 0004) which lets any
+   * member of the workspace remove any other member. Throws on RLS
+   * rejection so the renderer can surface the error.
+   */
+  async removeWorkspaceMember(userId: string): Promise<void> {
+    if (!this.client || !this.workspaceId) {
+      throw new Error('Workspace yok')
+    }
+    if (this.user && userId === this.user.id) {
+      throw new Error('Kendi cihazını çıkarmak için "Eşleşmeden ayrıl"ı kullan')
+    }
+    const { error } = await this.client
+      .from('workspace_members')
+      .delete()
+      .eq('workspace_id', this.workspaceId)
+      .eq('user_id', userId)
+    if (error) throw error
+  }
+
   async listClipboard(limit = 200): Promise<ClipboardItem[]> {
     if (!this.client || !this.workspaceId) return []
     const { data, error } = await this.client
@@ -306,6 +327,47 @@ export class SupabaseService extends EventEmitter {
       .single()
     if (error) {
       console.warn('[supabase] insert clipboard failed', error.message)
+      return null
+    }
+    return clipboardFromRow(data as ClipboardRow)
+  }
+
+  /**
+   * Look up an existing clipboard row by content hash within the active
+   * workspace. Used to deduplicate "the user re-copied the same thing"
+   * before we insert a brand new row.
+   */
+  async findClipboardByHash(hash: string): Promise<ClipboardItem | null> {
+    if (!this.client || !this.workspaceId) return null
+    const { data, error } = await this.client
+      .from('clipboard_items')
+      .select('*')
+      .eq('workspace_id', this.workspaceId)
+      .eq('hash', hash)
+      .limit(1)
+      .maybeSingle()
+    if (error) {
+      console.warn('[supabase] find by hash failed', error.message)
+      return null
+    }
+    return data ? clipboardFromRow(data as ClipboardRow) : null
+  }
+
+  /**
+   * Bump an existing clipboard row's created_at to "now" so it floats back
+   * to the top of the list (which is sorted by created_at desc). The
+   * touch_updated_at trigger handles updated_at automatically.
+   */
+  async touchClipboard(id: string): Promise<ClipboardItem | null> {
+    if (!this.client || !this.workspaceId) return null
+    const { data, error } = await this.client
+      .from('clipboard_items')
+      .update({ created_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('*')
+      .single()
+    if (error) {
+      console.warn('[supabase] touch clipboard failed', error.message)
       return null
     }
     return clipboardFromRow(data as ClipboardRow)
