@@ -16,8 +16,16 @@
  * stub so `npm run dev` doesn't try to fetch a non-existent release.
  */
 import { app, BrowserWindow } from 'electron'
-import { autoUpdater, type UpdateCheckResult, type UpdateInfo, type ProgressInfo } from 'electron-updater'
+// electron-updater is published as CommonJS, so under ESM (`"type":"module"`)
+// we must default-import the whole module and destructure `autoUpdater` from it.
+// Named runtime imports (`import { autoUpdater } from 'electron-updater'`) throw
+// `SyntaxError: Named export 'autoUpdater' not found` in packaged builds.
+// Type-only imports stay as named imports (compile-time only).
+import electronUpdater from 'electron-updater'
+import type { UpdateCheckResult, UpdateInfo, ProgressInfo } from 'electron-updater'
 import { EventEmitter } from 'node:events'
+
+const { autoUpdater } = electronUpdater
 
 export type UpdaterStatus =
   | { kind: 'idle'; currentVersion: string }
