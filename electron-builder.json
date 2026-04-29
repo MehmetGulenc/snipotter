@@ -17,7 +17,6 @@
       { "target": "zip", "arch": ["arm64", "x64"] }
     ],
     "icon": "build/icon.icns",
-    "//": "identity '-' = ad-hoc sign (codesign --sign -). Without this, electron-builder leaves the .app unsigned and macOS Gatekeeper rejects it on download with 'Snipotter is damaged and can't be opened'. Real Developer ID + notarization would replace this once we have a paid Apple account.",
     "identity": "-",
     "hardenedRuntime": false,
     "gatekeeperAssess": false,
