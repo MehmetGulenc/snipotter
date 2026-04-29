@@ -88,6 +88,15 @@ const api = {
     minimize: () => invoke<null>(IPC.WIN_MINIMIZE),
     close: () => invoke<null>(IPC.WIN_CLOSE),
     toggleQuickNote: () => invoke<null>(IPC.WIN_TOGGLE_QUICK_NOTE),
+    toggleQuickPaste: () => invoke<null>(IPC.WIN_TOGGLE_QUICK_PASTE),
+    hideQuickPaste: () => invoke<null>(IPC.WIN_HIDE_QUICK_PASTE),
+    /** Renderer-side hook for the "popup re-shown" event so the QuickPaste UI
+     *  can refocus the search input and reset selection without remounting. */
+    onQuickPasteReopened: (cb: () => void) => {
+      const fn = () => cb()
+      ipcRenderer.on('quickpaste:opened', fn)
+      return () => ipcRenderer.off('quickpaste:opened', fn)
+    },
   },
   ai: {
     status: () =>

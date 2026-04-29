@@ -24,7 +24,10 @@ const isAsciiAccelerator = (s: unknown): boolean =>
 /**
  * Strip out anything that would crash globalShortcut.register at startup.
  * Recovers gracefully from older builds where a paste-event bug could leak
- * non-ASCII clipboard text into a hotkey field.
+ * non-ASCII clipboard text into a hotkey field. Also runs a one-time migration
+ * for users upgrading from <0.2 (no `quickPasteHotkey` field) and resolves the
+ * Cmd+Shift+V collision that would happen if their existing Library hotkey
+ * shadows the new QuickPaste default.
  */
 function sanitize(s: AppSettings): AppSettings {
   const out: AppSettings = { ...s }
@@ -33,6 +36,20 @@ function sanitize(s: AppSettings): AppSettings {
   }
   if (!isAsciiAccelerator(out.quickNoteHotkey)) {
     out.quickNoteHotkey = DEFAULT_SETTINGS.quickNoteHotkey
+  }
+  // Migration: pre-0.2 users have no quickPasteHotkey at all. Fall back to the
+  // default so the new feature works out-of-the-box. If the user's existing
+  // Library shortcut already uses the same combo we'd register twice and the
+  // first registration wins, so move the Library hotkey to Cmd+Shift+L instead.
+  if (!isAsciiAccelerator(out.quickPasteHotkey)) {
+    out.quickPasteHotkey = DEFAULT_SETTINGS.quickPasteHotkey
+  }
+  if (
+    out.globalHotkey &&
+    out.quickPasteHotkey &&
+    out.globalHotkey === out.quickPasteHotkey
+  ) {
+    out.globalHotkey = DEFAULT_SETTINGS.globalHotkey
   }
   return out
 }

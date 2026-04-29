@@ -69,20 +69,19 @@ function Card({
   const onCopy = async () => {
     try {
       if (item.contentType === 'image' && item.text.startsWith('data:image/')) {
-        const blob = await (await fetch(item.text)).blob()
-        if (navigator.clipboard && 'ClipboardItem' in window) {
-          await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
-        } else {
-          throw new Error('Bu tarayıcı görsel kopyalamayı desteklemiyor.')
-        }
+        await copyImage(item.text)
       } else {
+        if (!navigator.clipboard?.writeText) {
+          throw new Error('Bu tarayıcıda pano API\'si yok.')
+        }
         await navigator.clipboard.writeText(item.text)
       }
       setCopied(true)
       setTimeout(() => setCopied(false), 1200)
     } catch (e) {
       console.warn('copy failed', e)
-      alert('Kopyalama başarısız: ' + (e instanceof Error ? e.message : String(e)))
+      const msg = e instanceof Error ? e.message : String(e)
+      alert(`Kopyalama başarısız: ${msg}\n\nİpucu: Görsele uzun bas → Görseli kopyala (Safari) ya da bilgisayardan kopyala.`)
     }
   }
 
@@ -170,6 +169,58 @@ function Card({
       </div>
     </div>
   )
+}
+
+/**
+ * Copy a data-URL image to the clipboard. Browsers (especially iOS Safari)
+ * are picky about which MIME types `ClipboardItem` accepts — currently only
+ * `image/png` is widely supported. JPEGs / WEBPs from the desktop app are
+ * re-encoded as PNG via a canvas before being written so the clipboard write
+ * doesn't get rejected.
+ */
+async function copyImage(dataUrl: string): Promise<void> {
+  if (!navigator.clipboard || typeof window.ClipboardItem !== 'function') {
+    throw new Error("Tarayıcın gelişmiş pano kopyalamasını desteklemiyor.")
+  }
+  let blob = await (await fetch(dataUrl)).blob()
+
+  // Force PNG. Safari rejects anything else inside ClipboardItem.
+  if (blob.type !== 'image/png') {
+    blob = await encodeAsPng(dataUrl)
+  }
+
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({ 'image/png': blob }),
+    ])
+  } catch (err) {
+    // Surface a concrete error message instead of the generic DOMException.
+    const reason = err instanceof Error ? err.message : String(err)
+    throw new Error(`Pano API'si reddetti: ${reason}`)
+  }
+}
+
+function encodeAsPng(dataUrl: string): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error('canvas context yok'))
+        return
+      }
+      ctx.drawImage(img, 0, 0)
+      canvas.toBlob((b) => {
+        if (b) resolve(b)
+        else reject(new Error('PNG dönüşümü başarısız'))
+      }, 'image/png')
+    }
+    img.onerror = () => reject(new Error('Görsel yüklenemedi'))
+    img.src = dataUrl
+  })
 }
 
 function Empty({ title, hint }: { title: string; hint: string }): JSX.Element {

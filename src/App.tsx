@@ -7,12 +7,14 @@ import { Settings } from './pages/Settings'
 import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
 import { QuickNote } from './components/QuickNote'
+import { QuickPaste } from './components/QuickPaste'
 
-type Route = 'library' | 'notes' | 'settings' | 'quick-note'
+type Route = 'library' | 'notes' | 'settings' | 'quick-note' | 'quick-paste'
 
 function getRoute(): Route {
   const hash = window.location.hash.replace('#/', '').replace('#', '')
   if (hash === 'quick-note') return 'quick-note'
+  if (hash === 'quick-paste') return 'quick-paste'
   if (hash === 'notes') return 'notes'
   if (hash === 'settings') return 'settings'
   return 'library'
@@ -94,8 +96,9 @@ export default function App(): JSX.Element {
     })()
   }, [workspace?.id, setClipboard, setNotes])
 
-  // ==== Quick note overlay window has its own minimal route ====
+  // ==== Overlay windows have their own minimal routes ====
   if (route === 'quick-note') return <QuickNote />
+  if (route === 'quick-paste') return <QuickPaste />
 
   if (authLoading) {
     return (

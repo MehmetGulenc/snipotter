@@ -1,7 +1,10 @@
 /**
  * Snipotter — Window manager
- * Two windows: a main "library" window for browsing clipboard / notes,
- * and a small frameless "quick note" overlay that appears via global hotkey.
+ * Three windows:
+ *   1. Main "library" window for browsing clipboard / notes
+ *   2. Frameless "quick note" overlay (centered, single-text-area)
+ *   3. Frameless "quick paste" popup (Maccy-style, recent clips with search)
+ * All overlays auto-hide on blur in production.
  */
 import { BrowserWindow, screen, shell, app } from 'electron'
 import { join } from 'node:path'
@@ -10,6 +13,7 @@ import { is } from '@electron-toolkit/utils'
 
 let mainWindow: BrowserWindow | null = null
 let quickWindow: BrowserWindow | null = null
+let quickPasteWindow: BrowserWindow | null = null
 
 const PRELOAD = join(__dirname, '../preload/index.mjs')
 
@@ -127,6 +131,109 @@ function positionQuickWindow(w: BrowserWindow): void {
   const { width, height } = display.workAreaSize
   const [winW, winH] = w.getSize()
   w.setPosition(Math.round(width / 2 - winW / 2), Math.round(height * 0.22 - winH / 2))
+}
+
+// =====================================================================
+// Quick paste — Maccy-style recent clips popup
+// =====================================================================
+
+export function createQuickPasteWindow(): BrowserWindow {
+  if (quickPasteWindow && !quickPasteWindow.isDestroyed()) {
+    if (quickPasteWindow.isVisible()) {
+      quickPasteWindow.hide()
+    } else {
+      positionQuickPasteWindow(quickPasteWindow)
+      quickPasteWindow.show()
+      quickPasteWindow.focus()
+      // Tell the renderer to re-focus the search input + reset selection.
+      quickPasteWindow.webContents.send('quickpaste:opened')
+    }
+    return quickPasteWindow
+  }
+
+  quickPasteWindow = new BrowserWindow({
+    width: 440,
+    height: 520,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    fullscreenable: false,
+    backgroundColor: '#00000000',
+    // macOS vibrancy gives the popup a native blurred backdrop similar to Maccy /
+    // Spotlight. On Windows / Linux the transparent background + dark fill via
+    // CSS approximates the same look.
+    vibrancy: process.platform === 'darwin' ? 'sidebar' : undefined,
+    visualEffectState: 'active',
+    webPreferences: {
+      preload: PRELOAD,
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+
+  quickPasteWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  quickPasteWindow.on('blur', () => {
+    if (!is.dev) quickPasteWindow?.hide()
+  })
+
+  quickPasteWindow.on('closed', () => {
+    quickPasteWindow = null
+  })
+
+  positionQuickPasteWindow(quickPasteWindow)
+  void quickPasteWindow.loadURL(rendererURL('#/quick-paste'))
+  quickPasteWindow.once('ready-to-show', () => {
+    quickPasteWindow?.show()
+    quickPasteWindow?.focus()
+  })
+  return quickPasteWindow
+}
+
+export function toggleQuickPasteWindow(): void {
+  const w = quickPasteWindow
+  if (w && !w.isDestroyed() && w.isVisible()) {
+    w.hide()
+    return
+  }
+  createQuickPasteWindow()
+}
+
+export function hideQuickPasteWindow(): void {
+  if (quickPasteWindow && !quickPasteWindow.isDestroyed()) {
+    quickPasteWindow.hide()
+  }
+}
+
+export function getQuickPasteWindow(): BrowserWindow | null {
+  return quickPasteWindow
+}
+
+/**
+ * Anchor the popup near the cursor (Maccy default). Falls back to centered top
+ * if the cursor isn't on a known display. Clamps inside the work area so the
+ * window never spawns half-off-screen.
+ */
+function positionQuickPasteWindow(w: BrowserWindow): void {
+  const cursor = screen.getCursorScreenPoint()
+  const display = screen.getDisplayNearestPoint(cursor) ?? screen.getPrimaryDisplay()
+  const { x: ax, y: ay, width, height } = display.workArea
+  const [winW, winH] = w.getSize()
+
+  // Open slightly below + right of the cursor, but bounded to the screen.
+  let x = cursor.x + 12
+  let y = cursor.y + 12
+  if (x + winW > ax + width) x = ax + width - winW - 12
+  if (y + winH > ay + height) y = ay + height - winH - 12
+  if (x < ax) x = ax + 12
+  if (y < ay) y = ay + 12
+
+  w.setPosition(Math.round(x), Math.round(y))
 }
 
 export function focusOrCreateMainWindow(): void {

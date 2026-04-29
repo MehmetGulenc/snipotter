@@ -8,7 +8,14 @@ import { ClipboardMonitor } from './clipboard'
 import { AIService } from './ai'
 import { SupabaseService } from './supabase'
 import { settingsStore } from './store'
-import { createMainWindow, getMainWindow, focusOrCreateMainWindow, toggleQuickNoteWindow } from './windows'
+import {
+  createMainWindow,
+  getMainWindow,
+  focusOrCreateMainWindow,
+  toggleQuickNoteWindow,
+  toggleQuickPasteWindow,
+  hideQuickPasteWindow,
+} from './windows'
 import { createTray, refreshMenu } from './tray'
 import { registerHotkeys, unregisterAll, setRecordingPaused, validateAccelerator } from './hotkeys'
 import { UpdaterService } from './updater'
@@ -291,9 +298,17 @@ function wireIPC(): void {
     return { ok: true, data: next }
   })
 
-  // ===== Window / quick-note =====
+  // ===== Window / quick-note / quick-paste =====
   ipcMain.handle(IPC.WIN_TOGGLE_QUICK_NOTE, async () => {
     toggleQuickNoteWindow()
+    return { ok: true, data: null }
+  })
+  ipcMain.handle(IPC.WIN_TOGGLE_QUICK_PASTE, async () => {
+    toggleQuickPasteWindow()
+    return { ok: true, data: null }
+  })
+  ipcMain.handle(IPC.WIN_HIDE_QUICK_PASTE, async () => {
+    hideQuickPasteWindow()
     return { ok: true, data: null }
   })
   ipcMain.handle(IPC.WIN_MINIMIZE, async () => {

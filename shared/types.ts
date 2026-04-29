@@ -93,8 +93,12 @@ export interface AppSettings {
   theme: 'system' | 'light' | 'dark'
   clipboardEnabled: boolean
   clipboardHistoryLimit: number
+  /** Hotkey to focus / open the main library window. */
   globalHotkey: string
+  /** Hotkey to toggle the quick-note overlay. */
   quickNoteHotkey: string
+  /** Hotkey to open the Maccy-style quick-paste popup (recent clips with search). */
+  quickPasteHotkey: string
   /** Auto-enrich items with AI metadata. */
   aiAutoEnrich: boolean
   /** Preferred AI provider; will fall back to the other on failure. */
@@ -109,8 +113,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   clipboardEnabled: true,
   clipboardHistoryLimit: 500,
-  globalHotkey: 'CommandOrControl+Shift+V',
+  globalHotkey: 'CommandOrControl+Shift+L',
   quickNoteHotkey: 'CommandOrControl+Shift+N',
+  quickPasteHotkey: 'CommandOrControl+Shift+V',
   aiAutoEnrich: true,
   aiPrimaryProvider: 'claude-haiku',
   launchAtLogin: false,
@@ -164,6 +169,8 @@ export const IPC = {
   WIN_MINIMIZE: 'win:minimize',
   WIN_CLOSE: 'win:close',
   WIN_TOGGLE_QUICK_NOTE: 'win:toggle-quick-note',
+  WIN_TOGGLE_QUICK_PASTE: 'win:toggle-quick-paste',
+  WIN_HIDE_QUICK_PASTE: 'win:hide-quick-paste',
 
   // AI
   AI_REENRICH: 'ai:reenrich',

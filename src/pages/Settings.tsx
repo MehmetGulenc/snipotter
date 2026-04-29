@@ -126,6 +126,15 @@ export function Settings(): JSX.Element {
             Kısayollar
           </h3>
           <Field
+            label="Hızlı yapıştır"
+            description="Maccy benzeri popup; son kopyaları arar, ↑↓ Enter ile seçersin."
+          >
+            <HotkeyInput
+              value={settings.quickPasteHotkey}
+              onChange={(next) => update({ quickPasteHotkey: next })}
+            />
+          </Field>
+          <Field
             label="Kütüphane kısayolu"
             description="Ana pencereyi her yerden açar. Tıkla ve istediğin tuşlara bas."
           >

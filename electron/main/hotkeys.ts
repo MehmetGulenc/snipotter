@@ -4,7 +4,11 @@
  * quick-note overlay. Re-registers when the user changes them.
  */
 import { globalShortcut } from 'electron'
-import { focusOrCreateMainWindow, toggleQuickNoteWindow } from './windows'
+import {
+  focusOrCreateMainWindow,
+  toggleQuickNoteWindow,
+  toggleQuickPasteWindow,
+} from './windows'
 import { settingsStore } from './store'
 
 let registered: string[] = []
@@ -49,6 +53,12 @@ export function registerHotkeys(): void {
   if (settings.quickNoteHotkey) {
     if (tryRegister(settings.quickNoteHotkey, toggleQuickNoteWindow, 'quick-note')) {
       registered.push(settings.quickNoteHotkey)
+    }
+  }
+
+  if (settings.quickPasteHotkey && settings.quickPasteHotkey !== settings.globalHotkey) {
+    if (tryRegister(settings.quickPasteHotkey, toggleQuickPasteWindow, 'quick-paste')) {
+      registered.push(settings.quickPasteHotkey)
     }
   }
 }
