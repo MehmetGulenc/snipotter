@@ -180,32 +180,41 @@ function Card({
 }
 
 /**
- * Copy a data-URL image to the clipboard. Browsers (especially iOS Safari)
- * are picky about which MIME types `ClipboardItem` accepts — currently only
- * `image/png` is widely supported. JPEGs / WEBPs from the desktop app are
- * re-encoded as PNG via a canvas before being written so the clipboard write
- * doesn't get rejected.
+ * Copy a data-URL image to the clipboard. Two browser quirks matter here:
+ *
+ *   1. ClipboardItem's MIME map effectively only accepts `image/png` on
+ *      Safari/iOS, so JPEGs/WEBPs from the desktop app are re-encoded to PNG
+ *      via a canvas before being written.
+ *
+ *   2. iOS Safari requires `navigator.clipboard.write()` to be invoked
+ *      synchronously within the user-gesture handler. Any `await` between
+ *      the click and the `write` call drops the transient activation and
+ *      the platform rejects the call with "The request is not allowed by
+ *      the user agent or the platform in the current context".
+ *      The fix: pass a `Promise<Blob>` directly to ClipboardItem — the
+ *      browser will resolve it itself while keeping the gesture alive.
  */
-async function copyImage(dataUrl: string): Promise<void> {
+function copyImage(dataUrl: string): Promise<void> {
   if (!navigator.clipboard || typeof window.ClipboardItem !== 'function') {
-    throw new Error("Tarayıcın gelişmiş pano kopyalamasını desteklemiyor.")
-  }
-  let blob = await (await fetch(dataUrl)).blob()
-
-  // Force PNG. Safari rejects anything else inside ClipboardItem.
-  if (blob.type !== 'image/png') {
-    blob = await encodeAsPng(dataUrl)
+    return Promise.reject(
+      new Error("Tarayıcın gelişmiş pano kopyalamasını desteklemiyor."),
+    )
   }
 
-  try {
-    await navigator.clipboard.write([
-      new ClipboardItem({ 'image/png': blob }),
-    ])
-  } catch (err) {
-    // Surface a concrete error message instead of the generic DOMException.
-    const reason = err instanceof Error ? err.message : String(err)
-    throw new Error(`Pano API'si reddetti: ${reason}`)
-  }
+  // Build a Promise that resolves to a PNG Blob. We hand this Promise (not
+  // an awaited Blob) to ClipboardItem so the user-activation token survives.
+  const pngBlob: Promise<Blob> = (async () => {
+    const initial = await (await fetch(dataUrl)).blob()
+    return initial.type === 'image/png' ? initial : encodeAsPng(dataUrl)
+  })()
+
+  // Note: NO `await` between the gesture-firing click and this write call.
+  return navigator.clipboard
+    .write([new ClipboardItem({ 'image/png': pngBlob })])
+    .catch((err: unknown) => {
+      const reason = err instanceof Error ? err.message : String(err)
+      throw new Error(`Pano API'si reddetti: ${reason}`)
+    })
 }
 
 function encodeAsPng(dataUrl: string): Promise<Blob> {
