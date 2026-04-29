@@ -65,9 +65,13 @@ jobs:
         run: npx electron-builder --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Skip code signing for now — release builds will trigger Gatekeeper
-          # warnings on first launch. Add CSC_LINK / CSC_KEY_PASSWORD secrets
-          # later to ship signed/notarized DMGs.
+          # electron-builder.json sets `mac.identity: null` which triggers
+          # ad-hoc signing (codesign --sign -). This avoids the "app is
+          # damaged" error on Apple Silicon. Users still get a one-time
+          # "developer cannot be verified" warning (right-click → Open).
+          # To ship fully signed + notarized builds later, add CSC_LINK +
+          # CSC_KEY_PASSWORD + APPLE_ID + APPLE_ID_PASS secrets and remove
+          # the identity:null override.
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       # Windows release (NSIS installer + portable exe)

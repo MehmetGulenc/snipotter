@@ -89,28 +89,57 @@ npm run build:linux  # needs Docker for cross-build, easier on Ubuntu CI
 
 The auto-update flow only kicks in for **packaged builds running outside `npm run dev`**, so you need to install the DMG/exe and run the installed app to test the updater UI.
 
-## Code signing & notarization (later)
+## Code signing & notarization
 
-The current macOS DMG is unsigned — users see a Gatekeeper warning on first launch. To fix:
+### Current state: ad-hoc signed (free, no Apple account)
 
-1. Get an Apple Developer account ($99/year)
+`electron-builder.json` sets `mac.identity: null` which makes electron-builder run `codesign --sign -` on the bundle. This is **ad-hoc signing**: no certificate, no trusted authority, but the binary is internally consistent. Without this step, Apple Silicon Macs refuse to launch the app at all and show "Snipotter is damaged" because every arm64 binary must carry at least an ad-hoc signature.
+
+What users still see on first launch:
+
+- macOS: "Snipotter cannot be opened because the developer cannot be verified" → **right-click → Open** → "Open" → app runs and the warning never appears again on that Mac
+- Windows: SmartScreen "Windows protected your PC" → **More info → Run anyway**
+
+What users will **not** see:
+
+- ❌ "Snipotter is damaged. Move to Bin." (this was the unsigned-binary error, now fixed)
+
+### Upgrade path: full Developer ID signing + notarization ($99/year)
+
+When ready to ship without any first-launch warnings:
+
+1. Buy an Apple Developer membership at developer.apple.com ($99/year)
 2. Add to repo secrets:
    - `APPLE_ID` — your Apple ID email
    - `APPLE_APP_SPECIFIC_PASSWORD` — generate at appleid.apple.com
    - `APPLE_TEAM_ID` — from developer.apple.com/account
    - `CSC_LINK` — base64-encoded `.p12` certificate
    - `CSC_KEY_PASSWORD` — `.p12` password
-3. Remove `CSC_IDENTITY_AUTO_DISCOVERY: false` from the macOS step in `release.yml`
-4. Add notarization credentials to electron-builder.json's `mac` block
+3. In `electron-builder.json`:
+   - Remove `"identity": null` (let electron-builder auto-discover the cert)
+   - Set `"hardenedRuntime": true`
+   - Re-add `"entitlements": "build/entitlements.mac.plist"` and `"entitlementsInherit": "build/entitlements.mac.plist"`
+   - Add `"notarize": { "teamId": "<TEAM_ID>" }` under the `mac` block
+4. In `.github/workflows/release.yml`, remove `CSC_IDENTITY_AUTO_DISCOVERY: false` from the macOS step
 
 For Windows, an Authenticode certificate (~$200/year) avoids SmartScreen warnings. Set `CSC_LINK` + `CSC_KEY_PASSWORD` in repo secrets and electron-builder picks them up automatically.
 
 ## Troubleshooting
 
+**"Snipotter is damaged. Move to Bin."** (macOS) — Quarantine attribute on a build that wasn't ad-hoc signed (older v0.1.1 and earlier). Two fixes:
+
+```bash
+# Quick fix on the current install
+xattr -cr /Applications/Snipotter.app
+
+# Permanent fix: cut a new release with electron-builder.json's mac.identity:null
+npm run release:patch
+```
+
+**"developer cannot be verified"** (macOS) — Expected on first launch of an ad-hoc signed build. Right-click → Open → Open. The system remembers and won't ask again.
+
 **"electron-updater: Cannot find latest.yml"** — The release exists but the metadata file wasn't uploaded. Re-run the workflow or check the Actions logs for that platform.
 
 **"Update download failed: ENOTFOUND"** — User is offline or behind a strict proxy. Manual install from github.com/mehmetgulenc/snipotter/releases is the fallback.
-
-**"This update is not signed"** (macOS) — Expected for now until code signing is set up. User can right-click → Open to bypass Gatekeeper.
 
 **Workflow fails with `403 Resource not accessible by integration`** — The `permissions: contents: write` block at the top of `release.yml` is missing or the repo's default workflow permissions are read-only. Check **Settings → Actions → General → Workflow permissions**.
