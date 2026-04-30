@@ -19,7 +19,8 @@ const ROOT = path.resolve(__dirname, '..');
 const SRC = path.join(ROOT, 'gemini-svg.svg');
 const BUILD = path.join(ROOT, 'build');
 const ICONSET = path.join(BUILD, 'icon.iconset');
-const APPX_ASSETS = path.join(BUILD, 'appx-assets');
+// electron-builder looks for appx assets in buildResources/appx (hardcoded as "appx")
+const APPX_ASSETS = path.join(BUILD, 'appx');
 
 if (!fs.existsSync(SRC)) {
   console.error('Missing source SVG:', SRC);
@@ -80,30 +81,38 @@ async function render(size, outPath) {
   // Simplest: write 256x256 PNG; electron-builder will accept it
   await render(256, path.join(BUILD, 'icon.ico'));
 
+  // Microsoft Store / MSIX icons
+  // electron-builder reads from buildResources/appx (APPX_ASSETS_DIR_NAME = "appx")
+  // and recognises these exact filenames when building the AppxManifest.xml:
+  //   StoreLogo.png          → <Logo> and VisualElements StoreLogo
+  //   Square44x44Logo.png    → VisualElements Square44x44Logo (taskbar / app list)
+  //   SmallTile.png          → Square71x71Logo (small Start tile)
+  //   Square150x150Logo.png  → VisualElements Square150x150Logo
+  //   Wide310x150Logo.png    → DefaultTile Wide310x150Logo
+  //   LargeTile.png          → DefaultTile Square310x310Logo
+  //   SplashScreen.png       → SplashScreen image
   console.log('Generating Microsoft Store icons...');
   fs.mkdirSync(APPX_ASSETS, { recursive: true });
 
-  // Store icons (filename → pixel size)
-  const appxSizes = [
-    ['StoreLogo.png', 50],
-    ['SmallTile.png', 71],
-    ['Tile150x150.png', 150],
-    ['Wide310x150.png', 310],
-    ['LargeTile.png', 310],
-    ['SplashScreen.png', 620],
+  // Square assets — all rendered at the specified pixel size
+  const squareSizes = [
+    ['StoreLogo.png',         50],
+    ['Square44x44Logo.png',   44],
+    ['SmallTile.png',         71],
+    ['Square150x150Logo.png', 150],
+    ['LargeTile.png',         310],
   ];
 
-  for (const [name, size] of appxSizes) {
+  for (const [name, size] of squareSizes) {
     await render(size, path.join(APPX_ASSETS, name));
   }
 
-  // Wide310x150 needs to be rectangular (310x150), others are square
+  // Rectangular assets
   await sharp(svgBuffer, { density: 384 })
     .resize(310, 150, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
-    .toFile(path.join(APPX_ASSETS, 'Wide310x150.png'));
+    .toFile(path.join(APPX_ASSETS, 'Wide310x150Logo.png'));
 
-  // SplashScreen is rectangular (620x300)
   await sharp(svgBuffer, { density: 384 })
     .resize(620, 300, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()

@@ -3,8 +3,7 @@
   "productName": "Snipotter",
   "directories": {
     "buildResources": "build",
-    "output": "dist",
-    "appxAssets": "build/appx-assets"
+    "output": "dist"
   },
   "files": [
     "out/**/*",
