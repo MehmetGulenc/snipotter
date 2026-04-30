@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Soft scrollbar that matches the dark theme. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(240 6% 18%);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(240 6% 25%);
+}
+
+/* Selection color matches the primary accent. */
+::selection {
+  background: hsl(252 83% 65% / 0.35);
+  color: hsl(0 0% 98%);
+}

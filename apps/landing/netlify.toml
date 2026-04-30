@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Static SPA — single index.html with client-side routing for hash anchors.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
