@@ -1,5 +1,4 @@
 import {
-  ClipboardList,
   Sparkles,
   Smartphone,
   Lock,
@@ -14,6 +13,7 @@ import {
   Download,
   Check,
 } from 'lucide-react'
+import logoUrl from './logo.svg'
 
 // URLs are centralised so we can swap them later without hunting the JSX.
 const APP_URL = 'https://app.snipotter.com'
@@ -84,9 +84,15 @@ function Nav(): JSX.Element {
 
 function LogoMark(): JSX.Element {
   return (
-    <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-primary to-fuchsia-500 text-white shadow-lg shadow-primary/30">
-      <ClipboardList className="h-4 w-4" />
-    </span>
+    <img
+      src={logoUrl}
+      alt=""
+      aria-hidden
+      width={32}
+      height={32}
+      draggable={false}
+      className="h-8 w-8 shrink-0 select-none"
+    />
   )
 }
 
