@@ -3,7 +3,8 @@
   "productName": "Snipotter",
   "directories": {
     "buildResources": "build",
-    "output": "dist"
+    "output": "dist",
+    "appxAssets": "build/appx-assets"
   },
   "files": [
     "out/**/*",
@@ -29,7 +30,8 @@
   "win": {
     "target": [
       { "target": "nsis", "arch": ["x64", "arm64"] },
-      { "target": "portable", "arch": ["x64"] }
+      { "target": "portable", "arch": ["x64"] },
+      { "target": "appx", "arch": ["x64", "arm64"] }
     ],
     "icon": "build/icon.png"
   },
@@ -39,6 +41,15 @@
     "perMachine": false,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
+  },
+  "appx": {
+    "applicationId": "Snipotter",
+    "identityName": "mehmetgulenc.Snipotter",
+    "publisher": "CN=361C6FAF-A2A7-42B2-BC8E-4686DAA70529",
+    "publisherDisplayName": "mehmetgulenc",
+    "displayName": "Snipotter",
+    "backgroundColor": "#0B0A0F",
+    "languages": ["en-US", "tr-TR"]
   },
   "linux": {
     "target": ["AppImage", "deb"],

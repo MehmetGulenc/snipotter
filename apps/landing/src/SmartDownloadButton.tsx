@@ -4,9 +4,13 @@ import { Apple, Check, Download, Loader2, X } from 'lucide-react'
 const RELEASES_URL = 'https://github.com/MehmetGulenc/snipotter/releases/latest'
 const RELEASES_API = 'https://api.github.com/repos/MehmetGulenc/snipotter/releases/latest'
 const APP_URL = 'https://app.snipotter.com'
+const STORE_ID = '9PPS95VQ5L6L'
+const STORE_URL = `ms-windows-store://pdp/?productid=${STORE_ID}`
+const STORE_WEB_URL = `https://apps.microsoft.com/detail/${STORE_ID}`
 
 type Platform = 'mac' | 'win' | 'linux' | 'mobile' | 'unknown'
 type DownloadTarget = 'mac-arm64' | 'mac-x64' | 'win' | 'linux'
+type WinChoice = 'store' | 'direct'
 
 interface ReleaseAsset {
   name: string
@@ -96,7 +100,9 @@ async function triggerDownload(target: DownloadTarget): Promise<void> {
 export function SmartDownloadButton(): JSX.Element {
   const [platform, setPlatform] = useState<Platform>('unknown')
   const [showMacPicker, setShowMacPicker] = useState(false)
+  const [showWinPicker, setShowWinPicker] = useState(false)
   const [showMobileHint, setShowMobileHint] = useState(false)
+  const [showSmartScreenHint, setShowSmartScreenHint] = useState(false)
   const [busy, setBusy] = useState<DownloadTarget | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
@@ -131,8 +137,21 @@ export function SmartDownloadButton(): JSX.Element {
       setShowMacPicker(true)
       return
     }
-    if (platform === 'win') void start('win')
-    else if (platform === 'linux') void start('linux')
+    if (platform === 'win') {
+      setShowWinPicker(true)
+      return
+    }
+    if (platform === 'linux') void start('linux')
+  }
+
+  const onWinChoice = (choice: WinChoice): void => {
+    setShowWinPicker(false)
+    if (choice === 'store') {
+      window.location.href = STORE_URL
+    } else {
+      setShowSmartScreenHint(true)
+      void start('win')
+    }
   }
 
   // Label adapts to the detected OS so the CTA reads naturally.
@@ -181,6 +200,84 @@ export function SmartDownloadButton(): JSX.Element {
             Bilmiyor musun? Apple menüsü (sol üst) → "Bu Mac Hakkında" →
             "Çip" satırı: <strong>Apple M*</strong> ise Apple Silicon,
             <strong> Intel Core</strong> ise Intel.
+          </p>
+          {err && <ErrorRow text={err} />}
+        </Modal>
+      )}
+
+      {showWinPicker && (
+        <Modal onClose={() => setShowWinPicker(false)} title="Windows için nasıl indirmek istersin?">
+          <p className="text-sm text-muted-foreground">
+            İki seçenek var:
+          </p>
+          <div className="mt-4 space-y-2">
+            <button
+              type="button"
+              onClick={() => onWinChoice('store')}
+              className="flex w-full items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 p-4 text-left transition hover:border-primary/60 hover:bg-primary/10"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <Check className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-medium">Microsoft Store (önerilen)</div>
+                <div className="text-xs text-muted-foreground">
+                  Otomatik güncelleme, güvenli imza, SmartScreen uyarısı yok.
+                </div>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => onWinChoice('direct')}
+              className="flex w-full items-center gap-3 rounded-lg border border-border bg-card/40 p-4 text-left transition hover:border-primary/50 hover:bg-card"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <Download className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-medium">Doğrudan .exe indir</div>
+                <div className="text-xs text-muted-foreground">
+                  GitHub'dan indir, kurulumdan sonra SmartScreen uyarısı olabilir.
+                </div>
+              </div>
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showSmartScreenHint && (
+        <Modal onClose={() => setShowSmartScreenHint(false)} title="Windows SmartScreen uyarısı">
+          <p className="text-sm text-muted-foreground">
+            Microsoft Store dışındaki .exe dosyaları Windows Defender SmartScreen
+            tarafından "Bilinmeyen yayımcı" diye engellenebilir. Bu normaldir —
+            uygulama henüz yeterli indirme sayısına ulaşmadı.
+          </p>
+          <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+            <div className="rounded-md border border-border bg-card/40 p-3">
+              <strong>1. İndirilen dosyayı aç:</strong>
+              <br />
+              İndirilen <code>Snipotter-Setup-*.exe</code> dosyasına çift tıkla.
+            </div>
+            <div className="rounded-md border border-border bg-card/40 p-3">
+              <strong>2. "Windows bilgisayarınızı korudu" uyarısı:</strong>
+              <br />
+              Sol altta <strong>"Daha fazla bilgi"</strong> (More info) linkine tıkla.
+            </div>
+            <div className="rounded-md border border-border bg-card/40 p-3">
+              <strong>3. Yine de çalıştır:</strong>
+              <br />
+              <strong>"Yine de çalıştır"</strong> (Run anyway) butonuna tıkla.
+            </div>
+            <div className="rounded-md border border-border bg-card/40 p-3">
+              <strong>4. Tarayıcı dosyayı sildiyse:</strong>
+              <br />
+              Edge/Chrome indirmelerinde "Tehlikeli dosya" ikonu → üç nokta →
+              <strong>"Tut"</strong> (Keep) → yukarıdaki adımları tekrarla.
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            SmartScreen uyarısından kurtulmak için <strong>Microsoft Store
+            sürümünü</strong> kullanmanı tavsiye ederim.
           </p>
           {err && <ErrorRow text={err} />}
         </Modal>

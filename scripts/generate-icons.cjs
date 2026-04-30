@@ -8,6 +8,7 @@
  *   build/icon.ico (win — single PNG fallback)
  *   build/tray-icon.png (system tray 32x32)
  *   build/tray-icon@2x.png (retina 64x64)
+ *   build/appx-assets/* (Microsoft Store icons)
  */
 const sharp = require('sharp');
 const fs = require('fs');
@@ -18,6 +19,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SRC = path.join(ROOT, 'gemini-svg.svg');
 const BUILD = path.join(ROOT, 'build');
 const ICONSET = path.join(BUILD, 'icon.iconset');
+const APPX_ASSETS = path.join(BUILD, 'appx-assets');
 
 if (!fs.existsSync(SRC)) {
   console.error('Missing source SVG:', SRC);
@@ -77,6 +79,35 @@ async function render(size, outPath) {
   console.log('Generating Windows icon.ico...');
   // Simplest: write 256x256 PNG; electron-builder will accept it
   await render(256, path.join(BUILD, 'icon.ico'));
+
+  console.log('Generating Microsoft Store icons...');
+  fs.mkdirSync(APPX_ASSETS, { recursive: true });
+
+  // Store icons (filename → pixel size)
+  const appxSizes = [
+    ['StoreLogo.png', 50],
+    ['SmallTile.png', 71],
+    ['Tile150x150.png', 150],
+    ['Wide310x150.png', 310],
+    ['LargeTile.png', 310],
+    ['SplashScreen.png', 620],
+  ];
+
+  for (const [name, size] of appxSizes) {
+    await render(size, path.join(APPX_ASSETS, name));
+  }
+
+  // Wide310x150 needs to be rectangular (310x150), others are square
+  await sharp(svgBuffer, { density: 384 })
+    .resize(310, 150, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toFile(path.join(APPX_ASSETS, 'Wide310x150.png'));
+
+  // SplashScreen is rectangular (620x300)
+  await sharp(svgBuffer, { density: 384 })
+    .resize(620, 300, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toFile(path.join(APPX_ASSETS, 'SplashScreen.png'));
 
   // Cleanup iconset (optional — keep for re-use)
   console.log('Done.');
