@@ -83,17 +83,26 @@ export default function App(): JSX.Element {
     }
   }, [setUser, setAuthLoading, setWorkspace, setSettings, setClipboard, upsertClipboard, upsertNote, setAiStatus])
 
-  // Re-load lists when workspace changes (workspace = data scope, not user)
+  // Re-load lists when workspace changes and whenever the window regains focus
+  // (catches any realtime events missed while the window was in the background).
   useEffect(() => {
     if (!workspace) return
-    void (async () => {
+
+    let lastFetch = 0
+    const fetchData = async () => {
+      if (Date.now() - lastFetch < 30_000) return
+      lastFetch = Date.now()
       const [clip, notes] = await Promise.all([
         window.snipotter.clipboard.list(),
         window.snipotter.notes.list(),
       ])
       if (clip.ok) setClipboard(clip.data)
       if (notes.ok) setNotes(notes.data)
-    })()
+    }
+
+    void fetchData()
+    window.addEventListener('focus', fetchData)
+    return () => window.removeEventListener('focus', fetchData)
   }, [workspace?.id, setClipboard, setNotes])
 
   // ==== Overlay windows have their own minimal routes ====

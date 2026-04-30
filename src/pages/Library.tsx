@@ -56,7 +56,7 @@ export function Library(): JSX.Element {
 
   return (
     <div className="scrollbar-thin h-full overflow-y-auto p-4">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 items-start">
         {filtered.map((item) => (
           <ClipboardCard
             key={item.id}

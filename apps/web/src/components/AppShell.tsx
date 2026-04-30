@@ -6,7 +6,7 @@ import { Library } from './Library'
 import { Notes } from './Notes'
 import { Settings } from './Settings'
 import { useStore } from '@/lib/store'
-import { subscribeWorkspace } from '@/lib/api'
+import { subscribeWorkspace, listClipboard, listNotes } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Input } from './ui/Input'
 
@@ -16,6 +16,8 @@ export function AppShell(): JSX.Element {
   const workspace = useStore((s) => s.workspace)
   const query = useStore((s) => s.query)
   const setQuery = useStore((s) => s.setQuery)
+  const setClipboard = useStore((s) => s.setClipboard)
+  const setNotes = useStore((s) => s.setNotes)
   const upsertClip = useStore((s) => s.upsertClip)
   const removeClip = useStore((s) => s.removeClip)
   const upsertNote = useStore((s) => s.upsertNote)
@@ -31,6 +33,33 @@ export function AppShell(): JSX.Element {
       onNoteDelete: removeNote,
     })
     return unsub
+  }, [workspace?.id])
+
+  // Re-fetch when the tab/window regains visibility — catches any realtime
+  // events missed while the app was in the background or the tab was hidden.
+  useEffect(() => {
+    if (!workspace) return
+
+    let lastFetch = 0
+    const fetchData = () => {
+      if (document.visibilityState !== 'visible') return
+      if (Date.now() - lastFetch < 30_000) return
+      lastFetch = Date.now()
+      void Promise.all([
+        listClipboard(workspace.id),
+        listNotes(workspace.id),
+      ]).then(([clips, notes]) => {
+        setClipboard(clips)
+        setNotes(notes)
+      }).catch(console.warn)
+    }
+
+    document.addEventListener('visibilitychange', fetchData)
+    window.addEventListener('focus', fetchData)
+    return () => {
+      document.removeEventListener('visibilitychange', fetchData)
+      window.removeEventListener('focus', fetchData)
+    }
   }, [workspace?.id])
 
   return (

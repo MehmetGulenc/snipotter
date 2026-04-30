@@ -270,21 +270,22 @@ export function subscribeWorkspace(
   },
 ): () => void {
   const sb = getSupabase()
+  // Filter is intentionally omitted: postgres_changes DELETE events only carry
+  // the primary key when REPLICA IDENTITY is DEFAULT, so a workspace_id filter
+  // would silently drop all deletes. RLS ensures we only receive rows we can
+  // SELECT; client-side workspace check handles the INSERT/UPDATE side.
   const clipCh = sb
     .channel(`web-clip-${workspaceId}`)
     .on(
       'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'clipboard_items',
-        filter: `workspace_id=eq.${workspaceId}`,
-      },
+      { event: '*', schema: 'public', table: 'clipboard_items' },
       (payload) => {
         if (payload.eventType === 'DELETE') {
-          handlers.onClipDelete?.((payload.old as { id: string }).id)
+          const id = (payload.old as { id?: string }).id
+          if (id) handlers.onClipDelete?.(id)
         } else {
-          handlers.onClip?.(clipFromRow(payload.new as ClipboardRow))
+          const row = payload.new as ClipboardRow
+          if (row.workspace_id === workspaceId) handlers.onClip?.(clipFromRow(row))
         }
       },
     )
@@ -294,17 +295,14 @@ export function subscribeWorkspace(
     .channel(`web-notes-${workspaceId}`)
     .on(
       'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'notes',
-        filter: `workspace_id=eq.${workspaceId}`,
-      },
+      { event: '*', schema: 'public', table: 'notes' },
       (payload) => {
         if (payload.eventType === 'DELETE') {
-          handlers.onNoteDelete?.((payload.old as { id: string }).id)
+          const id = (payload.old as { id?: string }).id
+          if (id) handlers.onNoteDelete?.(id)
         } else {
-          handlers.onNote?.(noteFromRow(payload.new as NoteRow))
+          const row = payload.new as NoteRow
+          if (row.workspace_id === workspaceId) handlers.onNote?.(noteFromRow(row))
         }
       },
     )

@@ -24,12 +24,12 @@ export function ClipboardCard({ item, onCopy, onPin, onPromote, onDelete, onReen
 
   return (
     <article
-      className="group relative flex flex-col gap-2 rounded-lg border border-border bg-card/40 p-3 transition-colors hover:border-primary/40 hover:bg-card/60 animate-fade-in"
+      className="group relative flex flex-col gap-2 rounded-lg border border-border bg-card/40 p-3 transition-colors hover:border-primary/40 hover:bg-card/60 animate-fade-in overflow-hidden"
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 min-w-0">
         <button
           onClick={() => onCopy(item)}
-          className="flex-1 text-left text-sm leading-snug text-foreground"
+          className="flex-1 min-w-0 overflow-hidden text-left text-sm leading-snug text-foreground"
           title="Tekrar kopyala"
         >
           {isImage ? (
@@ -40,9 +40,9 @@ export function ClipboardCard({ item, onCopy, onPin, onPromote, onDelete, onReen
               draggable={false}
             />
           ) : (
-            <pre className="whitespace-pre-wrap break-words font-sans line-clamp-4">
-              {truncate(display, 600)}
-            </pre>
+            <div className="whitespace-pre-wrap break-words line-clamp-4">
+              {truncate(display, 300)}
+            </div>
           )}
         </button>
         <div className="flex shrink-0 flex-col items-end gap-1">
