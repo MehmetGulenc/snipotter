@@ -14,13 +14,21 @@ interface Props {
   onReenrich: (item: ClipboardItem) => void
 }
 
-const isRedacted = (text: string) => text === '••• redacted •••'
+// Legacy: very early builds replaced sensitive payloads with this literal
+// string. Treat such rows as sensitive too so old DB entries still hide.
+const LEGACY_REDACTED = '••• redacted •••'
 
 export function ClipboardCard({ item, onCopy, onPin, onPromote, onDelete, onReenrich }: Props): JSX.Element {
   const [revealed, setRevealed] = useState(false)
-  const sensitive = isRedacted(item.text)
+  const sensitive =
+    item.ai?.tags?.includes('sensitive') === true || item.text === LEGACY_REDACTED
   const isImage = item.contentType === 'image' && item.text.startsWith('data:image/')
-  const display = sensitive && !revealed ? '••• gizli içerik •••' : item.text
+  const display =
+    sensitive && !revealed
+      ? '••• gizli içerik •••'
+      : item.text === LEGACY_REDACTED
+        ? '(içerik korumaya alınmıştı, görünmüyor)'
+        : item.text
 
   return (
     <article

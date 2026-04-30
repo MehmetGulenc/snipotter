@@ -99,7 +99,7 @@ function Hero(): JSX.Element {
     <section className="mx-auto grid max-w-6xl gap-10 px-4 pb-16 pt-14 sm:px-6 sm:pt-20 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
       <div className="animate-fade-in">
         <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary">
-          <Sparkles className="h-3 w-3" /> AI destekli pano + hızlı notlar
+          <Sparkles className="h-3 w-3" /> Kolayca erişebileceğin notlar
         </div>
         <h1 className="text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
           Kopyaladığın her şey,
@@ -109,9 +109,9 @@ function Hero(): JSX.Element {
           </span>
         </h1>
         <p className="mt-5 max-w-xl text-base text-muted-foreground sm:text-lg">
-          Snipotter; Mac, Windows, Linux ve telefonun arasında pano geçmişini ve hızlı
-          notları gerçek zamanlı senkronize eden bir verimlilik aracı. E-posta yok,
-          parola yok — 6 haneli kod ile cihazları eşleştir, gerisini bırak.
+          Bilgisayarında kopyaladığın bir adresi telefonunda, telefonunda kopyaladığın bir
+          metni bilgisayarında anında bul. Hesap açmaya, parola hatırlamaya gerek yok —
+          tek bir kod ile cihazlarını eşleştir, gerisi kendiliğinden çalışır.
         </p>
 
         <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -240,10 +240,10 @@ function MockClip({
 function LogoStrip(): JSX.Element {
   const items = [
     'macOS · Windows · Linux',
-    'iOS / Android PWA',
-    'Anthropic Claude',
-    'Google Gemini',
-    'Supabase Realtime',
+    'iPhone · Android',
+    'Akıllı özet & etiketleme',
+    'Anlık senkron',
+    'Hesap & e-posta gerekmez',
   ]
   return (
     <section className="border-y border-border/40 bg-card/20">
@@ -266,33 +266,33 @@ function Features(): JSX.Element {
   const features = [
     {
       icon: <Zap className="h-5 w-5" />,
-      title: 'Maccy benzeri Hızlı Yapıştır',
-      copy: 'Global kısayol bas, son kopyaladıklarını ara, ↑↓ ile gez, Enter ile yapıştır. Klavyeden el çıkmaz.',
+      title: 'Hızlı yapıştırma',
+      copy: 'Tek bir kısayol ile son kopyaladıklarını aç, ara ve seç. Yazarken akışın bozulmaz.',
     },
     {
       icon: <RefreshCcw className="h-5 w-5" />,
-      title: 'Gerçek zamanlı senkron',
-      copy: 'Mac\'te kopyala, telefonda anında gör. Supabase Realtime + 10 saniyelik reconciliation ile hiçbir şey kaybolmaz.',
+      title: 'Anında senkron',
+      copy: 'Bilgisayarda kopyaladığını telefonunda, telefondan kopyaladığını bilgisayarında saniyeler içinde bul.',
     },
     {
       icon: <Sparkles className="h-5 w-5" />,
-      title: 'AI ile zenginleştirme',
-      copy: 'Claude Haiku ve Gemini Flash; uzun metinleri özetler, etiketler, hassas içeriği gizler. Fallback ile hep bir cevap.',
+      title: 'Akıllı özet & etiket',
+      copy: 'Uzun metinleri otomatik özetler, içeriği etiketler, hassas bilgileri tanır ve listede gizler.',
     },
     {
       icon: <Smartphone className="h-5 w-5" />,
-      title: 'Mobilde PWA',
-      copy: 'iPhone ve Android için ana ekrana ekle, native gibi açılır. Dynamic Island uyumlu, görsel paylaşımı dahil.',
+      title: 'Telefonda da çalışır',
+      copy: 'iPhone ve Android için ana ekrana ekle, uygulama gibi açılır. Görsel kopyalama dahil.',
     },
     {
       icon: <KeyRound className="h-5 w-5" />,
-      title: '6 haneli eşleştirme',
-      copy: 'Hesap yok, parola yok. Bir cihazda kod oluştur, diğerinde gir. Eşleştirme kodu 10 dakika sonra otomatik silinir.',
+      title: 'Tek bir kod, hepsi bu',
+      copy: 'Hesap yok, parola yok, e-posta yok. Bir cihazda 6 haneli kod al, diğerinde gir, hepsi senkron.',
     },
     {
       icon: <Lock className="h-5 w-5" />,
       title: 'Hassas içerik koruması',
-      copy: 'AI; e-posta, telefon, kredi kartı gibi içeriği "sensitive" etiketler. Listede gizli görünür, tek tıkla açılır.',
+      copy: 'E-posta, telefon, kart numarası gibi bilgileri otomatik gizler. Tek tıkla açılır, başkası gördüğünde rahatsız olmazsın.',
     },
   ]
 
@@ -303,7 +303,7 @@ function Features(): JSX.Element {
           Gündelik akışın için tasarlandı
         </h2>
         <p className="mt-3 text-muted-foreground">
-          Her özellik gerçek bir günlük problemi çözer. Şişirme yok, sadece klavye ve odak.
+          Karmaşık ayar yok, gereksiz özellik yok. Sadece günlük hayatına gerçekten yarayan şeyler.
         </p>
       </div>
 
@@ -376,10 +376,10 @@ function HowItWorks(): JSX.Element {
    ========================================================================= */
 function Privacy(): JSX.Element {
   const points = [
-    'Verilerin Supabase\'te workspace bazlı RLS ile izole tutulur',
-    'Hassas içerik (kart, telefon, mail) AI tarafından otomatik etiketlenir',
-    'Eşleştirme kodları 10 dakikada otomatik silinir',
-    'Açık kaynak — kod GitHub\'da, denetlenebilir',
+    'Verilerin yalnızca senin eşleştirdiğin cihazlarla paylaşılır',
+    'Kart, telefon ve e-posta gibi hassas bilgiler otomatik gizlenir',
+    'Eşleştirme kodları 10 dakika sonra kendiliğinden silinir',
+    'Kodun tamamı açık kaynak — istediğin zaman inceleyebilirsin',
   ]
   return (
     <section id="privacy" className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
@@ -392,8 +392,8 @@ function Privacy(): JSX.Element {
             Pano hassas bir yer. Biz de öyle davranıyoruz.
           </h2>
           <p className="mt-4 text-muted-foreground">
-            Snipotter sıfır toplama politikası ile çalışır: kullanıcı analitiği, fingerprinting,
-            üçüncü parti tracker yok. Workspace verisi yalnızca eşleştirilmiş cihazlarınla paylaşılır.
+            Snipotter seni takip etmez. Reklam ağı, analitik, üçüncü parti izleme yok.
+            Kopyaladığın her şey yalnızca senin eşleştirdiğin cihazlar arasında dolaşır.
           </p>
         </div>
         <ul className="space-y-3">
@@ -426,8 +426,8 @@ function PricingCTA(): JSX.Element {
           Şimdilik tamamen ücretsiz.
         </h2>
         <p className="mx-auto mt-3 max-w-xl text-muted-foreground">
-          Snipotter erken aşamada — gerçek kullanıcılarla şekilleniyor. Erişimini sınırlayan
-          ücretli plan yok, herkes tüm özelliklere sahip.
+          Snipotter yeni gelişiyor. Şimdilik tüm özellikler herkese açık —
+          ücretli plan veya gizli kısıtlama yok.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <a

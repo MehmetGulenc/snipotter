@@ -247,7 +247,7 @@ function UpdateSection(): JSX.Element {
           ) : showManualButton ? (
             <Button onClick={openReleasePage} className="shrink-0">
               <Download className="mr-2 h-4 w-4" />
-              GitHub'dan indir
+              Güncellemeyi indir
             </Button>
           ) : (
             <Button
@@ -313,7 +313,7 @@ function UpdateStatusLine({
         <div className="text-xs">
           <span className="text-primary">v{status.nextVersion}</span> hazır ·{' '}
           {manualOnly
-            ? 'Mac\'te imzasız sürüm — DMG\'yi GitHub\'dan indir'
+            ? 'Tek tıkla DMG\'yi indir, açtığında Snipotter\'ı Applications klasörüne sürükle'
             : 'indiriliyor…'}
           {status.releaseNotes && (
             <pre className="mt-2 max-h-24 overflow-y-auto whitespace-pre-wrap rounded bg-muted/40 p-2 text-[11px] text-muted-foreground">
@@ -342,8 +342,8 @@ function UpdateStatusLine({
       if (manualOnly) {
         return (
           <div className="text-xs text-muted-foreground">
-            Otomatik kurulum desteklenmiyor (imzasız Mac sürüm) · Yeni sürümü
-            GitHub'dan indir
+            Otomatik kurulum desteklenmiyor (imzasız Mac sürüm) ·
+            "Güncellemeyi indir" butonu DMG'yi tarayıcıda otomatik açar
           </div>
         )
       }

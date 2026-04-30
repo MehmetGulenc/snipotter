@@ -50,9 +50,35 @@ const RELEASES_PAGE = 'https://github.com/MehmetGulenc/snipotter/releases/latest
  */
 const IS_AD_HOC_MAC = process.platform === 'darwin'
 
+/**
+ * Pick the DMG download URL that matches the currently running CPU arch.
+ * electron-builder names files with an `-arm64` suffix for Apple Silicon and
+ * leaves the Intel build unsuffixed. info.files[].url is the bare filename
+ * (e.g. `Snipotter-0.2.6-arm64.dmg`), so we resolve it against the canonical
+ * GitHub release URL for the announced version.
+ */
+function pickMacDmgUrl(info: UpdateInfo): string | null {
+  if (process.platform !== 'darwin' || !info.version) return null
+  const files = info.files ?? []
+  const dmgs = files.filter((f) => f.url.toLowerCase().endsWith('.dmg'))
+  if (dmgs.length === 0) return null
+  const wantArm = process.arch === 'arm64'
+  const match =
+    dmgs.find((f) => (wantArm ? /arm64/i.test(f.url) : !/arm64/i.test(f.url))) ?? dmgs[0]
+  return `https://github.com/MehmetGulenc/snipotter/releases/download/v${info.version}/${match.url}`
+}
+
 export class UpdaterService extends EventEmitter {
   private status: UpdaterStatus
   private periodicTimer: NodeJS.Timeout | null = null
+  /**
+   * Direct DMG download URL picked from the latest update manifest, matched
+   * to the running architecture (arm64 vs x64). When set, the manual-install
+   * flow on macOS opens this URL directly in the browser — Safari/Chrome
+   * download and auto-mount the DMG so the user only has to drag the app to
+   * /Applications. When null we fall back to the GitHub releases page.
+   */
+  private latestMacDmgUrl: string | null = null
 
   constructor() {
     super()
@@ -87,9 +113,11 @@ export class UpdaterService extends EventEmitter {
       })
       // On ad-hoc-signed macOS builds the in-app installer always fails with
       // "Code signature did not pass validation", so don't even attempt the
-      // download — the renderer shows a "Download from GitHub" button instead.
+      // download — instead remember the arch-matched DMG URL so the manual
+      // "Update" button can hand it straight to the browser.
       if (IS_AD_HOC_MAC) {
-        console.info('[updater] mac ad-hoc build — skipping in-app download')
+        this.latestMacDmgUrl = pickMacDmgUrl(info)
+        console.info('[updater] mac ad-hoc build — dmg url:', this.latestMacDmgUrl)
         return
       }
       // Windows / Linux can install in-place, so go ahead and pull the bits.
@@ -189,12 +217,13 @@ export class UpdaterService extends EventEmitter {
   }
 
   /**
-   * Open the GitHub releases page in the user's default browser. Used as the
-   * manual fallback for ad-hoc-signed macOS builds where in-app updates can't
-   * pass Squirrel's signature check.
+   * Manual fallback used on ad-hoc-signed macOS builds. When we know the
+   * exact DMG URL for this arch we hand it to the browser directly so the
+   * download starts (and auto-mounts) with one click; otherwise we fall back
+   * to the GitHub releases page.
    */
   openReleasePage(): void {
-    void shell.openExternal(RELEASES_PAGE)
+    void shell.openExternal(this.latestMacDmgUrl ?? RELEASES_PAGE)
   }
 
   /** True when the current process can't auto-install updates (mac ad-hoc). */

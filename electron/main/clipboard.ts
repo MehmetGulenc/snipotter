@@ -17,6 +17,8 @@ interface MonitorOptions {
   redactSensitive?: boolean
 }
 
+// Developer-flavoured secrets — keys and tokens we never want to flash on
+// screen unredacted.
 const SECRET_PATTERNS = [
   /-----BEGIN [A-Z ]+PRIVATE KEY-----/,
   /sk-[a-zA-Z0-9]{20,}/, // OpenAI / Anthropic keys
@@ -25,9 +27,30 @@ const SECRET_PATTERNS = [
   /eyJ[A-Za-z0-9_=\-]{20,}\.[A-Za-z0-9_=\-]+\.[A-Za-z0-9_=\-]+/, // JWT
 ]
 
+// Personal data patterns — what most users intuitively call "hassas içerik".
+// Each is anchored loosely so common surrounding text (e.g. "tel: +90...") still
+// matches, but is constrained enough to avoid flagging arbitrary numbers.
+const PERSONAL_PATTERNS = [
+  // Email — must be the whole clipboard or sit on its own line.
+  /(^|\s)[\w.+-]+@[\w-]+\.[\w.-]{2,}(\s|$)/,
+  // Turkish phone (+90 5XX XXX XXXX or 05XX XXX XXXX or international).
+  /(^|\s)(\+?\d{1,3}[\s-]?)?(\(?\d{3}\)?[\s-]?)\d{3}[\s-]?\d{2}[\s-]?\d{2}(\s|$)/,
+  // Credit card — 13-19 digits with optional space / dash separators.
+  /(^|\s)(?:\d[ -]?){13,19}(\s|$)/,
+  // Turkish IBAN.
+  /\bTR\d{2}[\s]?(?:\d{4}[\s]?){5}\d{2}\b/i,
+]
+
 function looksSensitive(text: string): boolean {
-  if (text.length < 8) return false
-  return SECRET_PATTERNS.some((re) => re.test(text))
+  if (text.length < 6) return false
+  if (SECRET_PATTERNS.some((re) => re.test(text))) return true
+  // Personal-data patterns only fire if the clipboard is a single short-ish
+  // payload (e.g. a copied email) — pasting an entire email body that
+  // happens to contain an address shouldn't redact the whole thing.
+  if (text.length <= 200 && PERSONAL_PATTERNS.some((re) => re.test(text))) {
+    return true
+  }
+  return false
 }
 
 function sha1(input: string): string {
@@ -108,14 +131,15 @@ export class ClipboardMonitor extends EventEmitter {
         contentType = 'rich-text'
       }
 
-      if (
+      // Local redaction now preserves the original text and only tags the
+      // entry as sensitive. The renderer hides it behind a reveal toggle by
+      // checking ai.tags. Previously we replaced payload with a literal
+      // "••• redacted •••" string, which meant 'reveal' had nothing to show
+      // and the original clipboard content was lost forever.
+      const sensitive =
         this.opts.redactSensitive &&
         contentType !== 'image' &&
         looksSensitive(payload)
-      ) {
-        // Still record but mark; the renderer can hide content behind a reveal.
-        payload = '••• redacted •••'
-      }
 
       const draft: Omit<ClipboardItem, 'id' | 'userId' | 'synced'> = {
         contentType,
@@ -124,7 +148,7 @@ export class ClipboardMonitor extends EventEmitter {
         html: contentType === 'rich-text' ? html : null,
         sourceApp: null,
         pinned: false,
-        ai: null,
+        ai: sensitive ? { summary: '', tags: ['sensitive'], provider: 'none' as const } : null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }
