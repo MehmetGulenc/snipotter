@@ -35,32 +35,46 @@ export function AppShell(): JSX.Element {
     return unsub
   }, [workspace?.id])
 
-  // Re-fetch when the tab/window regains visibility — catches any realtime
-  // events missed while the app was in the background or the tab was hidden.
+  // Reconciliation backstop for realtime: re-fetch every 10s while visible,
+  // plus on focus/visibility changes. Mobile Safari aggressively suspends the
+  // websocket when the PWA is backgrounded, and supabase-js doesn't replay
+  // missed events on reconnect — without this, deletes/inserts from other
+  // devices only show up after a manual reload.
   useEffect(() => {
     if (!workspace) return
 
-    let lastFetch = 0
-    const fetchData = () => {
+    let cancelled = false
+    let inFlight = false
+    const fetchData = async () => {
+      if (cancelled || inFlight) return
       if (document.visibilityState !== 'visible') return
-      if (Date.now() - lastFetch < 30_000) return
-      lastFetch = Date.now()
-      void Promise.all([
-        listClipboard(workspace.id),
-        listNotes(workspace.id),
-      ]).then(([clips, notes]) => {
+      inFlight = true
+      try {
+        const [clips, notes] = await Promise.all([
+          listClipboard(workspace.id),
+          listNotes(workspace.id),
+        ])
+        if (cancelled) return
         setClipboard(clips)
         setNotes(notes)
-      }).catch(console.warn)
+      } catch (err) {
+        console.warn('[sync] reconcile failed', err)
+      } finally {
+        inFlight = false
+      }
     }
 
+    void fetchData()
+    const interval = setInterval(fetchData, 10_000)
     document.addEventListener('visibilitychange', fetchData)
     window.addEventListener('focus', fetchData)
     return () => {
+      cancelled = true
+      clearInterval(interval)
       document.removeEventListener('visibilitychange', fetchData)
       window.removeEventListener('focus', fetchData)
     }
-  }, [workspace?.id])
+  }, [workspace?.id, setClipboard, setNotes])
 
   return (
     <div className="flex h-[100svh] flex-col bg-background text-foreground">

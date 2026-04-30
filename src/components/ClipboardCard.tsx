@@ -40,7 +40,15 @@ export function ClipboardCard({ item, onCopy, onPin, onPromote, onDelete, onReen
               draggable={false}
             />
           ) : (
-            <div className="whitespace-pre-wrap break-words line-clamp-4">
+            // line-clamp-4 alone breaks down with whitespace-pre-wrap on very
+            // long single-word/URL payloads (the -webkit-box display ignores
+            // the wrap rules and the card grows past its grid cell, causing
+            // neighbours to overlap). Bounding by max-height + overflow-hidden
+            // keeps the card height fixed; break-all lets URLs wrap.
+            <div
+              className="whitespace-pre-wrap break-all overflow-hidden"
+              style={{ maxHeight: '5.5rem' }}
+            >
               {truncate(display, 300)}
             </div>
           )}

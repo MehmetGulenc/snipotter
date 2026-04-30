@@ -83,26 +83,52 @@ export default function App(): JSX.Element {
     }
   }, [setUser, setAuthLoading, setWorkspace, setSettings, setClipboard, upsertClipboard, upsertNote, setAiStatus])
 
-  // Re-load lists when workspace changes and whenever the window regains focus
-  // (catches any realtime events missed while the window was in the background).
+  // Re-load lists when workspace changes, on focus, and on a 10s interval.
+  //
+  // Realtime *should* push every change instantly, but the websocket can drop
+  // silently when the OS suspends the app (lid close, sleep, network change)
+  // and supabase-js's auto-reconnect doesn't replay events missed while the
+  // socket was down. The interval below is a cheap reconciliation backstop:
+  // every 10s we re-fetch both lists, so any divergence converges quickly
+  // without forcing the user to restart the app.
   useEffect(() => {
     if (!workspace) return
 
-    let lastFetch = 0
+    let cancelled = false
+    let inFlight = false
     const fetchData = async () => {
-      if (Date.now() - lastFetch < 30_000) return
-      lastFetch = Date.now()
-      const [clip, notes] = await Promise.all([
-        window.snipotter.clipboard.list(),
-        window.snipotter.notes.list(),
-      ])
-      if (clip.ok) setClipboard(clip.data)
-      if (notes.ok) setNotes(notes.data)
+      if (cancelled || inFlight) return
+      inFlight = true
+      try {
+        const [clip, notes] = await Promise.all([
+          window.snipotter.clipboard.list(),
+          window.snipotter.notes.list(),
+        ])
+        if (cancelled) return
+        if (clip.ok) setClipboard(clip.data)
+        if (notes.ok) setNotes(notes.data)
+      } catch (err) {
+        console.warn('[sync] reconcile failed', err)
+      } finally {
+        inFlight = false
+      }
     }
 
     void fetchData()
-    window.addEventListener('focus', fetchData)
-    return () => window.removeEventListener('focus', fetchData)
+    const interval = setInterval(() => {
+      // Skip when hidden — saves battery and the next focus event will trigger
+      // an immediate fetch anyway.
+      if (document.visibilityState === 'visible') void fetchData()
+    }, 10_000)
+    const onFocus = () => void fetchData()
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
   }, [workspace?.id, setClipboard, setNotes])
 
   // ==== Overlay windows have their own minimal routes ====
