@@ -10,14 +10,13 @@ import {
   KeyRound,
   Search,
   Pin,
-  Download,
   Check,
 } from 'lucide-react'
 import logoUrl from './logo.svg'
+import { SmartDownloadButton } from './SmartDownloadButton'
 
 // URLs are centralised so we can swap them later without hunting the JSX.
 const APP_URL = 'https://app.snipotter.com'
-const RELEASES_URL = 'https://github.com/MehmetGulenc/snipotter/releases/latest'
 const REPO_URL = 'https://github.com/MehmetGulenc/snipotter'
 
 export default function App(): JSX.Element {
@@ -73,7 +72,10 @@ function Nav(): JSX.Element {
         </nav>
         <a
           href={APP_URL}
-          className="rounded-lg bg-primary/90 px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:bg-primary"
+          // Hidden on phones — the hero already has a prominent 'Web uygulamasını
+          // aç' CTA, and squeezing this into a 360-px header pushed the wordmark
+          // into the button on Galaxy / iPhone SE viewports.
+          className="hidden rounded-lg bg-primary/90 px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:bg-primary sm:inline-flex"
         >
           Web'de aç →
         </a>
@@ -121,13 +123,7 @@ function Hero(): JSX.Element {
         </p>
 
         <div className="mt-8 flex flex-wrap items-center gap-3">
-          <a
-            href={RELEASES_URL}
-            className="group inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 font-medium text-primary-foreground shadow-lg shadow-primary/20 transition hover:bg-primary/90"
-          >
-            <Download className="h-4 w-4" />
-            Masaüstü için indir
-          </a>
+          <SmartDownloadButton />
           <a
             href={APP_URL}
             className="inline-flex items-center gap-2 rounded-lg border border-border bg-card/40 px-5 py-3 font-medium text-foreground transition hover:bg-card"
@@ -436,12 +432,7 @@ function PricingCTA(): JSX.Element {
           ücretli plan veya gizli kısıtlama yok.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <a
-            href={RELEASES_URL}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 font-medium text-primary-foreground shadow-lg shadow-primary/20 transition hover:bg-primary/90"
-          >
-            <Download className="h-4 w-4" /> Masaüstü için indir
-          </a>
+          <SmartDownloadButton />
           <a
             href={APP_URL}
             className="inline-flex items-center gap-2 rounded-lg border border-border bg-card/60 px-5 py-3 font-medium text-foreground transition hover:bg-card"

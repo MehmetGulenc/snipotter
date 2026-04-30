@@ -107,7 +107,7 @@ export function Settings(): JSX.Element {
         {code ? (
           <div className="space-y-2">
             <div className="flex items-center justify-center rounded-lg border border-primary/40 bg-primary/5 py-4 text-3xl font-mono font-bold tracking-[0.4em] text-primary">
-              {code.slice(0, 3)}-{code.slice(3, 6)}
+              {formatPairCode(code)}
             </div>
             <Button onClick={onCopy} variant="outline" className="w-full">
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -189,4 +189,17 @@ export function Settings(): JSX.Element {
       </footer>
     </div>
   )
+}
+
+/**
+ * Render a pair code in the canonical `XXX-XXX` form regardless of how the
+ * server sends it. The current `create_pair_code` RPC already inserts the
+ * dash itself, but historically we built the dash in the UI too, which
+ * produced display strings like `AJZ--ZA`. Stripping non-alphanumerics first
+ * keeps us correct under either contract.
+ */
+function formatPairCode(raw: string): string {
+  const clean = raw.replace(/[^A-Z0-9]/gi, '').toUpperCase()
+  if (clean.length <= 3) return clean
+  return `${clean.slice(0, 3)}-${clean.slice(3, 6)}`
 }

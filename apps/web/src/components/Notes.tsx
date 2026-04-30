@@ -20,6 +20,16 @@ export function Notes(): JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [creating, setCreating] = useState(false)
+  // Editor draft is intentionally decoupled from the store. The naive
+  // approach (binding <Textarea value> directly to items[activeId].content)
+  // races against Supabase realtime: every keystroke does an UPDATE, the
+  // postgres_changes channel echoes the row back, upsertNote() rewrites
+  // the store, and React re-renders the textarea with stale text — chars
+  // typed in the ~150–400ms RTT window get clobbered. Keeping a local
+  // draft string makes the editor authoritative for its own content while
+  // we save in the background.
+  const [draft, setDraft] = useState('')
+  const [savingDraft, setSavingDraft] = useState(false)
 
   useEffect(() => {
     if (!workspace) return
@@ -42,6 +52,34 @@ export function Notes(): JSX.Element {
 
   const active = filtered.find((n) => n.id === activeId) ?? null
 
+  // When the user opens a different note (or closes the editor), seed the
+  // draft from whatever the store currently has for that note. We deliberately
+  // key off `activeId` only — not `active.content` — so realtime updates
+  // arriving while the user is typing don't reset the textarea mid-edit.
+  useEffect(() => {
+    setDraft(active?.content ?? '')
+  }, [activeId])
+
+  // Debounced background save. The textarea is bound to `draft` so typing is
+  // always smooth; we only push to Supabase 400 ms after the last keystroke,
+  // and we only do it if the draft has actually diverged from the store.
+  useEffect(() => {
+    if (!active) return
+    if (draft === active.content) return
+    setSavingDraft(true)
+    const t = setTimeout(async () => {
+      try {
+        await updateNote(active.id, { content: draft })
+        upsert({ ...active, content: draft })
+      } catch (e) {
+        console.warn('note save failed', e)
+      } finally {
+        setSavingDraft(false)
+      }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [draft, active?.id])
+
   const onCreate = async () => {
     if (!workspace || !user) return
     setCreating(true)
@@ -56,12 +94,6 @@ export function Notes(): JSX.Element {
     }
   }
 
-  const onChangeContent = async (id: string, content: string) => {
-    const cur = items.find((n) => n.id === id)
-    if (!cur) return
-    upsert({ ...cur, content })
-    await updateNote(id, { content })
-  }
 
   const onPin = async (n: Note) => {
     upsert({ ...n, pinned: !n.pinned })
@@ -106,11 +138,14 @@ export function Notes(): JSX.Element {
           </button>
         </div>
         <Textarea
-          value={active.content}
-          onChange={(e) => onChangeContent(active.id, e.target.value)}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           placeholder="Notunu yaz…"
           className="flex-1 resize-none rounded-none border-0 bg-transparent px-4 py-4 text-base focus-visible:ring-0"
         />
+        {savingDraft && (
+          <div className="px-4 pb-1 text-[11px] text-muted-foreground">Kaydediliyor…</div>
+        )}
         {active.ai?.tags?.length ? (
           <div className="border-t border-border px-4 py-2">
             <div className="flex flex-wrap gap-1.5">
