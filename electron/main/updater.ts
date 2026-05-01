@@ -69,8 +69,12 @@ export class UpdaterService extends EventEmitter {
     }
     // We trigger downloads explicitly so the user sees progress UI.
     autoUpdater.autoDownload = false
-    // Respect signed releases on Mac; on Windows we accept unsigned for now.
-    autoUpdater.autoInstallOnAppQuit = true
+    // On macOS, MacUpdater calls nativeUpdater.checkForUpdates() (Squirrel.Mac)
+    // inside updateDownloaded() when autoInstallOnAppQuit is true. Squirrel
+    // then validates the code signature and fails on unsigned builds (ShipIt error).
+    // Setting false skips that Squirrel invocation; our custom shell installer handles
+    // the actual replacement without requiring an Apple Developer certificate.
+    autoUpdater.autoInstallOnAppQuit = process.platform !== 'darwin'
 
     autoUpdater.on('checking-for-update', () => {
       this.setStatus({ kind: 'checking', currentVersion: app.getVersion() })
