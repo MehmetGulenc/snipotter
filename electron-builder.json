@@ -9,6 +9,11 @@
     "out/**/*",
     "package.json"
   ],
+  "extraResources": [
+    { "from": "build/tray-icon.png", "to": "tray-icon.png" },
+    { "from": "build/tray-icon@2x.png", "to": "tray-icon@2x.png" },
+    { "from": "build/icon.ico", "to": "tray-icon.ico" }
+  ],
   "asarUnpack": [],
   "afterPack": "./scripts/after-pack.cjs",
   "mac": {

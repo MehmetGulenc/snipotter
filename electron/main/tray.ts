@@ -11,21 +11,42 @@ import type { ClipboardMonitor } from './clipboard'
 let tray: Tray | null = null
 
 function buildIcon(): Electron.NativeImage {
-  // Tray icon path differs in dev vs packaged; fall back to a generic 16x16
-  // png provided in /build at packaging time.
-  const iconPath = app.isPackaged
-    ? join(process.resourcesPath, 'tray-icon.png')
-    : join(__dirname, '../../build/tray-icon.png')
-  const img = nativeImage.createFromPath(iconPath)
+  // Windows uses ICO for native-quality tray rendering. macOS/Linux use PNG.
+  const isWin = process.platform === 'win32'
+  const isDarwin = process.platform === 'darwin'
+
+  let iconPath: string
+  if (isWin) {
+    // ICO gives proper multi-resolution rendering in Windows system tray.
+    iconPath = app.isPackaged
+      ? join(process.resourcesPath, 'tray-icon.ico')
+      : join(__dirname, '../../build/icon.ico')
+  } else {
+    iconPath = app.isPackaged
+      ? join(process.resourcesPath, 'tray-icon.png')
+      : join(__dirname, '../../build/tray-icon.png')
+  }
+
+  let img = nativeImage.createFromPath(iconPath)
+
+  // Fallback: if ICO not found in resources, try PNG
+  if (img.isEmpty() && isWin) {
+    const pngPath = app.isPackaged
+      ? join(process.resourcesPath, 'tray-icon.png')
+      : join(__dirname, '../../build/tray-icon.png')
+    img = nativeImage.createFromPath(pngPath)
+  }
+
   if (img.isEmpty()) {
-    // Fallback transparent icon to avoid crash if asset missing in dev.
+    console.warn('[tray] icon not found at', iconPath, '— using empty fallback')
     return nativeImage.createEmpty()
   }
-  if (process.platform === 'darwin') {
+
+  if (isDarwin) {
     img.setTemplateImage(true)
     return img.resize({ width: 18, height: 18 })
   }
-  // Windows/Linux: use 16x16 for proper tray visibility
+  // Windows/Linux: 16x16 for standard tray slot
   return img.resize({ width: 16, height: 16 })
 }
 

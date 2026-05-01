@@ -66,7 +66,7 @@ interface WorkspaceMemberRow {
 function clipboardFromRow(row: ClipboardRow): ClipboardItem {
   return {
     id: row.id,
-    userId: row.workspace_id,
+    userId: row.created_by ?? row.workspace_id,
     contentType: row.content_type,
     text: row.text,
     hash: row.hash,
@@ -83,7 +83,7 @@ function clipboardFromRow(row: ClipboardRow): ClipboardItem {
 function noteFromRow(row: NoteRow): Note {
   return {
     id: row.id,
-    userId: row.workspace_id,
+    userId: row.created_by ?? row.workspace_id,
     title: row.title,
     content: row.content,
     pinned: row.pinned,

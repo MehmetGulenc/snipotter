@@ -86,7 +86,7 @@ export function Settings(): JSX.Element {
           </Field>
           <Field
             label="Cihazlar arası otomatik panoya yaz"
-            description="Başka cihazda kopyalanan içerik bu cihazın panosuna anında yazılır (Cmd/Ctrl+V ile direkt yapıştır). Hassas içerikler asla aynalanmaz."
+            description="Başka cihazda kopyalanan içerik bu cihazın panosuna anında yazılır (Cmd/Ctrl+V ile direkt yapıştır). Her cihazda ayrı açılmalıdır. Hassas içerikler asla aynalanmaz."
           >
             <input
               type="checkbox"

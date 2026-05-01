@@ -162,22 +162,33 @@ function wireSupabaseEvents(): void {
     // Loop prevention: monitor.copy() refreshes lastHash so the polling
     // tick won't re-broadcast our own write back to the source.
     const settings = settingsStore.get()
-    if (!settings.autoMirrorClipboard) return
+    if (!settings.autoMirrorClipboard) {
+      console.log('[mirror] skipped: autoMirrorClipboard is disabled on this device')
+      return
+    }
     const isSensitive = item.ai?.tags?.includes('sensitive') === true
-    if (isSensitive) return
+    if (isSensitive) {
+      console.log('[mirror] skipped: item marked sensitive')
+      return
+    }
     // Skip items we just inserted ourselves (would be a self-echo). The
     // broadcast layer already filters by clientId, but postgres_changes
     // arrives via a different path so we double-check by user id + age.
-    const justInserted =
-      item.userId === supabase.getUser()?.id &&
-      Date.now() - new Date(item.createdAt).getTime() < 1500
-    if (justInserted) return
+    const myUserId = supabase.getUser()?.id
+    const ageMs = Date.now() - new Date(item.createdAt).getTime()
+    const justInserted = item.userId === myUserId && ageMs < 1500
+    if (justInserted) {
+      console.log(`[mirror] skipped: own item (age ${ageMs}ms, userId match)`)
+      return
+    }
     try {
+      console.log(`[mirror] writing to OS clipboard: type=${item.contentType} len=${item.text.length}`)
       monitor.copy({
         contentType: item.contentType,
         text: item.text,
         html: item.html ?? null,
       })
+      console.log('[mirror] OS clipboard updated successfully')
     } catch (err) {
       console.warn('[mirror] failed to write to OS clipboard', err)
     }
