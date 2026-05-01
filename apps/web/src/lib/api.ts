@@ -194,11 +194,20 @@ export async function listClipboard(workspaceId: string): Promise<ClipboardItem[
 }
 
 export async function setClipPinned(id: string, pinned: boolean): Promise<void> {
-  const { error } = await getSupabase().from('clipboard_items').update({ pinned }).eq('id', id)
+  const { data, error } = await getSupabase()
+    .from('clipboard_items')
+    .update({ pinned })
+    .eq('id', id)
+    .select('*')
+    .single()
   if (error) throw error
+  if (data) broadcastClipUpsert(clipFromRow(data as ClipboardRow))
 }
 
 export async function deleteClip(id: string): Promise<void> {
+  // Announce the deletion to other devices before the DB round-trip so they
+  // see the removal within ~50ms instead of waiting for WAL replication.
+  broadcastClipDeleted(id)
   // RLS rejects this silently if the user isn't a workspace member, so we
   // surface the underlying error to the caller and let the UI revert its
   // optimistic update.
@@ -236,7 +245,9 @@ export async function createNote(
     .select('*')
     .single()
   if (error) throw error
-  return noteFromRow(data as NoteRow)
+  const note = noteFromRow(data as NoteRow)
+  broadcastNoteUpsert(note)
+  return note
 }
 
 export async function updateNote(
@@ -250,15 +261,59 @@ export async function updateNote(
     .select('*')
     .single()
   if (error) throw error
-  return noteFromRow(data as NoteRow)
+  const note = noteFromRow(data as NoteRow)
+  broadcastNoteUpsert(note)
+  return note
 }
 
 export async function deleteNote(id: string): Promise<void> {
+  // Announce deletion to other devices first for sub-50ms feedback, then
+  // issue the durable DB delete (postgres_changes is the backstop).
+  broadcastNoteDeleted(id)
   const { error } = await getSupabase().from('notes').delete().eq('id', id)
   if (error) throw error
 }
 
 // ---------- Realtime ----------
+
+// Per-tab client ID so we can ignore echoes of our own broadcasts.
+const CLIENT_ID = `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
+// Active sync channel for the current workspace. Kept at module scope so the
+// mutation helpers below (broadcastNoteUpsert / broadcastClipDeleted / …)
+// can push events through it without needing a handle passed around.
+let activeSyncChannel: ReturnType<ReturnType<typeof getSupabase>['channel']> | null = null
+
+/**
+ * Send an instant broadcast to every other device in the workspace. Fire and
+ * forget: Supabase Realtime delivers it via WebSocket in a few tens of ms,
+ * independent of the DB write. Caller is still responsible for the durable
+ * mutation (postgres_changes is the backstop).
+ */
+function broadcast(event: string, payload: Record<string, unknown>): void {
+  if (!activeSyncChannel) return
+  void activeSyncChannel.send({
+    type: 'broadcast',
+    event,
+    payload: { ...payload, from: CLIENT_ID },
+  })
+}
+
+export function broadcastNoteUpsert(note: Note): void {
+  broadcast('note:upsert', { note })
+}
+
+export function broadcastNoteDeleted(id: string): void {
+  broadcast('note:deleted', { id })
+}
+
+export function broadcastClipUpsert(item: ClipboardItem): void {
+  broadcast('clip:upsert', { item })
+}
+
+export function broadcastClipDeleted(id: string): void {
+  broadcast('clip:deleted', { id })
+}
 
 export function subscribeWorkspace(
   workspaceId: string,
@@ -270,10 +325,8 @@ export function subscribeWorkspace(
   },
 ): () => void {
   const sb = getSupabase()
-  // Filter is intentionally omitted: postgres_changes DELETE events only carry
-  // the primary key when REPLICA IDENTITY is DEFAULT, so a workspace_id filter
-  // would silently drop all deletes. RLS ensures we only receive rows we can
-  // SELECT; client-side workspace check handles the INSERT/UPDATE side.
+
+  // --- postgres_changes: durable, slower (100-500ms WAL) ---
   const clipCh = sb
     .channel(`web-clip-${workspaceId}`)
     .on(
@@ -308,8 +361,37 @@ export function subscribeWorkspace(
     )
     .subscribe()
 
+  // --- broadcast: instant (<50ms) pub/sub, no DB round-trip ---
+  const syncCh = sb
+    .channel(`sync-${workspaceId}`, {
+      config: { broadcast: { self: false, ack: false } },
+    })
+    .on('broadcast', { event: 'clip:upsert' }, ({ payload }) => {
+      if (payload?.from === CLIENT_ID) return
+      if (payload?.item) handlers.onClip?.(payload.item as ClipboardItem)
+    })
+    .on('broadcast', { event: 'clip:deleted' }, ({ payload }) => {
+      if (payload?.from === CLIENT_ID) return
+      if (payload?.id) handlers.onClipDelete?.(payload.id as string)
+    })
+    .on('broadcast', { event: 'note:upsert' }, ({ payload }) => {
+      if (payload?.from === CLIENT_ID) return
+      if (payload?.note) handlers.onNote?.(payload.note as Note)
+    })
+    .on('broadcast', { event: 'note:deleted' }, ({ payload }) => {
+      if (payload?.from === CLIENT_ID) return
+      if (payload?.id) handlers.onNoteDelete?.(payload.id as string)
+    })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        activeSyncChannel = syncCh
+      }
+    })
+
   return () => {
+    activeSyncChannel = null
     void sb.removeChannel(clipCh)
     void sb.removeChannel(noteCh)
+    void sb.removeChannel(syncCh)
   }
 }

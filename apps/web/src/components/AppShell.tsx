@@ -35,11 +35,11 @@ export function AppShell(): JSX.Element {
     return unsub
   }, [workspace?.id])
 
-  // Reconciliation backstop for realtime: re-fetch every 10s while visible,
-  // plus on focus/visibility changes. Mobile Safari aggressively suspends the
-  // websocket when the PWA is backgrounded, and supabase-js doesn't replay
-  // missed events on reconnect — without this, deletes/inserts from other
-  // devices only show up after a manual reload.
+  // Reconciliation backstop for realtime. Realtime (broadcast + postgres_changes)
+  // handles the fast path; this interval catches anything the socket missed
+  // (e.g. after a suspend/resume). We no longer gate on visibilityState — if
+  // the tab is open the user may switch back to it at any moment and should
+  // never see a stale list.
   useEffect(() => {
     if (!workspace) return
 
@@ -47,7 +47,6 @@ export function AppShell(): JSX.Element {
     let inFlight = false
     const fetchData = async () => {
       if (cancelled || inFlight) return
-      if (document.visibilityState !== 'visible') return
       inFlight = true
       try {
         const [clips, notes] = await Promise.all([
@@ -65,7 +64,8 @@ export function AppShell(): JSX.Element {
     }
 
     void fetchData()
-    const interval = setInterval(fetchData, 10_000)
+    // 15s is a gentle backstop — broadcasts handle the sub-second path.
+    const interval = setInterval(fetchData, 15_000)
     document.addEventListener('visibilitychange', fetchData)
     window.addEventListener('focus', fetchData)
     return () => {

@@ -102,6 +102,13 @@ export class SupabaseService extends EventEmitter {
   private workspace: Workspace | null = null
   private clipChannel: RealtimeChannel | null = null
   private noteChannel: RealtimeChannel | null = null
+  // Dedicated broadcast channel for instant (<50ms) sync between devices.
+  // Broadcasts go through Supabase Realtime's pub/sub layer directly without
+  // waiting for postgres WAL replication (which adds 100-500ms latency).
+  private broadcastChannel: RealtimeChannel | null = null
+  // Unique per-process ID used to ignore echoes of our own broadcasts
+  // (self: false on the client should handle this, but we belt-and-brace).
+  private readonly clientId: string = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 
   constructor(private cfg: SupabaseConfig) {
     super()
@@ -112,6 +119,13 @@ export class SupabaseService extends EventEmitter {
           storageKey: 'snipotter.session',
           autoRefreshToken: true,
           storage: authStorage,
+        },
+        realtime: {
+          // Crank event rate up from default 10/s to 100/s so high-frequency
+          // operations (bulk delete, rapid typing in notes) don't get throttled
+          // at the socket layer. This is the knob Supabase exposes for
+          // Telegram-like responsiveness.
+          params: { eventsPerSecond: 100 },
         },
       })
       this.client.auth.onAuthStateChange((_event, session) => {
@@ -512,6 +526,83 @@ export class SupabaseService extends EventEmitter {
           console.log('[supabase] notes realtime active')
         }
       })
+
+    // === INSTANT BROADCAST LAYER ===
+    // Dedicated channel for sub-50ms sync. When any device performs a CRUD
+    // op, it broadcasts the change on this channel; all other devices in the
+    // workspace receive it near-instantly via WebSocket (no WAL round-trip).
+    // postgres_changes above remains as the durable backstop.
+    this.broadcastChannel = this.client
+      .channel(`sync-${wsId}`, {
+        config: {
+          broadcast: { self: false, ack: false },
+        },
+      })
+      .on('broadcast', { event: 'clip:upsert' }, ({ payload }) => {
+        if (payload?.from === this.clientId) return // ignore own echo
+        if (payload?.item) this.emit('clip:upsert', payload.item as ClipboardItem)
+      })
+      .on('broadcast', { event: 'clip:deleted' }, ({ payload }) => {
+        if (payload?.from === this.clientId) return
+        if (payload?.id) this.emit('clip:deleted', payload.id as string)
+      })
+      .on('broadcast', { event: 'note:upsert' }, ({ payload }) => {
+        if (payload?.from === this.clientId) return
+        if (payload?.note) this.emit('note:upsert', payload.note as Note)
+      })
+      .on('broadcast', { event: 'note:deleted' }, ({ payload }) => {
+        if (payload?.from === this.clientId) return
+        if (payload?.id) this.emit('note:deleted', payload.id as string)
+      })
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('[supabase] broadcast channel error', err)
+          setTimeout(() => this.subscribeRealtime(), 2000)
+        } else if (status === 'SUBSCRIBED') {
+          console.log('[supabase] instant-broadcast channel active')
+        }
+      })
+  }
+
+  /**
+   * Send an instant broadcast to all other devices in this workspace.
+   * Fire-and-forget: we don't wait for an ack. The DB mutation happens
+   * separately and acts as the durable source of truth.
+   */
+  broadcastClipUpsert(item: ClipboardItem): void {
+    if (!this.broadcastChannel) return
+    void this.broadcastChannel.send({
+      type: 'broadcast',
+      event: 'clip:upsert',
+      payload: { item, from: this.clientId },
+    })
+  }
+
+  broadcastClipDeleted(id: string): void {
+    if (!this.broadcastChannel) return
+    void this.broadcastChannel.send({
+      type: 'broadcast',
+      event: 'clip:deleted',
+      payload: { id, from: this.clientId },
+    })
+  }
+
+  broadcastNoteUpsert(note: Note): void {
+    if (!this.broadcastChannel) return
+    void this.broadcastChannel.send({
+      type: 'broadcast',
+      event: 'note:upsert',
+      payload: { note, from: this.clientId },
+    })
+  }
+
+  broadcastNoteDeleted(id: string): void {
+    if (!this.broadcastChannel) return
+    void this.broadcastChannel.send({
+      type: 'broadcast',
+      event: 'note:deleted',
+      payload: { id, from: this.clientId },
+    })
   }
 
   private unsubscribeRealtime(): void {
@@ -522,6 +613,10 @@ export class SupabaseService extends EventEmitter {
     if (this.noteChannel) {
       void this.client?.removeChannel(this.noteChannel)
       this.noteChannel = null
+    }
+    if (this.broadcastChannel) {
+      void this.client?.removeChannel(this.broadcastChannel)
+      this.broadcastChannel = null
     }
   }
 }

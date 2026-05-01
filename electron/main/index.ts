@@ -106,6 +106,8 @@ async function handleClipboardChange(
     const refreshed = await supabase.touchClipboard(existing.id).catch(() => null)
     const item = refreshed ?? { ...existing, createdAt: new Date().toISOString() }
     broadcast(IPC.CLIP_UPDATED, item)
+    // Also broadcast to other devices instantly.
+    supabase.broadcastClipUpsert(item)
     return
   }
 
@@ -122,6 +124,8 @@ async function handleClipboardChange(
   }
 
   broadcast(IPC.CLIP_NEW, item)
+  // Instant broadcast to other devices — don't wait for WAL replication.
+  if (inserted) supabase.broadcastClipUpsert(item)
 
   // Fire-and-forget AI enrichment
   if (settingsStore.get().aiAutoEnrich && draft.contentType !== 'image' && draft.text.length > 0) {
@@ -136,7 +140,10 @@ async function enrichAndUpdate(item: ClipboardItem): Promise<void> {
     if (item.synced) {
       await supabase.updateClipboardAI(item.id, summary)
     }
-    broadcast(IPC.CLIP_UPDATED, { ...item, ai: summary })
+    const enriched = { ...item, ai: summary }
+    broadcast(IPC.CLIP_UPDATED, enriched)
+    // Broadcast enriched item to other devices instantly.
+    if (item.synced) supabase.broadcastClipUpsert(enriched)
   } catch (err) {
     console.warn('[ai] enrichment failed', err)
   }
@@ -232,11 +239,18 @@ function wireIPC(): void {
     }
   })
   ipcMain.handle(IPC.CLIP_DELETE, async (_e, id: string) => {
+    // Fire broadcast first so other devices see the deletion within <50ms,
+    // then do the durable DB delete (postgres_changes will arrive later).
+    supabase.broadcastClipDeleted(id)
     await supabase.deleteClipboard(id)
     return { ok: true, data: null }
   })
   ipcMain.handle(IPC.CLIP_PIN, async (_e, { id, pinned }: { id: string; pinned: boolean }) => {
     await supabase.setClipboardPinned(id, pinned)
+    // After DB update, broadcast the new state so other devices see pin toggle instantly.
+    const list = await supabase.listClipboard(200).catch(() => [])
+    const updated = list.find((c) => c.id === id)
+    if (updated) supabase.broadcastClipUpsert(updated)
     return { ok: true, data: null }
   })
   ipcMain.handle(IPC.CLIP_COPY, async (_e, item: ClipboardItem) => {
@@ -253,13 +267,17 @@ function wireIPC(): void {
         ai: item.ai ?? null,
       })
       if (note) {
+        supabase.broadcastNoteUpsert(note)
         // Best-effort: re-enrich with note context if no AI yet
         if (!note.ai && settingsStore.get().aiAutoEnrich) {
           void (async () => {
             const summary = await ai.enrich({ text: note.content, kind: 'note' })
             if (summary) {
               const updated = await supabase.updateNote(note.id, { ai: summary })
-              if (updated) broadcast(IPC.NOTE_UPDATED, updated)
+              if (updated) {
+                supabase.broadcastNoteUpsert(updated)
+                broadcast(IPC.NOTE_UPDATED, updated)
+              }
             }
           })()
         }
@@ -279,27 +297,37 @@ function wireIPC(): void {
   })
   ipcMain.handle(IPC.NOTE_CREATE, async (_e, partial: Partial<Note>) => {
     const note = await supabase.createNote(partial)
-    if (note && !note.ai && settingsStore.get().aiAutoEnrich && note.content.length > 8) {
-      void (async () => {
-        const summary = await ai.enrich({ text: note.content, kind: 'note' })
-        if (summary) {
-          const updated = await supabase.updateNote(note.id, { ai: summary })
-          if (updated) broadcast(IPC.NOTE_UPDATED, updated)
-        }
-      })()
+    if (note) {
+      supabase.broadcastNoteUpsert(note)
+      if (!note.ai && settingsStore.get().aiAutoEnrich && note.content.length > 8) {
+        void (async () => {
+          const summary = await ai.enrich({ text: note.content, kind: 'note' })
+          if (summary) {
+            const updated = await supabase.updateNote(note.id, { ai: summary })
+            if (updated) {
+              supabase.broadcastNoteUpsert(updated)
+              broadcast(IPC.NOTE_UPDATED, updated)
+            }
+          }
+        })()
+      }
     }
     return { ok: true, data: note }
   })
   ipcMain.handle(IPC.NOTE_UPDATE, async (_e, { id, partial }: { id: string; partial: Partial<Note> }) => {
     const note = await supabase.updateNote(id, partial)
+    if (note) supabase.broadcastNoteUpsert(note)
     return { ok: true, data: note }
   })
   ipcMain.handle(IPC.NOTE_DELETE, async (_e, id: string) => {
+    // Broadcast first for instant feedback on other devices.
+    supabase.broadcastNoteDeleted(id)
     await supabase.deleteNote(id)
     return { ok: true, data: null }
   })
   ipcMain.handle(IPC.NOTE_PIN, async (_e, { id, pinned }: { id: string; pinned: boolean }) => {
     const note = await supabase.updateNote(id, { pinned })
+    if (note) supabase.broadcastNoteUpsert(note)
     return { ok: true, data: note }
   })
 

@@ -19,6 +19,12 @@ export function getSupabase(): SupabaseClient {
       // localStorage is the default in browsers — explicit for clarity
       storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     },
+    realtime: {
+      // Bump event throughput so high-frequency ops (bulk delete, rapid
+      // typing) aren't throttled at the socket layer. 100/s matches the
+      // desktop client so both ends agree on the ceiling.
+      params: { eventsPerSecond: 100 },
+    },
   })
   return _client
 }

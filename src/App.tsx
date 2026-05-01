@@ -115,11 +115,11 @@ export default function App(): JSX.Element {
     }
 
     void fetchData()
-    const interval = setInterval(() => {
-      // Skip when hidden — saves battery and the next focus event will trigger
-      // an immediate fetch anyway.
-      if (document.visibilityState === 'visible') void fetchData()
-    }, 10_000)
+    // 15s backstop — broadcast events handle the sub-second hot path. We run
+    // the reconciler regardless of visibility because the app is a tray/menubar
+    // utility: the window may be hidden while the user is on another machine
+    // and the list should still converge in the background.
+    const interval = setInterval(() => void fetchData(), 15_000)
     const onFocus = () => void fetchData()
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onFocus)
