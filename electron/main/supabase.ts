@@ -505,17 +505,11 @@ export class SupabaseService extends EventEmitter {
 
     const wsId = this.workspaceId
 
-    // Realtime config: subscribe to all changes immediately with optimized channel config
     this.clipChannel = this.client
-      .channel(`clip-${wsId}`, {
-        config: {
-          broadcast: { ack: true },
-          presence: { key: '' },
-        },
-      })
+      .channel(`clip-${wsId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'clipboard_items' },
+        { event: '*', schema: 'public', table: 'clipboard_items', filter: `workspace_id=eq.${wsId}` },
         (payload) => {
           if (payload.eventType === 'DELETE') {
             const id = (payload.old as { id?: string }).id
@@ -523,7 +517,6 @@ export class SupabaseService extends EventEmitter {
             return
           }
           const row = payload.new as ClipboardRow
-          if (row.workspace_id !== wsId) return
           // Track high-water mark so reconnect-replay can bound its query.
           if (row.created_at && row.created_at > this.lastClipEventAt) {
             this.lastClipEventAt = row.created_at
@@ -546,15 +539,10 @@ export class SupabaseService extends EventEmitter {
       })
 
     this.noteChannel = this.client
-      .channel(`notes-${wsId}`, {
-        config: {
-          broadcast: { ack: true },
-          presence: { key: '' },
-        },
-      })
+      .channel(`notes-${wsId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'notes' },
+        { event: '*', schema: 'public', table: 'notes', filter: `workspace_id=eq.${wsId}` },
         (payload) => {
           if (payload.eventType === 'DELETE') {
             const id = (payload.old as { id?: string }).id
@@ -562,7 +550,6 @@ export class SupabaseService extends EventEmitter {
             return
           }
           const row = payload.new as NoteRow
-          if (row.workspace_id !== wsId) return
           if (row.updated_at && row.updated_at > this.lastNoteEventAt) {
             this.lastNoteEventAt = row.updated_at
           }

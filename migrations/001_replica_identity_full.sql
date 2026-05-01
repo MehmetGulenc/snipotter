@@ -2,21 +2,15 @@
 -- Run this once in your Supabase SQL Editor.
 --
 -- Sets REPLICA IDENTITY FULL on the two main tables so that all columns
--- (not just the primary key) are available in the Postgres WAL for every
--- INSERT / UPDATE / DELETE event. This makes Supabase Realtime
--- postgres_changes payloads complete and ensures the cross-device
--- auto-mirror feature receives the full row on every change type.
+-- are available in the Postgres WAL for every INSERT / UPDATE / DELETE.
+-- Required for the workspace_id server-side filter on postgres_changes
+-- subscriptions to work correctly on DELETE events.
 --
--- Also enables Realtime tracking for both tables (required for
--- postgres_changes subscriptions to fire at all).
+-- The ADD TABLE lines are intentionally omitted here: Supabase already
+-- adds both tables to supabase_realtime by default in recent projects.
+-- If you see "relation is not member of publication" errors, add:
+--   ALTER PUBLICATION supabase_realtime ADD TABLE clipboard_items;
+--   ALTER PUBLICATION supabase_realtime ADD TABLE notes;
 
--- Enable realtime for clipboard_items
-ALTER PUBLICATION supabase_realtime ADD TABLE clipboard_items;
-
--- Enable realtime for notes
-ALTER PUBLICATION supabase_realtime ADD TABLE notes;
-
--- Full row in WAL for deletes — without this, DELETE events only carry
--- the primary key and workspace_id-based filters silently drop them.
 ALTER TABLE clipboard_items REPLICA IDENTITY FULL;
 ALTER TABLE notes REPLICA IDENTITY FULL;

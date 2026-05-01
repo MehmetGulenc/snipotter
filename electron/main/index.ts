@@ -88,7 +88,7 @@ const updater = new UpdaterService()
 const localInsertIds = new Set<string>()
 function trackLocalInsert(id: string): void {
   localInsertIds.add(id)
-  setTimeout(() => localInsertIds.delete(id), 5000)
+  setTimeout(() => localInsertIds.delete(id), 30_000)
 }
 
 function broadcast(channel: string, payload: unknown): void {
