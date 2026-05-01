@@ -150,8 +150,8 @@ export default function App(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
-      <UpdateBanner />
       <Topbar />
+      <UpdateBanner />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar route={route} onNavigate={(r) => (window.location.hash = `#/${r}`)} />
         <main className="flex-1 overflow-hidden">

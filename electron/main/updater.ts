@@ -16,14 +16,11 @@
  * stub so `npm run dev` doesn't try to fetch a non-existent release.
  */
 import { app, BrowserWindow, shell } from 'electron'
-// electron-updater is published as CommonJS, so under ESM (`"type":"module"`)
-// we must default-import the whole module and destructure `autoUpdater` from it.
-// Named runtime imports (`import { autoUpdater } from 'electron-updater'`) throw
-// `SyntaxError: Named export 'autoUpdater' not found` in packaged builds.
-// Type-only imports stay as named imports (compile-time only).
 import electronUpdater from 'electron-updater'
 import type { UpdateCheckResult, UpdateInfo, ProgressInfo } from 'electron-updater'
 import { EventEmitter } from 'node:events'
+import { execFile } from 'node:child_process'
+import path from 'node:path'
 
 const { autoUpdater } = electronUpdater
 
@@ -40,23 +37,6 @@ const SIX_HOURS_MS = 6 * 60 * 60 * 1000
 const STARTUP_DELAY_MS = 30 * 1000
 const RELEASES_PAGE = 'https://github.com/MehmetGulenc/snipotter/releases/latest'
 
-/**
- * macOS Squirrel rejects updates with `Code signature did not pass validation`
- * unless the .app is signed with a real Developer ID certificate (ad-hoc /
- * `identity:null` builds always fail this check). When we know we're in that
- * regime, we skip the download attempt entirely and surface a "download
- * manually" button instead of looping the user through the same install
- * failure on every launch.
- */
-const IS_AD_HOC_MAC = process.platform === 'darwin'
-
-/**
- * Pick the DMG download URL that matches the currently running CPU arch.
- * electron-builder names files with an `-arm64` suffix for Apple Silicon and
- * leaves the Intel build unsuffixed. info.files[].url is the bare filename
- * (e.g. `Snipotter-0.2.6-arm64.dmg`), so we resolve it against the canonical
- * GitHub release URL for the announced version.
- */
 function pickMacDmgUrl(info: UpdateInfo): string | null {
   if (process.platform !== 'darwin' || !info.version) return null
   const files = info.files ?? []
@@ -71,14 +51,10 @@ function pickMacDmgUrl(info: UpdateInfo): string | null {
 export class UpdaterService extends EventEmitter {
   private status: UpdaterStatus
   private periodicTimer: NodeJS.Timeout | null = null
-  /**
-   * Direct DMG download URL picked from the latest update manifest, matched
-   * to the running architecture (arm64 vs x64). When set, the manual-install
-   * flow on macOS opens this URL directly in the browser — Safari/Chrome
-   * download and auto-mount the DMG so the user only has to drag the app to
-   * /Applications. When null we fall back to the GitHub releases page.
-   */
+  // Fallback DMG URL for mac — used only if the custom shell installer fails.
   private latestMacDmgUrl: string | null = null
+  // Paths returned by downloadUpdate() — the ZIP on mac, NSIS on Windows.
+  private downloadedFiles: string[] = []
 
   constructor() {
     super()
@@ -111,17 +87,14 @@ export class UpdaterService extends EventEmitter {
               ? info.releaseNotes.map((n) => n.note ?? '').join('\n').trim() || undefined
               : undefined,
       })
-      // On ad-hoc-signed macOS builds the in-app installer always fails with
-      // "Code signature did not pass validation", so don't even attempt the
-      // download — instead remember the arch-matched DMG URL so the manual
-      // "Update" button can hand it straight to the browser.
-      if (IS_AD_HOC_MAC) {
+      if (process.platform === 'darwin') {
         this.latestMacDmgUrl = pickMacDmgUrl(info)
-        console.info('[updater] mac ad-hoc build — dmg url:', this.latestMacDmgUrl)
-        return
       }
-      // Windows / Linux can install in-place, so go ahead and pull the bits.
-      void autoUpdater.downloadUpdate().catch((err) => this.emitError(err))
+      // Download on all platforms. Mac uses a custom shell installer that
+      // bypasses Squirrel.Mac (which requires a paid Developer ID cert).
+      void autoUpdater.downloadUpdate()
+        .then((files) => { this.downloadedFiles = files })
+        .catch((err) => this.emitError(err))
     })
     autoUpdater.on('update-not-available', () => {
       this.setStatus({
@@ -209,26 +182,74 @@ export class UpdaterService extends EventEmitter {
     if (this.status.kind !== 'downloaded') {
       throw new Error('No downloaded update ready to install')
     }
-    // Force-quit all windows first so unsaved state has a chance to flush.
     BrowserWindow.getAllWindows().forEach((w) => {
       if (!w.isDestroyed()) w.close()
     })
+    if (process.platform === 'darwin') {
+      void this.installMacUpdate()
+      return
+    }
     autoUpdater.quitAndInstall(false, true)
   }
 
   /**
-   * Manual fallback used on ad-hoc-signed macOS builds. When we know the
-   * exact DMG URL for this arch we hand it to the browser directly so the
-   * download starts (and auto-mounts) with one click; otherwise we fall back
-   * to the GitHub releases page.
+   * Custom mac installer: extracts the downloaded ZIP, strips quarantine
+   * (xattr), replaces the running .app bundle, then relaunches. This bypasses
+   * Squirrel.Mac which would reject ad-hoc/unsigned builds.
    */
+  private async installMacUpdate(): Promise<void> {
+    const zipPath = this.downloadedFiles.find((f) => f.toLowerCase().endsWith('.zip'))
+    if (!zipPath) {
+      console.warn('[updater] mac: no ZIP in downloaded files, falling back to browser')
+      this.openReleasePage()
+      return
+    }
+
+    // Resolve the running .app bundle: execPath = .../Snipotter.app/Contents/MacOS/Snipotter
+    const appBundle = path.dirname(path.dirname(path.dirname(app.getPath('exe'))))
+    const tmpDir = path.join(app.getPath('temp'), `snipotter-update-${Date.now()}`)
+
+    const script = [
+      'set -e',
+      `rm -rf "${tmpDir}"`,
+      `mkdir -p "${tmpDir}"`,
+      `unzip -o "${zipPath}" -d "${tmpDir}"`,
+      // find the extracted .app (name may vary between releases)
+      `EXTRACTED=$(find "${tmpDir}" -maxdepth 1 -name "*.app" | head -1)`,
+      `if [ -z "$EXTRACTED" ]; then echo "No .app in ZIP" >&2; exit 1; fi`,
+      // strip quarantine so macOS doesn't block the relaunched app
+      `xattr -dr com.apple.quarantine "$EXTRACTED" 2>/dev/null || true`,
+      `rm -rf "${appBundle}"`,
+      `cp -R "$EXTRACTED" "${appBundle}"`,
+      `xattr -dr com.apple.quarantine "${appBundle}" 2>/dev/null || true`,
+    ].join('\n')
+
+    console.info('[updater] mac: installing from', zipPath, '→', appBundle)
+
+    await new Promise<void>((resolve, reject) => {
+      execFile('/bin/bash', ['-c', script], (err, _stdout, stderr) => {
+        if (err) {
+          console.error('[updater] mac install error:', stderr || err.message)
+          reject(err)
+        } else {
+          resolve()
+        }
+      })
+    }).catch(async () => {
+      console.warn('[updater] mac: shell install failed — opening DMG download')
+      await shell.openExternal(this.latestMacDmgUrl ?? RELEASES_PAGE)
+    })
+
+    app.relaunch()
+    app.quit()
+  }
+
   openReleasePage(): void {
     void shell.openExternal(this.latestMacDmgUrl ?? RELEASES_PAGE)
   }
 
-  /** True when the current process can't auto-install updates (mac ad-hoc). */
   isManualInstallOnly(): boolean {
-    return IS_AD_HOC_MAC
+    return false
   }
 
   getStatus(): UpdaterStatus {
