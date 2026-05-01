@@ -27,6 +27,7 @@ import {
   type Note,
   type AppSettings,
   type UpdaterStatus,
+  type DiagnosticsState,
 } from '@shared/types'
 
 const DEVICE_NAME = (() => {
@@ -83,12 +84,19 @@ const monitor = new ClipboardMonitor({
 const updater = new UpdaterService()
 
 // IDs of clipboard items that THIS device inserted. Used by the auto-mirror
-// handler to skip self-echos without relying on userId (which is shared across
-// all paired devices in the same workspace).
+// handler to skip self-echos.
 const localInsertIds = new Set<string>()
 function trackLocalInsert(id: string): void {
   localInsertIds.add(id)
   setTimeout(() => localInsertIds.delete(id), 30_000)
+}
+
+// Rolling buffer of recent mirror attempts — exposed via DIAG_GET_STATE so the
+// Settings → Tanılama panel can show users why a mirror succeeded or was skipped.
+const recentMirrorAttempts: DiagnosticsState['recentMirrorAttempts'] = []
+function recordMirror(attempt: DiagnosticsState['recentMirrorAttempts'][number]): void {
+  recentMirrorAttempts.unshift(attempt)
+  if (recentMirrorAttempts.length > 10) recentMirrorAttempts.length = 10
 }
 
 function broadcast(channel: string, payload: unknown): void {
@@ -175,20 +183,21 @@ function wireSupabaseEvents(): void {
     // Loop prevention: monitor.copy() refreshes lastHash so the polling
     // tick won't re-broadcast our own write back to the source.
     const settings = settingsStore.get()
+    const snippet = item.text.slice(0, 60)
     if (!settings.autoMirrorClipboard) {
       console.log('[mirror] skipped: autoMirrorClipboard is disabled on this device')
+      recordMirror({ timestamp: Date.now(), itemId: item.id, result: 'skipped-disabled', contentSnippet: snippet })
       return
     }
     const isSensitive = item.ai?.tags?.includes('sensitive') === true
     if (isSensitive) {
       console.log('[mirror] skipped: item marked sensitive')
+      recordMirror({ timestamp: Date.now(), itemId: item.id, result: 'skipped-sensitive', contentSnippet: snippet })
       return
     }
-    // Skip items this device inserted (self-echo from postgres_changes).
-    // We use a local ID set rather than userId+age because all paired devices
-    // share the same userId — the old check always blocked mirroring.
     if (localInsertIds.has(item.id)) {
       console.log('[mirror] skipped: inserted by this device')
+      recordMirror({ timestamp: Date.now(), itemId: item.id, result: 'skipped-local-insert', contentSnippet: snippet })
       return
     }
     try {
@@ -199,8 +208,10 @@ function wireSupabaseEvents(): void {
         html: item.html ?? null,
       })
       console.log('[mirror] OS clipboard updated successfully')
+      recordMirror({ timestamp: Date.now(), itemId: item.id, result: 'mirrored', contentSnippet: snippet })
     } catch (err) {
       console.warn('[mirror] failed to write to OS clipboard', err)
+      recordMirror({ timestamp: Date.now(), itemId: item.id, result: 'error', contentSnippet: snippet, error: (err as Error).message })
     }
   })
   supabase.on('clip:deleted', (id: string) => {
@@ -479,6 +490,44 @@ function wireIPC(): void {
     return { ok: true, data: updater.isManualInstallOnly() }
   })
   updater.on('changed', (status: UpdaterStatus) => broadcast(IPC.UPDATER_STATUS_CHANGED, status))
+
+  // ===== Diagnostics =====
+  ipcMain.handle(IPC.DIAG_GET_STATE, async (): Promise<IpcResult<DiagnosticsState>> => {
+    const snap = supabase.getDiagnosticsSnapshot()
+    return {
+      ok: true,
+      data: {
+        ...snap,
+        recentMirrorAttempts: [...recentMirrorAttempts],
+        localInsertIdsCount: localInsertIds.size,
+        autoMirrorEnabled: settingsStore.get().autoMirrorClipboard,
+      },
+    }
+  })
+  ipcMain.handle(IPC.DIAG_TEST_BROADCAST, async (): Promise<IpcResult<{ sent: boolean }>> => {
+    // Inserts a synthetic test row + broadcasts it. The other paired device
+    // should receive it and (if autoMirrorClipboard is on) write the marker
+    // text to its OS clipboard. Useful for end-to-end verification.
+    const wsId = supabase.getWorkspaceId()
+    if (!wsId) return { ok: false, error: 'Henüz bir çalışma alanı yok' }
+    const marker = `[snipotter-test ${new Date().toISOString()}]`
+    const draft: Omit<ClipboardItem, 'id' | 'userId' | 'synced'> = {
+      contentType: 'text',
+      text: marker,
+      hash: `test-${Date.now()}`,
+      html: null,
+      sourceApp: null,
+      pinned: false,
+      ai: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    const inserted = await supabase.insertClipboard(draft).catch(() => null)
+    if (!inserted) return { ok: false, error: 'Test mesajı eklenemedi (RLS / ağ?)' }
+    trackLocalInsert(inserted.id)
+    supabase.broadcastClipUpsert(inserted)
+    return { ok: true, data: { sent: true } }
+  })
 }
 
 async function bootstrapAuth(): Promise<void> {

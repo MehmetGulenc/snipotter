@@ -15,6 +15,7 @@ import {
   type WorkspaceMember,
   type PairCode,
   type UpdaterStatus,
+  type DiagnosticsState,
 } from '../../shared/types'
 
 function invoke<T>(channel: string, payload?: unknown): Promise<IpcResult<T>> {
@@ -131,6 +132,10 @@ const api = {
       ipcRenderer.on(IPC.UPDATER_STATUS_CHANGED, fn)
       return () => ipcRenderer.off(IPC.UPDATER_STATUS_CHANGED, fn)
     },
+  },
+  diag: {
+    getState: () => invoke<DiagnosticsState>(IPC.DIAG_GET_STATE),
+    testBroadcast: () => invoke<{ sent: boolean }>(IPC.DIAG_TEST_BROADCAST),
   },
 }
 

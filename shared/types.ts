@@ -199,7 +199,42 @@ export const IPC = {
   UPDATER_STATUS_CHANGED: 'updater:status-changed',
   UPDATER_OPEN_RELEASE_PAGE: 'updater:open-release-page',
   UPDATER_IS_MANUAL_ONLY: 'updater:is-manual-only',
+
+  // Diagnostics — for debugging cross-device sync / mirror issues
+  DIAG_GET_STATE: 'diag:get-state',
+  DIAG_TEST_BROADCAST: 'diag:test-broadcast',
 } as const
+
+/** Live diagnostics state exposed to the renderer for the Settings → Tanılama panel. */
+export interface DiagnosticsState {
+  workspaceId: string | null
+  userId: string | null
+  clientId: string
+  channels: {
+    clip: ChannelStatus
+    note: ChannelStatus
+    broadcast: ChannelStatus
+  }
+  recentClipEvents: Array<{
+    timestamp: number
+    source: 'broadcast' | 'postgres_changes' | 'replay'
+    itemId: string
+    contentType: string
+    snippet: string
+    insertedByThisDevice: boolean
+  }>
+  recentMirrorAttempts: Array<{
+    timestamp: number
+    itemId: string
+    result: 'mirrored' | 'skipped-disabled' | 'skipped-sensitive' | 'skipped-local-insert' | 'error'
+    contentSnippet: string
+    error?: string
+  }>
+  localInsertIdsCount: number
+  autoMirrorEnabled: boolean
+}
+
+export type ChannelStatus = 'idle' | 'connecting' | 'subscribed' | 'channel_error' | 'timed_out' | 'closed'
 
 /** Snapshot of the auto-update lifecycle exposed to the renderer. */
 export type UpdaterStatus =

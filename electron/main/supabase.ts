@@ -14,6 +14,8 @@ import type {
   Workspace,
   WorkspaceMember,
   PairCode,
+  ChannelStatus,
+  DiagnosticsState,
 } from '@shared/types'
 
 interface SupabaseConfig {
@@ -61,6 +63,14 @@ interface WorkspaceMemberRow {
   role: 'owner' | 'member'
   device_name: string | null
   joined_at: string
+}
+
+function mapStatus(s: string): ChannelStatus {
+  if (s === 'SUBSCRIBED') return 'subscribed'
+  if (s === 'CHANNEL_ERROR') return 'channel_error'
+  if (s === 'TIMED_OUT') return 'timed_out'
+  if (s === 'CLOSED') return 'closed'
+  return 'connecting'
 }
 
 function clipboardFromRow(row: ClipboardRow): ClipboardItem {
@@ -118,6 +128,45 @@ export class SupabaseService extends EventEmitter {
   private heartbeatTimer: NodeJS.Timeout | null = null
   // Debounced reconnect to avoid storms when multiple channels fail at once.
   private reconnectTimer: NodeJS.Timeout | null = null
+  // Live diagnostics — populated by channel subscribe callbacks and event handlers.
+  private diagChannels: { clip: ChannelStatus; note: ChannelStatus; broadcast: ChannelStatus } = {
+    clip: 'idle',
+    note: 'idle',
+    broadcast: 'idle',
+  }
+  private diagRecentClipEvents: DiagnosticsState['recentClipEvents'] = []
+
+  recordClipEvent(
+    source: 'broadcast' | 'postgres_changes' | 'replay',
+    item: ClipboardItem,
+    insertedByThisDevice: boolean,
+  ): void {
+    this.diagRecentClipEvents.unshift({
+      timestamp: Date.now(),
+      source,
+      itemId: item.id,
+      contentType: item.contentType,
+      snippet: item.text.slice(0, 60),
+      insertedByThisDevice,
+    })
+    if (this.diagRecentClipEvents.length > 10) this.diagRecentClipEvents.length = 10
+  }
+
+  getDiagnosticsSnapshot(): {
+    workspaceId: string | null
+    userId: string | null
+    clientId: string
+    channels: { clip: ChannelStatus; note: ChannelStatus; broadcast: ChannelStatus }
+    recentClipEvents: DiagnosticsState['recentClipEvents']
+  } {
+    return {
+      workspaceId: this.workspaceId,
+      userId: this.user?.id ?? null,
+      clientId: this.clientId,
+      channels: { ...this.diagChannels },
+      recentClipEvents: [...this.diagRecentClipEvents],
+    }
+  }
 
   constructor(private cfg: SupabaseConfig) {
     super()
@@ -505,6 +554,7 @@ export class SupabaseService extends EventEmitter {
 
     const wsId = this.workspaceId
 
+    this.diagChannels.clip = 'connecting'
     this.clipChannel = this.client
       .channel(`clip-${wsId}`)
       .on(
@@ -521,10 +571,13 @@ export class SupabaseService extends EventEmitter {
           if (row.created_at && row.created_at > this.lastClipEventAt) {
             this.lastClipEventAt = row.created_at
           }
-          this.emit('clip:upsert', clipboardFromRow(row))
+          const item = clipboardFromRow(row)
+          this.recordClipEvent('postgres_changes', item, false)
+          this.emit('clip:upsert', item)
         },
       )
       .subscribe((status, err) => {
+        this.diagChannels.clip = mapStatus(status)
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           console.warn('[supabase] clipboard channel error', status, err)
           this.emit('connection:state', { ready: false, reason: status })
@@ -532,12 +585,11 @@ export class SupabaseService extends EventEmitter {
         } else if (status === 'SUBSCRIBED') {
           console.log('[supabase] clipboard realtime active')
           this.emit('connection:state', { ready: true })
-          // On (re)connect, replay anything newer than our last event so a
-          // backgrounded device that missed broadcasts catches up.
           void this.replayClipsSince(this.lastClipEventAt)
         }
       })
 
+    this.diagChannels.note = 'connecting'
     this.noteChannel = this.client
       .channel(`notes-${wsId}`)
       .on(
@@ -557,6 +609,7 @@ export class SupabaseService extends EventEmitter {
         },
       )
       .subscribe((status, err) => {
+        this.diagChannels.note = mapStatus(status)
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           console.warn('[supabase] notes channel error', status, err)
           this.scheduleReconnect()
@@ -584,6 +637,7 @@ export class SupabaseService extends EventEmitter {
         if (item.createdAt && item.createdAt > this.lastClipEventAt) {
           this.lastClipEventAt = item.createdAt
         }
+        this.recordClipEvent('broadcast', item, false)
         this.emit('clip:upsert', item)
       })
       .on('broadcast', { event: 'clip:deleted' }, ({ payload }) => {
@@ -604,6 +658,7 @@ export class SupabaseService extends EventEmitter {
         if (payload?.id) this.emit('note:deleted', payload.id as string)
       })
       .subscribe((status, err) => {
+        this.diagChannels.broadcast = mapStatus(status)
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           console.warn('[supabase] broadcast channel error', status, err)
           this.scheduleReconnect()
@@ -612,6 +667,7 @@ export class SupabaseService extends EventEmitter {
           this.startHeartbeat()
         }
       })
+    this.diagChannels.broadcast = 'connecting'
   }
 
   /**

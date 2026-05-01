@@ -16,7 +16,7 @@ import {
   AlertCircle,
   Trash2,
 } from 'lucide-react'
-import type { AppSettings, WorkspaceMember, UpdaterStatus } from '@shared/types'
+import type { AppSettings, WorkspaceMember, UpdaterStatus, DiagnosticsState } from '@shared/types'
 
 function Field({
   label,
@@ -189,7 +189,141 @@ export function Settings(): JSX.Element {
 
         <DevicesSection />
         <UpdateSection />
+        <DiagnosticsSection />
       </div>
+    </div>
+  )
+}
+
+function DiagnosticsSection(): JSX.Element {
+  const [state, setState] = useState<DiagnosticsState | null>(null)
+  const [testResult, setTestResult] = useState<string | null>(null)
+
+  const refresh = async (): Promise<void> => {
+    const r = await window.snipotter.diag.getState()
+    if (r.ok) setState(r.data)
+  }
+
+  useEffect(() => {
+    void refresh()
+    const t = setInterval(() => void refresh(), 2000)
+    return () => clearInterval(t)
+  }, [])
+
+  const sendTest = async (): Promise<void> => {
+    setTestResult('Gönderiliyor…')
+    const r = await window.snipotter.diag.testBroadcast()
+    if (r.ok) {
+      setTestResult('Gönderildi. Diğer cihazda panoya yazılmalı (≤2sn).')
+    } else {
+      setTestResult(`Hata: ${r.error}`)
+    }
+    setTimeout(() => setTestResult(null), 8000)
+  }
+
+  if (!state) {
+    return (
+      <section className="pt-6">
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Tanılama
+        </h3>
+        <div className="rounded-lg border border-border bg-card/30 p-4 text-xs text-muted-foreground">
+          Yükleniyor…
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="pt-6">
+      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Tanılama
+      </h3>
+      <div className="space-y-3 rounded-lg border border-border bg-card/30 p-4 text-xs">
+        <div className="flex items-center gap-3 flex-wrap">
+          <ChannelBadge label="Pano" status={state.channels.clip} />
+          <ChannelBadge label="Notlar" status={state.channels.note} />
+          <ChannelBadge label="Yayın" status={state.channels.broadcast} />
+          <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+            ws: {state.workspaceId?.slice(0, 8) ?? '—'} · uid: {state.userId?.slice(0, 8) ?? '—'}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-muted-foreground">
+            Otomatik panoya yazma:{' '}
+            <span className={state.autoMirrorEnabled ? 'text-emerald-500' : 'text-rose-500'}>
+              {state.autoMirrorEnabled ? 'Açık' : 'Kapalı'}
+            </span>
+            {' · '}
+            Yerel insert sayacı: {state.localInsertIdsCount}
+          </div>
+          <Button size="sm" variant="outline" onClick={sendTest}>
+            Test mesajı gönder
+          </Button>
+        </div>
+        {testResult && <div className="rounded bg-muted/40 px-2 py-1">{testResult}</div>}
+
+        <div>
+          <div className="mb-1 font-medium text-muted-foreground">Son alınan olaylar</div>
+          {state.recentClipEvents.length === 0 ? (
+            <div className="text-muted-foreground">Henüz olay alınmadı.</div>
+          ) : (
+            <ul className="space-y-1">
+              {state.recentClipEvents.map((e, i) => (
+                <li key={i} className="flex items-center gap-2 font-mono text-[10px]">
+                  <span className="text-muted-foreground">{new Date(e.timestamp).toLocaleTimeString()}</span>
+                  <span className="rounded bg-muted/60 px-1">{e.source}</span>
+                  <span className="rounded bg-muted/40 px-1">{e.contentType}</span>
+                  <span className="truncate">{e.snippet || '—'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div>
+          <div className="mb-1 font-medium text-muted-foreground">Son aynalama denemeleri</div>
+          {state.recentMirrorAttempts.length === 0 ? (
+            <div className="text-muted-foreground">Henüz aynalama yapılmadı.</div>
+          ) : (
+            <ul className="space-y-1">
+              {state.recentMirrorAttempts.map((a, i) => (
+                <li key={i} className="flex items-center gap-2 font-mono text-[10px]">
+                  <span className="text-muted-foreground">{new Date(a.timestamp).toLocaleTimeString()}</span>
+                  <span
+                    className={
+                      'rounded px-1 ' +
+                      (a.result === 'mirrored'
+                        ? 'bg-emerald-500/20 text-emerald-500'
+                        : a.result === 'error'
+                          ? 'bg-rose-500/20 text-rose-500'
+                          : 'bg-amber-500/20 text-amber-500')
+                    }
+                  >
+                    {a.result}
+                  </span>
+                  <span className="truncate">{a.contentSnippet || '—'}</span>
+                  {a.error && <span className="text-rose-500">{a.error}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ChannelBadge({ label, status }: { label: string; status: DiagnosticsState['channels']['clip'] }): JSX.Element {
+  const color =
+    status === 'subscribed' ? 'bg-emerald-500' :
+    status === 'connecting' ? 'bg-amber-500' :
+    status === 'idle' ? 'bg-muted-foreground' : 'bg-rose-500'
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className={`h-2 w-2 rounded-full ${color}`} />
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="font-mono text-[10px]">{status}</span>
     </div>
   )
 }
