@@ -41,7 +41,7 @@ const releases: Release[] = [
     features: [
       {
         emoji: '⚡',
-        title: 'Cihazlar arası otomatik pano (opt-in)',
+        title: 'Cihazlar arası otomatik pano (opsiyonel)',
         desc: "Mac'te kopyaladığın şey anında Windows'un panosuna düşüyor — Snipotter'ı hiç açmana gerek kalmadan Ctrl+V yapabilirsin. Ayarlar'dan tek tıkla açılıyor. Şifre veya API anahtarı gibi hassas içerikler asla paylaşılmaz.",
       },
       {
@@ -64,7 +64,7 @@ const releases: Release[] = [
   {
     version: '0.3.1',
     date: 'Nisan 2025',
-    headline: 'Telegram hızında senkron',
+    headline: 'Gerçek zamanlı senkron',
     features: [
       {
         emoji: '🚀',

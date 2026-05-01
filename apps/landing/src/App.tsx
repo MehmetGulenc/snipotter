@@ -12,6 +12,7 @@ import {
   Pin,
   Check,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import logoUrl from './logo.svg'
 import { SmartDownloadButton } from './SmartDownloadButton'
 
@@ -58,15 +59,15 @@ function Nav(): JSX.Element {
   return (
     <header className="sticky top-0 z-30 border-b border-border/60 bg-background/70 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-        <a href="#" className="flex items-center gap-2 font-semibold tracking-tight">
+        <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
           <LogoMark />
           Snipotter
-        </a>
+        </Link>
         <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
           <a href="#features" className="hover:text-foreground">Özellikler</a>
           <a href="#how" className="hover:text-foreground">Nasıl çalışır</a>
           <a href="#privacy" className="hover:text-foreground">Gizlilik</a>
-          <a href="/yenilikler" className="hover:text-foreground">Yenilikler</a>
+          <Link to="/yenilikler" className="hover:text-foreground">Yenilikler</Link>
           <a href={REPO_URL} target="_blank" rel="noreferrer" className="hover:text-foreground">
             GitHub
           </a>
@@ -108,7 +109,7 @@ function Hero(): JSX.Element {
     <section className="mx-auto grid max-w-6xl gap-10 px-4 pb-16 pt-14 sm:px-6 sm:pt-20 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
       <div className="animate-fade-in">
         <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary">
-          <Sparkles className="h-3 w-3" /> Kolayca erişebileceğin notlar
+          <Sparkles className="h-3 w-3" /> Ücretsiz · macOS, Windows, Linux & Web
         </div>
         <h1 className="text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
           Kopyaladığın her şey,
@@ -142,7 +143,7 @@ function Hero(): JSX.Element {
             <WindowsIcon className="h-3.5 w-3.5" /> Windows 10/11
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <LinuxIcon className="h-3.5 w-3.5" /> Linux (deb / AppImage)
+            <LinuxIcon className="h-3.5 w-3.5" /> Linux
           </span>
         </div>
       </div>
@@ -197,7 +198,7 @@ function HeroMock(): JSX.Element {
             sensitive
           />
           <MockClip
-            text="Toplantı notları: backlog'u 3 sprint'e böldük, ilk sprint UI refactor."
+            text="Toplantı notları: yeni özellikler önce mobil, sonra masaüstü."
             tag="özet"
             time="bugün"
           />
@@ -275,7 +276,7 @@ function Features(): JSX.Element {
     {
       icon: <RefreshCcw className="h-5 w-5" />,
       title: 'Anında senkron',
-      copy: 'Bilgisayarda kopyaladığını telefonunda, telefondan kopyaladığını bilgisayarında saniyeler içinde bul.',
+      copy: 'Bilgisayarda kopyaladığın şey diğer cihazlarında anında belirir — göz açıp kapayıncaya kadar.',
     },
     {
       icon: <Sparkles className="h-5 w-5" />,

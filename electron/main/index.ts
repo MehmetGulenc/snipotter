@@ -82,6 +82,15 @@ const monitor = new ClipboardMonitor({
 
 const updater = new UpdaterService()
 
+// IDs of clipboard items that THIS device inserted. Used by the auto-mirror
+// handler to skip self-echos without relying on userId (which is shared across
+// all paired devices in the same workspace).
+const localInsertIds = new Set<string>()
+function trackLocalInsert(id: string): void {
+  localInsertIds.add(id)
+  setTimeout(() => localInsertIds.delete(id), 5000)
+}
+
 function broadcast(channel: string, payload: unknown): void {
   for (const w of BrowserWindow.getAllWindows()) {
     if (!w.isDestroyed()) w.webContents.send(channel, payload)
@@ -107,6 +116,7 @@ async function handleClipboardChange(
     const item = refreshed ?? { ...existing, createdAt: new Date().toISOString() }
     broadcast(IPC.CLIP_UPDATED, item)
     // Also broadcast to other devices instantly.
+    trackLocalInsert(item.id)
     supabase.broadcastClipUpsert(item)
     return
   }
@@ -125,7 +135,10 @@ async function handleClipboardChange(
 
   broadcast(IPC.CLIP_NEW, item)
   // Instant broadcast to other devices — don't wait for WAL replication.
-  if (inserted) supabase.broadcastClipUpsert(item)
+  if (inserted) {
+    trackLocalInsert(inserted.id)
+    supabase.broadcastClipUpsert(item)
+  }
 
   // Fire-and-forget AI enrichment
   if (settingsStore.get().aiAutoEnrich && draft.contentType !== 'image' && draft.text.length > 0) {
@@ -171,14 +184,11 @@ function wireSupabaseEvents(): void {
       console.log('[mirror] skipped: item marked sensitive')
       return
     }
-    // Skip items we just inserted ourselves (would be a self-echo). The
-    // broadcast layer already filters by clientId, but postgres_changes
-    // arrives via a different path so we double-check by user id + age.
-    const myUserId = supabase.getUser()?.id
-    const ageMs = Date.now() - new Date(item.createdAt).getTime()
-    const justInserted = item.userId === myUserId && ageMs < 1500
-    if (justInserted) {
-      console.log(`[mirror] skipped: own item (age ${ageMs}ms, userId match)`)
+    // Skip items this device inserted (self-echo from postgres_changes).
+    // We use a local ID set rather than userId+age because all paired devices
+    // share the same userId — the old check always blocked mirroring.
+    if (localInsertIds.has(item.id)) {
+      console.log('[mirror] skipped: inserted by this device')
       return
     }
     try {
