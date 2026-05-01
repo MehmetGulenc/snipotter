@@ -60,6 +60,15 @@ function sha1(input: string): string {
 export class ClipboardMonitor extends EventEmitter {
   private timer: NodeJS.Timeout | null = null
   private lastHash: string | null = null
+  // After we write to the OS clipboard ourselves (mirror from another device, or
+  // a user-triggered "copy again"), the next polling tick may see content that
+  // differs from `lastHash` because macOS NSPasteboard observes writes asynchronously
+  // and our post-write snapshotHash() can capture the *previous* clipboard value.
+  // Without suppression this creates an infinite loop: receive broadcast → mirror →
+  // poller emits 'change' → re-broadcast → other device mirrors → re-emits → … .
+  // We therefore silence emits for a short window after every copy() call, but
+  // STILL update lastHash inside the window so the next real user copy is detected.
+  private suppressEmitUntil = 0
   private opts: Required<MonitorOptions>
 
   constructor(opts: MonitorOptions = {}) {
@@ -109,6 +118,11 @@ export class ClipboardMonitor extends EventEmitter {
       const hash = sha1(`${text}\u0001${html}\u0001${hasImage ? image.toDataURL() : ''}`)
       if (hash === this.lastHash) return
       this.lastHash = hash
+
+      // We just wrote to the clipboard ourselves; the diff is from our own write,
+      // not a fresh user action. Drop the emit but keep the lastHash update so the
+      // NEXT real change still triggers a 'change' event.
+      if (Date.now() < this.suppressEmitUntil) return
 
       let contentType: ClipboardContentType = 'text'
       let payload = text
@@ -164,14 +178,18 @@ export class ClipboardMonitor extends EventEmitter {
 
   /** Programmatic copy (used by "copy again" UI and remote auto-mirror). */
   copy(item: Pick<ClipboardItem, 'contentType' | 'text' | 'html'>): void {
+    // Open a 750ms quiet window so subsequent polling ticks don't treat our
+    // own write as a fresh user copy. macOS reads can lag clipboard.writeText
+    // by tens of ms, so the post-write snapshotHash() may still see the OLD
+    // content; without this guard the next tick would emit 'change' for the
+    // remote payload we JUST mirrored, creating a feedback loop with the
+    // sending device.
+    this.suppressEmitUntil = Date.now() + 750
+
     if (item.contentType === 'image' && item.text.startsWith('data:image/')) {
       const img = nativeImage.createFromDataURL(item.text)
       if (!img.isEmpty()) {
         clipboard.writeImage(img)
-        // Re-snapshot AFTER writing so we capture exactly what the OS now has.
-        // Critical: writing to the clipboard fires the next polling tick;
-        // without this update the monitor would re-broadcast our own write
-        // and create an infinite ping-pong with the source device.
         this.lastHash = this.snapshotHash()
         return
       }

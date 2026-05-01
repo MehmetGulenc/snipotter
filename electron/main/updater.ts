@@ -124,7 +124,25 @@ export class UpdaterService extends EventEmitter {
         nextVersion: info.version,
       })
     })
-    autoUpdater.on('error', (err) => this.emitError(err))
+    autoUpdater.on('error', (err) => {
+      // A 404 on latest-mac.yml / latest.yml means a release tag was pushed
+      // but the CI artifacts haven't finished uploading yet. Treat this as
+      // "no update available" instead of a scary error popup — the next check
+      // (silent or manual) will succeed once the build completes.
+      const msg = err?.message ?? ''
+      if (
+        (msg.includes('latest-mac.yml') || msg.includes('latest.yml') || msg.includes('latest-linux.yml')) &&
+        msg.includes('404')
+      ) {
+        this.setStatus({
+          kind: 'not-available',
+          currentVersion: app.getVersion(),
+          checkedAt: Date.now(),
+        })
+        return
+      }
+      this.emitError(err)
+    })
   }
 
   /** Schedule the first check after launch + a recurring 6-hour timer. */
