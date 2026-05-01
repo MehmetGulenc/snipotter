@@ -88,6 +88,12 @@ export function AppShell(): JSX.Element {
       >
         <Logo size={24} />
         <div className="font-semibold">Snipotter</div>
+        <a
+          href="/yenilikler"
+          className="hidden rounded px-2 py-0.5 text-[11px] font-medium text-primary/70 hover:bg-primary/10 hover:text-primary transition-colors sm:block"
+        >
+          ✨ Yenilikler
+        </a>
         {view !== 'settings' && (
           <div className="relative ml-auto max-w-xs flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
