@@ -29,6 +29,7 @@ export function Notes(): JSX.Element {
   // draft string makes the editor authoritative for its own content while
   // we save in the background.
   const [draft, setDraft] = useState('')
+  const [titleDraft, setTitleDraft] = useState('')
   const [savingDraft, setSavingDraft] = useState(false)
 
   useEffect(() => {
@@ -58,6 +59,7 @@ export function Notes(): JSX.Element {
   // arriving while the user is typing don't reset the textarea mid-edit.
   useEffect(() => {
     setDraft(active?.content ?? '')
+    setTitleDraft(active?.title ?? '')
   }, [activeId])
 
   // Debounced background save. The textarea is bound to `draft` so typing is
@@ -79,6 +81,21 @@ export function Notes(): JSX.Element {
     }, 400)
     return () => clearTimeout(t)
   }, [draft, active?.id])
+
+  useEffect(() => {
+    if (!active) return
+    const stored = active.title ?? ''
+    if (titleDraft === stored) return
+    const t = setTimeout(async () => {
+      try {
+        await updateNote(active.id, { title: titleDraft.trim() || null })
+        upsert({ ...active, title: titleDraft.trim() || null })
+      } catch (e) {
+        console.warn('title save failed', e)
+      }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [titleDraft, active?.id])
 
   const onCreate = async () => {
     if (!workspace || !user) return
@@ -120,7 +137,7 @@ export function Notes(): JSX.Element {
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="flex-1 truncate text-xs text-muted-foreground">
-            {firstLine(active.content, 60) || 'Yeni not'}
+            {active.title?.trim() || firstLine(active.content, 60) || 'Yeni not'}
           </div>
           <button
             onClick={() => onPin(active)}
@@ -137,6 +154,12 @@ export function Notes(): JSX.Element {
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
+        <input
+          value={titleDraft}
+          onChange={(e) => setTitleDraft(e.target.value)}
+          placeholder="Başlık (opsiyonel)"
+          className="border-b border-border bg-transparent px-4 py-3 text-base font-semibold outline-none placeholder:text-muted-foreground"
+        />
         <Textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -196,7 +219,7 @@ export function Notes(): JSX.Element {
           )}
         >
           <div className="line-clamp-2 text-sm font-medium">
-            {firstLine(n.content, 80) || <span className="italic text-muted-foreground">Boş not</span>}
+            {n.title?.trim() || firstLine(n.content, 80) || <span className="italic text-muted-foreground">Boş not</span>}
           </div>
           {n.content.length > 80 && (
             <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">

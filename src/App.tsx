@@ -8,6 +8,7 @@ import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
 import { QuickNote } from './components/QuickNote'
 import { QuickPaste } from './components/QuickPaste'
+import { UpdateBanner } from './components/UpdateBanner'
 
 type Route = 'library' | 'notes' | 'settings' | 'quick-note' | 'quick-paste'
 
@@ -149,6 +150,7 @@ export default function App(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
+      <UpdateBanner />
       <Topbar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar route={route} onNavigate={(r) => (window.location.hash = `#/${r}`)} />

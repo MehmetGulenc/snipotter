@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.3] - 2025-05-01
+
+### 🔔 Update Notification Banner
+- Non-intrusive banner at the top of the app shows when a new version is available, downloading, or ready to install.
+- **Available**: amber bar with version number — download starts automatically in background.
+- **Downloading**: progress bar with percentage.
+- **Ready**: green bar with "Yeniden Başlat" button — one click to install.
+- Dismissible per session; reappears when a newer update is detected.
+
+### 📝 Note Titles (Web)
+- Web app now shows a title input above the content editor.
+- Auto-saves with 400ms debounce — no save button needed.
+- Note list shows title (or first line of content as fallback).
+- Syncs in real-time with desktop app titles.
+
+### 🐛 Bug Fixes (from v0.3.2.x patches)
+- **Ghost notes**: `deleteNote` now uses `count: 'exact'` to detect silent RLS failures; falls back to workspace-member RPC for notes created in previous anonymous sessions.
+- **Windows tray icon**: `tray-icon.png/.ico` now included in `extraResources` for packaged builds; Windows uses `.ico` for native rendering quality.
+- **autoMirrorClipboard**: Added diagnostic logs to pinpoint why mirror is skipped; setting description updated to note it must be enabled on each device separately.
+- **userId fix**: `clipboardFromRow` / `noteFromRow` now correctly maps `created_by` to `userId` instead of `workspace_id`.
+
 ## [0.3.2] - 2025-05-01
 
 ### 🔄 OS Clipboard Auto-Mirror (Opt-in)
