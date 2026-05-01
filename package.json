@@ -1,6 +1,6 @@
 {
   "name": "snipotter",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Snipotter — Cross-platform clipboard manager + AI-powered quick notes with realtime sync",
   "main": "./out/main/index.js",
   "author": {
