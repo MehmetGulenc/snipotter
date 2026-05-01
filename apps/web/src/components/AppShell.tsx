@@ -89,7 +89,9 @@ export function AppShell(): JSX.Element {
         <Logo size={24} />
         <div className="font-semibold">Snipotter</div>
         <a
-          href="/yenilikler"
+          href="https://snipotter.com/yenilikler"
+          target="_blank"
+          rel="noreferrer"
           className="hidden rounded px-2 py-0.5 text-[11px] font-medium text-primary/70 hover:bg-primary/10 hover:text-primary transition-colors sm:block"
         >
           ✨ Yenilikler

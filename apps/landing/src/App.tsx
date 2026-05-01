@@ -66,6 +66,7 @@ function Nav(): JSX.Element {
           <a href="#features" className="hover:text-foreground">Özellikler</a>
           <a href="#how" className="hover:text-foreground">Nasıl çalışır</a>
           <a href="#privacy" className="hover:text-foreground">Gizlilik</a>
+          <a href="/yenilikler" className="hover:text-foreground">Yenilikler</a>
           <a href={REPO_URL} target="_blank" rel="noreferrer" className="hover:text-foreground">
             GitHub
           </a>

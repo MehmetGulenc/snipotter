@@ -1,11 +1,5 @@
-import type { Metadata } from 'next'
-import Link from 'next/link'
-import { Logo } from '@/components/Logo'
-
-export const metadata: Metadata = {
-  title: 'Yenilikler — Snipotter',
-  description: 'Snipotter\'a eklenen yeni özellikler ve iyileştirmeler.',
-}
+import { Sparkles } from 'lucide-react'
+import logoUrl from './logo.svg'
 
 interface Feature {
   emoji: string
@@ -17,7 +11,6 @@ interface Release {
   version: string
   date: string
   badge?: string
-  badgeColor?: string
   headline: string
   features: Feature[]
 }
@@ -27,7 +20,6 @@ const releases: Release[] = [
     version: '0.3.3',
     date: 'Mayıs 2025',
     badge: 'Güncel',
-    badgeColor: 'bg-primary/20 text-primary',
     headline: 'Güncelleme bildirimi & not başlıkları',
     features: [
       {
@@ -38,7 +30,7 @@ const releases: Release[] = [
       {
         emoji: '📝',
         title: 'Not başlıkları (web)',
-        desc: 'Artık web\'de de notlarına başlık ekleyebilirsin. Yazdıkça otomatik kaydediliyor, masaüstü uygulamasıyla anında senkronlanıyor.',
+        desc: "Artık web'de de notlarına başlık ekleyebilirsin. Yazdıkça otomatik kaydediliyor, masaüstü uygulamasıyla anında senkronlanıyor.",
       },
     ],
   },
@@ -50,7 +42,7 @@ const releases: Release[] = [
       {
         emoji: '⚡',
         title: 'Cihazlar arası otomatik pano (opt-in)',
-        desc: 'Mac\'te kopyaladığın şey anında Windows\'un panosuna düşüyor — Snipotter\'ı hiç açmana gerek kalmadan Ctrl+V yapabilirsin. Ayarlar\'dan tek tıkla açılıyor. Şifre veya API anahtarı gibi hassas içerikler asla paylaşılmaz.',
+        desc: "Mac'te kopyaladığın şey anında Windows'un panosuna düşüyor — Snipotter'ı hiç açmana gerek kalmadan Ctrl+V yapabilirsin. Ayarlar'dan tek tıkla açılıyor. Şifre veya API anahtarı gibi hassas içerikler asla paylaşılmaz.",
       },
       {
         emoji: '🛡️',
@@ -76,7 +68,7 @@ const releases: Release[] = [
     features: [
       {
         emoji: '🚀',
-        title: 'Anlık senkron — 50ms\'nin altında',
+        title: "Anlık senkron — 50ms'nin altında",
         desc: 'Bir cihazda kopyaladığın şey diğer cihazlara fısıltı hızında ulaşıyor. Artık kopyala-yapıştır arasında bekleme yok.',
       },
     ],
@@ -89,12 +81,12 @@ const releases: Release[] = [
       {
         emoji: '🖥️',
         title: 'Mac menü çubuğu',
-        desc: 'Dock\'tan taşındık — Snipotter artık her zaman ekranın tepesinde küçük bir ikon olarak duruyor. Tıklarsın, açılır.',
+        desc: "Dock'tan taşındık — Snipotter artık her zaman ekranın tepesinde küçük bir ikon olarak duruyor. Tıklarsın, açılır.",
       },
       {
         emoji: '🪟',
         title: 'Windows sistem tepsisi',
-        desc: 'Windows\'ta saat yanındaki simge tepsisine yerleştik. Sağ tık ile ana pencereyi açabilir, hızlı not alabilirsin.',
+        desc: "Windows'ta saat yanındaki simge tepsisine yerleştik. Sağ tık ile ana pencereyi açabilir, hızlı not alabilirsin.",
       },
       {
         emoji: '🗑️',
@@ -132,67 +124,64 @@ const releases: Release[] = [
   },
 ]
 
-export default function YeniliklerPage(): JSX.Element {
+const APP_URL = 'https://app.snipotter.com'
+
+export default function Yenilikler(): JSX.Element {
   return (
-    <div className="min-h-[100svh] bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="border-b border-border/60">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-4">
-          <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-            <Logo size={28} />
-            <span className="text-sm font-semibold tracking-tight">Snipotter</span>
-          </Link>
-          <Link
-            href="/"
-            className="rounded-lg bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 transition-opacity"
+      <header className="sticky top-0 z-30 border-b border-border/60 bg-background/70 backdrop-blur">
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-3">
+          <a href="/" className="flex items-center gap-2 font-semibold tracking-tight hover:opacity-80 transition-opacity">
+            <img src={logoUrl} alt="" aria-hidden width={28} height={28} className="h-7 w-7" />
+            Snipotter
+          </a>
+          <a
+            href={APP_URL}
+            className="rounded-lg bg-primary/90 px-3.5 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary transition-colors"
           >
             Uygulamayı Aç
-          </Link>
+          </a>
         </div>
       </header>
 
       {/* Hero */}
       <div className="mx-auto max-w-2xl px-6 pb-4 pt-12">
-        <p className="text-xs font-semibold uppercase tracking-widest text-primary">Yenilikler</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight">
-          Ne değişti?
-        </h1>
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary">
+          <Sparkles className="mr-1 inline h-3 w-3" />
+          Yenilikler
+        </p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight">Ne değişti?</h1>
         <p className="mt-3 text-base text-muted-foreground">
-          Her güncellemeyle hayatını biraz daha kolaylaştırmaya çalışıyoruz.
-          İşte son eklenenler.
+          Her güncellemeyle hayatını biraz daha kolaylaştırmaya çalışıyoruz. İşte son eklenenler.
         </p>
       </div>
 
       {/* Timeline */}
       <div className="mx-auto max-w-2xl px-6 pb-20 pt-8">
         <div className="relative space-y-12">
-          {/* Vertical line */}
           <div className="absolute left-[11px] top-2 h-full w-px bg-border/60" aria-hidden />
 
           {releases.map((release) => (
             <div key={release.version} className="relative pl-8">
-              {/* Dot */}
               <div className="absolute left-0 top-1.5 h-[22px] w-[22px] rounded-full border-2 border-border bg-background flex items-center justify-center">
                 <div className="h-2 w-2 rounded-full bg-primary/70" />
               </div>
 
-              {/* Version + date */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-bold tracking-widest text-muted-foreground">
                   v{release.version}
                 </span>
                 {release.badge && (
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${release.badgeColor}`}>
+                  <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-semibold text-primary">
                     {release.badge}
                   </span>
                 )}
                 <span className="text-[11px] text-muted-foreground/60">{release.date}</span>
               </div>
 
-              {/* Headline */}
               <h2 className="mt-1 text-lg font-semibold">{release.headline}</h2>
 
-              {/* Features */}
               <ul className="mt-4 space-y-4">
                 {release.features.map((f) => (
                   <li key={f.title} className="flex gap-3">
@@ -212,9 +201,9 @@ export default function YeniliklerPage(): JSX.Element {
       {/* Footer */}
       <footer className="border-t border-border/60 py-8 text-center text-xs text-muted-foreground/60">
         Snipotter · Geliştirici: Mehmet Gülenç ·{' '}
-        <Link href="/" className="underline underline-offset-2 hover:text-foreground">
-          Uygulamaya dön
-        </Link>
+        <a href="/" className="underline underline-offset-2 hover:text-foreground">
+          Ana sayfaya dön
+        </a>
       </footer>
     </div>
   )
