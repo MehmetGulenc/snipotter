@@ -65,7 +65,9 @@ export class ClipboardMonitor extends EventEmitter {
   constructor(opts: MonitorOptions = {}) {
     super()
     this.opts = {
-      intervalMs: opts.intervalMs ?? 200, // 200ms for near-instant detection
+      // 100ms — at this rate average detection latency is ~50ms and CPU cost
+      // is negligible (clipboard reads on macOS/Windows are O(1) cached).
+      intervalMs: opts.intervalMs ?? 100,
       redactSensitive: opts.redactSensitive ?? true,
     }
   }
@@ -160,22 +162,37 @@ export class ClipboardMonitor extends EventEmitter {
     }
   }
 
-  /** Programmatic copy (used by "copy again" UI). */
+  /** Programmatic copy (used by "copy again" UI and remote auto-mirror). */
   copy(item: Pick<ClipboardItem, 'contentType' | 'text' | 'html'>): void {
     if (item.contentType === 'image' && item.text.startsWith('data:image/')) {
       const img = nativeImage.createFromDataURL(item.text)
       if (!img.isEmpty()) {
-        // Update the lastHash so the monitor doesn't echo our own write back.
-        this.lastHash = sha1(`\u0001\u0001${item.text}`)
         clipboard.writeImage(img)
+        // Re-snapshot AFTER writing so we capture exactly what the OS now has.
+        // Critical: writing to the clipboard fires the next polling tick;
+        // without this update the monitor would re-broadcast our own write
+        // and create an infinite ping-pong with the source device.
+        this.lastHash = this.snapshotHash()
         return
       }
     }
     if (item.contentType === 'rich-text' && item.html) {
       clipboard.write({ text: item.text, html: item.html })
+      this.lastHash = this.snapshotHash()
       return
     }
     clipboard.writeText(item.text)
+    this.lastHash = this.snapshotHash()
+  }
+
+  /**
+   * Mirror a remote clipboard payload onto the local OS clipboard.
+   * Identical to copy() but signals intent: this came from another device,
+   * not from a user action in our own UI. We still write through copy() so
+   * the same loop-prevention mechanism applies (lastHash refresh).
+   */
+  mirrorRemote(item: Pick<ClipboardItem, 'contentType' | 'text' | 'html'>): void {
+    this.copy(item)
   }
 
   /** Helper exposed for tests and one-off snapshots. */

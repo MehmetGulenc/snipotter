@@ -326,6 +326,40 @@ export function subscribeWorkspace(
 ): () => void {
   const sb = getSupabase()
 
+  // High-water marks for eventual-consistency replay on reconnect.
+  let lastClipAt = new Date(0).toISOString()
+  let lastNoteAt = new Date(0).toISOString()
+
+  const replayClips = async () => {
+    if (lastClipAt === new Date(0).toISOString()) return
+    const { data } = await sb
+      .from('clipboard_items')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .gt('created_at', lastClipAt)
+      .order('created_at', { ascending: true })
+      .limit(500)
+    for (const row of (data ?? []) as ClipboardRow[]) {
+      if (row.created_at && row.created_at > lastClipAt) lastClipAt = row.created_at
+      handlers.onClip?.(clipFromRow(row))
+    }
+  }
+
+  const replayNotes = async () => {
+    if (lastNoteAt === new Date(0).toISOString()) return
+    const { data } = await sb
+      .from('notes')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .gt('updated_at', lastNoteAt)
+      .order('updated_at', { ascending: true })
+      .limit(500)
+    for (const row of (data ?? []) as NoteRow[]) {
+      if (row.updated_at && row.updated_at > lastNoteAt) lastNoteAt = row.updated_at
+      handlers.onNote?.(noteFromRow(row))
+    }
+  }
+
   // --- postgres_changes: durable, slower (100-500ms WAL) ---
   const clipCh = sb
     .channel(`web-clip-${workspaceId}`)
@@ -338,11 +372,15 @@ export function subscribeWorkspace(
           if (id) handlers.onClipDelete?.(id)
         } else {
           const row = payload.new as ClipboardRow
-          if (row.workspace_id === workspaceId) handlers.onClip?.(clipFromRow(row))
+          if (row.workspace_id !== workspaceId) return
+          if (row.created_at && row.created_at > lastClipAt) lastClipAt = row.created_at
+          handlers.onClip?.(clipFromRow(row))
         }
       },
     )
-    .subscribe()
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') void replayClips()
+    })
 
   const noteCh = sb
     .channel(`web-notes-${workspaceId}`)
@@ -355,20 +393,28 @@ export function subscribeWorkspace(
           if (id) handlers.onNoteDelete?.(id)
         } else {
           const row = payload.new as NoteRow
-          if (row.workspace_id === workspaceId) handlers.onNote?.(noteFromRow(row))
+          if (row.workspace_id !== workspaceId) return
+          if (row.updated_at && row.updated_at > lastNoteAt) lastNoteAt = row.updated_at
+          handlers.onNote?.(noteFromRow(row))
         }
       },
     )
-    .subscribe()
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') void replayNotes()
+    })
 
   // --- broadcast: instant (<50ms) pub/sub, no DB round-trip ---
+  let heartbeat: ReturnType<typeof setInterval> | null = null
   const syncCh = sb
     .channel(`sync-${workspaceId}`, {
       config: { broadcast: { self: false, ack: false } },
     })
     .on('broadcast', { event: 'clip:upsert' }, ({ payload }) => {
       if (payload?.from === CLIENT_ID) return
-      if (payload?.item) handlers.onClip?.(payload.item as ClipboardItem)
+      if (!payload?.item) return
+      const item = payload.item as ClipboardItem
+      if (item.createdAt && item.createdAt > lastClipAt) lastClipAt = item.createdAt
+      handlers.onClip?.(item)
     })
     .on('broadcast', { event: 'clip:deleted' }, ({ payload }) => {
       if (payload?.from === CLIENT_ID) return
@@ -376,7 +422,10 @@ export function subscribeWorkspace(
     })
     .on('broadcast', { event: 'note:upsert' }, ({ payload }) => {
       if (payload?.from === CLIENT_ID) return
-      if (payload?.note) handlers.onNote?.(payload.note as Note)
+      if (!payload?.note) return
+      const note = payload.note as Note
+      if (note.updatedAt && note.updatedAt > lastNoteAt) lastNoteAt = note.updatedAt
+      handlers.onNote?.(note)
     })
     .on('broadcast', { event: 'note:deleted' }, ({ payload }) => {
       if (payload?.from === CLIENT_ID) return
@@ -385,11 +434,22 @@ export function subscribeWorkspace(
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         activeSyncChannel = syncCh
+        // Heartbeat: prevents Supabase + browser tab throttle from killing the
+        // socket. 25s < the 60s idle limit on the server side.
+        if (heartbeat) clearInterval(heartbeat)
+        heartbeat = setInterval(() => {
+          void syncCh.send({
+            type: 'broadcast',
+            event: 'ping',
+            payload: { ts: Date.now(), from: CLIENT_ID },
+          })
+        }, 25_000)
       }
     })
 
   return () => {
     activeSyncChannel = null
+    if (heartbeat) clearInterval(heartbeat)
     void sb.removeChannel(clipCh)
     void sb.removeChannel(noteCh)
     void sb.removeChannel(syncCh)

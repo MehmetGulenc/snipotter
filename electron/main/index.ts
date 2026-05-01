@@ -155,6 +155,32 @@ function wireSupabaseEvents(): void {
   })
   supabase.on('clip:upsert', (item: ClipboardItem) => {
     broadcast(IPC.CLIP_UPDATED, item)
+    // === OS Clipboard Auto-Mirror ===
+    // If the user opted in, write the remote payload onto this device's
+    // OS clipboard so Cmd/Ctrl+V immediately pastes the latest item from
+    // any paired device. Sensitive items are NEVER mirrored (security).
+    // Loop prevention: monitor.copy() refreshes lastHash so the polling
+    // tick won't re-broadcast our own write back to the source.
+    const settings = settingsStore.get()
+    if (!settings.autoMirrorClipboard) return
+    const isSensitive = item.ai?.tags?.includes('sensitive') === true
+    if (isSensitive) return
+    // Skip items we just inserted ourselves (would be a self-echo). The
+    // broadcast layer already filters by clientId, but postgres_changes
+    // arrives via a different path so we double-check by user id + age.
+    const justInserted =
+      item.userId === supabase.getUser()?.id &&
+      Date.now() - new Date(item.createdAt).getTime() < 1500
+    if (justInserted) return
+    try {
+      monitor.copy({
+        contentType: item.contentType,
+        text: item.text,
+        html: item.html ?? null,
+      })
+    } catch (err) {
+      console.warn('[mirror] failed to write to OS clipboard', err)
+    }
   })
   supabase.on('clip:deleted', (id: string) => {
     broadcast(IPC.CLIP_UPDATED, { id, deleted: true })

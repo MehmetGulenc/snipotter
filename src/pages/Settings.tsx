@@ -84,6 +84,17 @@ export function Settings(): JSX.Element {
               className="h-4 w-4 accent-primary"
             />
           </Field>
+          <Field
+            label="Cihazlar arası otomatik panoya yaz"
+            description="Başka cihazda kopyalanan içerik bu cihazın panosuna anında yazılır (Cmd/Ctrl+V ile direkt yapıştır). Hassas içerikler asla aynalanmaz."
+          >
+            <input
+              type="checkbox"
+              checked={settings.autoMirrorClipboard}
+              onChange={(e) => update({ autoMirrorClipboard: e.target.checked })}
+              className="h-4 w-4 accent-primary"
+            />
+          </Field>
         </section>
 
         <section className="pt-6">

@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.2] - 2025-05-01
+
+### 🔄 OS Clipboard Auto-Mirror (Opt-in)
+
+The headline feature: when enabled in Settings, items copied on **any** paired device are written directly to *this* device's OS clipboard. Hit `Cmd/Ctrl+V` and paste — no need to find the item in the library first.
+
+- **Setting**: `Cihazlar arası otomatik panoya yaz` (Settings → Pano)
+- **Default**: OFF — opt-in only. Auto-mirror replaces the user's local clipboard whenever a remote copy arrives, so we never enable it without consent.
+- **Security**: Items flagged as sensitive (passwords, JWTs, API keys, IBANs, phone numbers, emails) are *never* mirrored regardless of the setting.
+- **Loop prevention**: `clipboard.copy()` now refreshes the polling watermark for every content type (text/image/rich-text), so writes from the mirror don't get re-broadcast back to the source device.
+
+### ⚡ Faster Source Detection
+- Clipboard polling: 200ms → **100ms** (avg detection latency 50ms; CPU cost negligible).
+
+### 🛡️ Reliability — Eventual Consistency
+A backgrounded tray-app or a sleeping laptop missing broadcasts no longer means a stale list. Both desktop and web clients now:
+
+- **High-water cursor** (`lastClipEventAt` / `lastNoteEventAt`) updated on every realtime event.
+- **Replay on reconnect**: when a channel transitions to `SUBSCRIBED`, fetch all rows newer than the cursor and emit them through the normal upsert pipeline. Idempotent — safe even if no events were missed.
+- **Single debounced reconnect**: when multiple channels fail at once (typical network blip), we fire one reconnect attempt instead of N parallel ones.
+- **Heartbeat**: 25s no-op broadcast keeps the WebSocket alive past Supabase's 60s idle timeout and macOS power-save schedules.
+
+### 🔧 Internal
+- `connection:state` events emitted from the desktop Supabase service for future UI indicators.
+- Auto-mirror migration in settings store: existing users upgrading from <0.3.2 default to OFF.
+
+---
+
 ## [0.3.1] - 2025-05-01
 
 ### ⚡ Instant Sync (Telegram-like)

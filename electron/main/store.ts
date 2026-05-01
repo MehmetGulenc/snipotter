@@ -51,6 +51,12 @@ function sanitize(s: AppSettings): AppSettings {
   ) {
     out.globalHotkey = DEFAULT_SETTINGS.globalHotkey
   }
+  // Migration for v0.3.2: auto-mirror across devices. Defaults to OFF so we
+  // never start writing remote clipboards onto an upgrading user's machine
+  // without explicit consent.
+  if (typeof out.autoMirrorClipboard !== 'boolean') {
+    out.autoMirrorClipboard = DEFAULT_SETTINGS.autoMirrorClipboard
+  }
   return out
 }
 

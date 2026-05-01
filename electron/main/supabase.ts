@@ -109,6 +109,15 @@ export class SupabaseService extends EventEmitter {
   // Unique per-process ID used to ignore echoes of our own broadcasts
   // (self: false on the client should handle this, but we belt-and-brace).
   private readonly clientId: string = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  // Last realtime event timestamp — used to detect dead WebSockets and to
+  // bound the catch-up replay window when reconnecting. ISO-8601.
+  private lastClipEventAt: string = new Date(0).toISOString()
+  private lastNoteEventAt: string = new Date(0).toISOString()
+  // Heartbeat timer: pokes the broadcast channel every 25s to keep the
+  // socket alive when the OS would otherwise suspend a backgrounded tray app.
+  private heartbeatTimer: NodeJS.Timeout | null = null
+  // Debounced reconnect to avoid storms when multiple channels fail at once.
+  private reconnectTimer: NodeJS.Timeout | null = null
 
   constructor(private cfg: SupabaseConfig) {
     super()
@@ -484,16 +493,24 @@ export class SupabaseService extends EventEmitter {
           }
           const row = payload.new as ClipboardRow
           if (row.workspace_id !== wsId) return
+          // Track high-water mark so reconnect-replay can bound its query.
+          if (row.created_at && row.created_at > this.lastClipEventAt) {
+            this.lastClipEventAt = row.created_at
+          }
           this.emit('clip:upsert', clipboardFromRow(row))
         },
       )
       .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('[supabase] clipboard channel error', err)
-          // Auto-retry on error after 2s
-          setTimeout(() => this.subscribeRealtime(), 2000)
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn('[supabase] clipboard channel error', status, err)
+          this.emit('connection:state', { ready: false, reason: status })
+          this.scheduleReconnect()
         } else if (status === 'SUBSCRIBED') {
           console.log('[supabase] clipboard realtime active')
+          this.emit('connection:state', { ready: true })
+          // On (re)connect, replay anything newer than our last event so a
+          // backgrounded device that missed broadcasts catches up.
+          void this.replayClipsSince(this.lastClipEventAt)
         }
       })
 
@@ -515,15 +532,19 @@ export class SupabaseService extends EventEmitter {
           }
           const row = payload.new as NoteRow
           if (row.workspace_id !== wsId) return
+          if (row.updated_at && row.updated_at > this.lastNoteEventAt) {
+            this.lastNoteEventAt = row.updated_at
+          }
           this.emit('note:upsert', noteFromRow(row))
         },
       )
       .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('[supabase] notes channel error', err)
-          setTimeout(() => this.subscribeRealtime(), 2000)
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn('[supabase] notes channel error', status, err)
+          this.scheduleReconnect()
         } else if (status === 'SUBSCRIBED') {
           console.log('[supabase] notes realtime active')
+          void this.replayNotesSince(this.lastNoteEventAt)
         }
       })
 
@@ -540,7 +561,12 @@ export class SupabaseService extends EventEmitter {
       })
       .on('broadcast', { event: 'clip:upsert' }, ({ payload }) => {
         if (payload?.from === this.clientId) return // ignore own echo
-        if (payload?.item) this.emit('clip:upsert', payload.item as ClipboardItem)
+        if (!payload?.item) return
+        const item = payload.item as ClipboardItem
+        if (item.createdAt && item.createdAt > this.lastClipEventAt) {
+          this.lastClipEventAt = item.createdAt
+        }
+        this.emit('clip:upsert', item)
       })
       .on('broadcast', { event: 'clip:deleted' }, ({ payload }) => {
         if (payload?.from === this.clientId) return
@@ -548,20 +574,128 @@ export class SupabaseService extends EventEmitter {
       })
       .on('broadcast', { event: 'note:upsert' }, ({ payload }) => {
         if (payload?.from === this.clientId) return
-        if (payload?.note) this.emit('note:upsert', payload.note as Note)
+        if (!payload?.note) return
+        const note = payload.note as Note
+        if (note.updatedAt && note.updatedAt > this.lastNoteEventAt) {
+          this.lastNoteEventAt = note.updatedAt
+        }
+        this.emit('note:upsert', note)
       })
       .on('broadcast', { event: 'note:deleted' }, ({ payload }) => {
         if (payload?.from === this.clientId) return
         if (payload?.id) this.emit('note:deleted', payload.id as string)
       })
       .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('[supabase] broadcast channel error', err)
-          setTimeout(() => this.subscribeRealtime(), 2000)
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn('[supabase] broadcast channel error', status, err)
+          this.scheduleReconnect()
         } else if (status === 'SUBSCRIBED') {
           console.log('[supabase] instant-broadcast channel active')
+          this.startHeartbeat()
         }
       })
+  }
+
+  /**
+   * Schedule a single reconnect attempt. Multiple channels failing at once
+   * (which happens whenever the network blips) collapses to one retry.
+   */
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer) return
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      console.log('[supabase] attempting realtime reconnect…')
+      void this.subscribeRealtime()
+    }, 2000)
+  }
+
+  /**
+   * Send a no-op broadcast every 25s. Supabase Realtime closes idle sockets
+   * after ~60s, and Electron tray apps with no foreground window get put on
+   * a low-power schedule by macOS that further amplifies the gap. A periodic
+   * tiny message keeps the WS alive end-to-end.
+   */
+  private startHeartbeat(): void {
+    this.stopHeartbeat()
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.broadcastChannel) return
+      void this.broadcastChannel.send({
+        type: 'broadcast',
+        event: 'ping',
+        payload: { ts: Date.now(), from: this.clientId },
+      })
+    }, 25_000)
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
+    }
+  }
+
+  /**
+   * Eventual consistency replay. After a reconnect we fetch any rows that
+   * were created/updated while we were offline and emit them through the
+   * normal upsert pipeline — the renderer's upsert is idempotent so this
+   * is safe even if no events were missed.
+   */
+  private async replayClipsSince(sinceIso: string): Promise<void> {
+    if (!this.client || !this.workspaceId) return
+    if (sinceIso === new Date(0).toISOString()) return // first-ever connect, listClipboard handles this
+    try {
+      const { data, error } = await this.client
+        .from('clipboard_items')
+        .select('*')
+        .eq('workspace_id', this.workspaceId)
+        .gt('created_at', sinceIso)
+        .order('created_at', { ascending: true })
+        .limit(500)
+      if (error) {
+        console.warn('[supabase] replay clips failed', error.message)
+        return
+      }
+      for (const row of (data ?? []) as ClipboardRow[]) {
+        if (row.created_at && row.created_at > this.lastClipEventAt) {
+          this.lastClipEventAt = row.created_at
+        }
+        this.emit('clip:upsert', clipboardFromRow(row))
+      }
+      if (data && data.length > 0) {
+        console.log(`[supabase] replayed ${data.length} clips since ${sinceIso}`)
+      }
+    } catch (err) {
+      console.warn('[supabase] replay clips threw', err)
+    }
+  }
+
+  private async replayNotesSince(sinceIso: string): Promise<void> {
+    if (!this.client || !this.workspaceId) return
+    if (sinceIso === new Date(0).toISOString()) return
+    try {
+      const { data, error } = await this.client
+        .from('notes')
+        .select('*')
+        .eq('workspace_id', this.workspaceId)
+        .gt('updated_at', sinceIso)
+        .order('updated_at', { ascending: true })
+        .limit(500)
+      if (error) {
+        console.warn('[supabase] replay notes failed', error.message)
+        return
+      }
+      for (const row of (data ?? []) as NoteRow[]) {
+        if (row.updated_at && row.updated_at > this.lastNoteEventAt) {
+          this.lastNoteEventAt = row.updated_at
+        }
+        this.emit('note:upsert', noteFromRow(row))
+      }
+      if (data && data.length > 0) {
+        console.log(`[supabase] replayed ${data.length} notes since ${sinceIso}`)
+      }
+    } catch (err) {
+      console.warn('[supabase] replay notes threw', err)
+    }
   }
 
   /**
@@ -606,6 +740,7 @@ export class SupabaseService extends EventEmitter {
   }
 
   private unsubscribeRealtime(): void {
+    this.stopHeartbeat()
     if (this.clipChannel) {
       void this.client?.removeChannel(this.clipChannel)
       this.clipChannel = null

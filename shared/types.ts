@@ -107,6 +107,15 @@ export interface AppSettings {
   launchAtLogin: boolean
   /** Mask sensitive content (passwords, tokens) before AI processing. */
   redactSensitive: boolean
+  /**
+   * When enabled, items copied on any paired device are automatically written
+   * to this device's OS clipboard, so Cmd/Ctrl+V immediately pastes the most
+   * recent item from anywhere. Sensitive items (detected by redactSensitive
+   * patterns) are *never* mirrored regardless of this setting.
+   * Opt-in for safety: defaults to false because auto-mirror replaces the
+   * user's current local clipboard whenever a remote copy arrives.
+   */
+  autoMirrorClipboard: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -120,6 +129,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   aiPrimaryProvider: 'claude-haiku',
   launchAtLogin: false,
   redactSensitive: true,
+  autoMirrorClipboard: false,
 }
 
 export interface AuthState {
