@@ -55,6 +55,10 @@ export const useStore = create<Store>((set) => ({
   setClipboard: (items) => set({ clipboard: sortClips(items) }),
   upsertClip: (item) =>
     set((s) => {
+      // Handle realtime delete events
+      if ('deleted' in item && item.deleted) {
+        return { clipboard: s.clipboard.filter((c) => c.id !== item.id) }
+      }
       const without = s.clipboard.filter((c) => c.id !== item.id)
       return { clipboard: sortClips([item, ...without]) }
     }),
@@ -63,6 +67,10 @@ export const useStore = create<Store>((set) => ({
   setNotes: (notes) => set({ notes: sortNotes(notes) }),
   upsertNote: (note) =>
     set((s) => {
+      // Handle realtime delete events - note has 'deleted' flag
+      if ('deleted' in note && note.deleted) {
+        return { notes: s.notes.filter((n) => n.id !== note.id) }
+      }
       const without = s.notes.filter((n) => n.id !== note.id)
       return { notes: sortNotes([note, ...without]) }
     }),

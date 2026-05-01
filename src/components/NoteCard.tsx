@@ -3,25 +3,54 @@ import type { Note } from '@shared/types'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { firstLine, relativeTime } from '@/lib/utils'
-import { Pin, PinOff, Sparkles, Trash2 } from 'lucide-react'
+import { Pin, PinOff, Sparkles, Trash2, Check } from 'lucide-react'
 
 interface Props {
   note: Note
   active: boolean
+  selected?: boolean
   onSelect: () => void
+  onToggleSelect?: () => void
 }
 
-export function NoteCard({ note, active, onSelect }: Props): JSX.Element {
+export function NoteCard({ note, active, selected, onSelect, onToggleSelect }: Props): JSX.Element {
   return (
     <button
-      onClick={onSelect}
-      className={`flex w-full flex-col items-start gap-1 rounded-md border px-3 py-2 text-left transition-colors ${
-        active
-          ? 'border-primary/40 bg-card'
-          : 'border-transparent bg-card/30 hover:bg-card/60'
+      onClick={(e) => {
+        // If clicking on the selection area (left side), toggle selection
+        if (onToggleSelect && (e.target as HTMLElement).closest('.select-area')) {
+          onToggleSelect()
+          return
+        }
+        onSelect()
+      }}
+      className={`group relative flex w-full flex-col items-start gap-1 rounded-md border px-3 py-2 text-left transition-colors ${
+        selected
+          ? 'border-primary bg-primary/5'
+          : active
+            ? 'border-primary/40 bg-card'
+            : 'border-transparent bg-card/30 hover:bg-card/60'
       }`}
     >
-      <div className="flex w-full items-center justify-between gap-2">
+      {/* Selection checkbox */}
+      {onToggleSelect && (
+        <div
+          className="select-area absolute left-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded border transition-colors"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleSelect()
+          }}
+        >
+          <div
+            className={`flex h-full w-full items-center justify-center rounded ${
+              selected ? 'bg-primary text-primary-foreground' : 'bg-background/80 group-hover:border-primary/50'
+            }`}
+          >
+            {selected && <Check className="h-3.5 w-3.5" />}
+          </div>
+        </div>
+      )}
+      <div className={`flex w-full items-center justify-between gap-2 ${onToggleSelect ? 'pl-7' : ''}`}>
         <span className="truncate text-sm font-medium">
           {note.title?.trim() || firstLine(note.content) || 'Yeni not'}
         </span>

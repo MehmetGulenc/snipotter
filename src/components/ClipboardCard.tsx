@@ -3,10 +3,12 @@ import type { ClipboardItem } from '@shared/types'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { relativeTime, truncate } from '@/lib/utils'
-import { Copy, Pin, PinOff, StickyNote, Trash2, Eye, EyeOff, Sparkles } from 'lucide-react'
+import { Copy, Pin, PinOff, StickyNote, Trash2, Eye, EyeOff, Sparkles, Check, Square } from 'lucide-react'
 
 interface Props {
   item: ClipboardItem
+  selected?: boolean
+  onSelect?: () => void
   onCopy: (item: ClipboardItem) => void
   onPin: (item: ClipboardItem) => void
   onPromote: (item: ClipboardItem) => void
@@ -18,7 +20,7 @@ interface Props {
 // string. Treat such rows as sensitive too so old DB entries still hide.
 const LEGACY_REDACTED = '••• redacted •••'
 
-export function ClipboardCard({ item, onCopy, onPin, onPromote, onDelete, onReenrich }: Props): JSX.Element {
+export function ClipboardCard({ item, selected, onSelect, onCopy, onPin, onPromote, onDelete, onReenrich }: Props): JSX.Element {
   const [revealed, setRevealed] = useState(false)
   const sensitive =
     item.ai?.tags?.includes('sensitive') === true || item.text === LEGACY_REDACTED
@@ -32,9 +34,28 @@ export function ClipboardCard({ item, onCopy, onPin, onPromote, onDelete, onReen
 
   return (
     <article
-      className="group relative flex flex-col gap-2 rounded-lg border border-border bg-card/40 p-3 transition-colors hover:border-primary/40 hover:bg-card/60 animate-fade-in overflow-hidden"
+      className={`group relative flex flex-col gap-2 rounded-lg border p-3 transition-colors animate-fade-in overflow-hidden ${
+        selected ? 'border-primary bg-primary/5' : 'border-border bg-card/40 hover:border-primary/40 hover:bg-card/60'
+      }`}
     >
-      <div className="flex items-start justify-between gap-3 min-w-0">
+      {/* Selection checkbox */}
+      {onSelect && (
+        <div className="absolute left-2 top-2 z-10">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onSelect()
+            }}
+            className={`flex h-5 w-5 items-center justify-center rounded border ${
+              selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background/80 hover:border-primary/50'
+            }`}
+          >
+            {selected && <Check className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+      )}
+
+      <div className={`flex items-start justify-between gap-3 min-w-0 ${onSelect ? 'pl-8' : ''}`}>
         <button
           onClick={() => onCopy(item)}
           className="flex-1 min-w-0 overflow-hidden text-left text-sm leading-snug text-foreground"

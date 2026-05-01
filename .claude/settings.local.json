@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('build',{}\\), indent=2\\)\\)\")",
+      "Bash(file /Users/mehmetgulenc/Desktop/snipotter/build/appx-assets/*)",
+      "Bash(identify /Users/mehmetgulenc/Desktop/snipotter/build/appx-assets/*.png)",
+      "Bash(python3 -c ' *)",
+      "Bash(magick --version)",
+      "Bash(convert --version)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); devDeps=d.get\\('devDependencies',{}\\); print\\('electron-builder:', devDeps.get\\('electron-builder','not found'\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts',{}\\), indent=2\\)\\)\")",
+      "Bash(git -C /Users/mehmetgulenc/Desktop/snipotter ls-files build/)",
+      "Bash(git *)",
+      "Bash(magick *)",
+      "Bash(file /Users/mehmetgulenc/Desktop/snipotter/build/appx/*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('directories:', json.dumps\\(d.get\\('directories',{}\\),indent=2\\)\\); print\\('appx:', json.dumps\\(d.get\\('appx',{}\\),indent=2\\)\\)\")"
+    ]
+  }
+}

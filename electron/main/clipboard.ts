@@ -65,7 +65,7 @@ export class ClipboardMonitor extends EventEmitter {
   constructor(opts: MonitorOptions = {}) {
     super()
     this.opts = {
-      intervalMs: opts.intervalMs ?? 700,
+      intervalMs: opts.intervalMs ?? 200, // 200ms for near-instant detection
       redactSensitive: opts.redactSensitive ?? true,
     }
   }

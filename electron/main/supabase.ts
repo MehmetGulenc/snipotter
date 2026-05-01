@@ -451,12 +451,14 @@ export class SupabaseService extends EventEmitter {
 
     const wsId = this.workspaceId
 
-    // Filter is intentionally omitted: postgres_changes DELETE events only carry
-    // the primary key when REPLICA IDENTITY is DEFAULT, so a workspace_id filter
-    // would silently drop all deletes. RLS ensures we only receive rows we can
-    // SELECT; client-side workspace check handles the INSERT/UPDATE side.
+    // Realtime config: subscribe to all changes immediately with optimized channel config
     this.clipChannel = this.client
-      .channel(`clip-${wsId}`)
+      .channel(`clip-${wsId}`, {
+        config: {
+          broadcast: { ack: true },
+          presence: { key: '' },
+        },
+      })
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'clipboard_items' },
@@ -474,11 +476,20 @@ export class SupabaseService extends EventEmitter {
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.warn('[supabase] clipboard channel error', err)
+          // Auto-retry on error after 2s
+          setTimeout(() => this.subscribeRealtime(), 2000)
+        } else if (status === 'SUBSCRIBED') {
+          console.log('[supabase] clipboard realtime active')
         }
       })
 
     this.noteChannel = this.client
-      .channel(`notes-${wsId}`)
+      .channel(`notes-${wsId}`, {
+        config: {
+          broadcast: { ack: true },
+          presence: { key: '' },
+        },
+      })
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notes' },
@@ -496,6 +507,9 @@ export class SupabaseService extends EventEmitter {
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.warn('[supabase] notes channel error', err)
+          setTimeout(() => this.subscribeRealtime(), 2000)
+        } else if (status === 'SUBSCRIBED') {
+          console.log('[supabase] notes realtime active')
         }
       })
   }

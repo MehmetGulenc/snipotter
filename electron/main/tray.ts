@@ -21,8 +21,12 @@ function buildIcon(): Electron.NativeImage {
     // Fallback transparent icon to avoid crash if asset missing in dev.
     return nativeImage.createEmpty()
   }
-  if (process.platform === 'darwin') img.setTemplateImage(true)
-  return img.resize({ width: 18, height: 18 })
+  if (process.platform === 'darwin') {
+    img.setTemplateImage(true)
+    return img.resize({ width: 18, height: 18 })
+  }
+  // Windows/Linux: use 16x16 for proper tray visibility
+  return img.resize({ width: 16, height: 16 })
 }
 
 export function createTray(monitor: ClipboardMonitor): Tray {

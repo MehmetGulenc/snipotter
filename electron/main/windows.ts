@@ -40,6 +40,7 @@ export function createMainWindow(): BrowserWindow {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: '#0b0b0f',
     title: 'Snipotter',
+    skipTaskbar: process.platform === 'win32', // Windows: hide from taskbar, stay in tray only
     webPreferences: {
       preload: PRELOAD,
       sandbox: false,
@@ -55,6 +56,14 @@ export function createMainWindow(): BrowserWindow {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  mainWindow.on('close', (e) => {
+    // On Windows/Linux: hide window instead of closing to keep app in tray
+    if (process.platform !== 'darwin' && mainWindow) {
+      e.preventDefault()
+      mainWindow.hide()
+    }
   })
 
   mainWindow.on('closed', () => {

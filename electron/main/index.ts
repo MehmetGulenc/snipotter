@@ -417,6 +417,11 @@ async function bootstrapAuth(): Promise<void> {
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.snipotter.app')
 
+  // Menubar mode on macOS - hide dock icon
+  if (process.platform === 'darwin') {
+    app.dock?.hide()
+  }
+
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })

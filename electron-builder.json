@@ -23,7 +23,7 @@
     "gatekeeperAssess": false,
     "extendInfo": {
       "NSAppleEventsUsageDescription": "Snipotter pano içeriğini izlemek için izin gerektirir.",
-      "LSUIElement": false
+      "LSUIElement": true
     }
   },
   "win": {
