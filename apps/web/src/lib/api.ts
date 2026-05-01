@@ -270,8 +270,16 @@ export async function deleteNote(id: string): Promise<void> {
   // Announce deletion to other devices first for sub-50ms feedback, then
   // issue the durable DB delete (postgres_changes is the backstop).
   broadcastNoteDeleted(id)
-  const { error } = await getSupabase().from('notes').delete().eq('id', id)
+  const { error, count } = await getSupabase()
+    .from('notes')
+    .delete({ count: 'exact' })
+    .eq('id', id)
   if (error) throw error
+  if (count === 0) {
+    // RLS blocked the delete silently (e.g. note created by a previous
+    // anonymous session). Throw so the caller can revert the optimistic remove.
+    throw new Error('Bu not başka bir oturumdan oluşturulmuş ve bu hesapla silinemiyor.')
+  }
 }
 
 // ---------- Realtime ----------

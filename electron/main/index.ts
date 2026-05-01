@@ -265,11 +265,14 @@ function wireIPC(): void {
     }
   })
   ipcMain.handle(IPC.CLIP_DELETE, async (_e, id: string) => {
-    // Fire broadcast first so other devices see the deletion within <50ms,
-    // then do the durable DB delete (postgres_changes will arrive later).
     supabase.broadcastClipDeleted(id)
-    await supabase.deleteClipboard(id)
-    return { ok: true, data: null }
+    try {
+      await supabase.deleteClipboard(id)
+      return { ok: true, data: null }
+    } catch (err) {
+      console.error('[ipc] CLIP_DELETE failed:', (err as Error).message)
+      return { ok: false, error: (err as Error).message }
+    }
   })
   ipcMain.handle(IPC.CLIP_PIN, async (_e, { id, pinned }: { id: string; pinned: boolean }) => {
     await supabase.setClipboardPinned(id, pinned)
@@ -348,8 +351,16 @@ function wireIPC(): void {
   ipcMain.handle(IPC.NOTE_DELETE, async (_e, id: string) => {
     // Broadcast first for instant feedback on other devices.
     supabase.broadcastNoteDeleted(id)
-    await supabase.deleteNote(id)
-    return { ok: true, data: null }
+    try {
+      await supabase.deleteNote(id)
+      return { ok: true, data: null }
+    } catch (err) {
+      // DB delete failed (e.g. RLS blocked) — tell renderer to revert the
+      // optimistic remove so the note comes back immediately rather than
+      // after the next 15s reconciliation cycle.
+      console.error('[ipc] NOTE_DELETE failed:', (err as Error).message)
+      return { ok: false, error: (err as Error).message }
+    }
   })
   ipcMain.handle(IPC.NOTE_PIN, async (_e, { id, pinned }: { id: string; pinned: boolean }) => {
     const note = await supabase.updateNote(id, { pinned })

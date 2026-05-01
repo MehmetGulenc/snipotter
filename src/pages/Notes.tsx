@@ -54,8 +54,14 @@ export function Notes(): JSX.Element {
     if (r.ok && r.data) upsert(r.data)
   }
   const onDelete = async (note: Note) => {
-    remove(note.id)
-    await window.snipotter.notes.delete(note.id)
+    remove(note.id) // optimistic remove
+    const r = await window.snipotter.notes.delete(note.id)
+    if (!r.ok) {
+      // DB deletion was blocked (e.g. RLS: note belongs to a different session).
+      // Put the note back into the store immediately so the user isn't misled.
+      upsert(note)
+      console.error('[notes] delete failed, reverted:', r.error)
+    }
   }
   const onReenrich = async (note: Note) => {
     const r = await window.snipotter.ai.reenrich('note', note.id, note.content)
@@ -84,15 +90,26 @@ export function Notes(): JSX.Element {
     if (!confirm(`${selectedIds.size} notu silmek istediğine emin misin?`)) return
     setBulkDeleting(true)
     const ids = Array.from(selectedIds)
+    // Keep the note objects so we can revert individual failures.
+    const noteObjects = ids.map((id) => notes.find((n) => n.id === id)).filter(Boolean) as Note[]
     // Optimistic: remove from UI immediately
     ids.forEach((id) => {
       remove(id)
       if (activeId === id) setActiveId(null)
     })
     setSelectedIds(new Set())
-    // Then delete from backend
-    for (const id of ids) {
-      await window.snipotter.notes.delete(id)
+    // Delete from backend; revert any that the DB rejected.
+    let failCount = 0
+    for (const note of noteObjects) {
+      const r = await window.snipotter.notes.delete(note.id)
+      if (!r.ok) {
+        upsert(note) // revert optimistic remove
+        failCount++
+        console.error('[notes] bulk delete failed for', note.id, r.error)
+      }
+    }
+    if (failCount > 0) {
+      alert(`${failCount} not silinemedi. Bu notlar başka bir oturumdan oluşturulmuş olabilir.`)
     }
     setBulkDeleting(false)
   }

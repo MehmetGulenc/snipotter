@@ -409,7 +409,14 @@ export class SupabaseService extends EventEmitter {
 
   async deleteClipboard(id: string): Promise<void> {
     if (!this.client || !this.workspaceId) return
-    await this.client.from('clipboard_items').delete().eq('id', id)
+    const { error, count } = await this.client
+      .from('clipboard_items')
+      .delete({ count: 'exact' })
+      .eq('id', id)
+    if (error) throw new Error(`[supabase] deleteClipboard: ${error.message}`)
+    if (count === 0) {
+      console.warn(`[supabase] deleteClipboard: RLS blocked deletion of clip ${id} (0 rows affected)`)
+    }
   }
 
   async listNotes(): Promise<Note[]> {
@@ -465,7 +472,31 @@ export class SupabaseService extends EventEmitter {
 
   async deleteNote(id: string): Promise<void> {
     if (!this.client || !this.workspaceId) return
-    await this.client.from('notes').delete().eq('id', id)
+    // Use `count: 'exact'` so we can detect silent RLS rejections.
+    // When RLS blocks a DELETE, Postgres silently returns 0 rows affected —
+    // no error is thrown. Without this check, the note stays in the DB and
+    // comes back after the next 15s reconciliation fetch (the "ghost note" bug).
+    const { error, count } = await this.client
+      .from('notes')
+      .delete({ count: 'exact' })
+      .eq('id', id)
+    if (error) throw new Error(`[supabase] deleteNote: ${error.message}`)
+    if (count === 0) {
+      // RLS blocked the delete (e.g. note created by a previous anonymous
+      // session). Escalate via an RPC that deletes by workspace membership
+      // instead of by owner, so workspace admins can clean up any note.
+      const { error: rpcError } = await this.client.rpc('delete_note_by_workspace', {
+        p_note_id: id,
+        p_workspace_id: this.workspaceId,
+      })
+      if (rpcError) {
+        throw new Error(
+          `[supabase] deleteNote (rpc fallback): ${rpcError.message}. ` +
+            'Note may have been created by a different session and cannot be removed ' +
+            'without a matching workspace-admin RLS policy.',
+        )
+      }
+    }
   }
 
   private async subscribeRealtime(): Promise<void> {
