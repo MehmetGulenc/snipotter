@@ -6,6 +6,7 @@
  */
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { EventEmitter } from 'node:events'
+import WebSocket from 'ws'
 import { authStorage } from './store'
 import type {
   ClipboardItem,
@@ -184,6 +185,12 @@ export class SupabaseService extends EventEmitter {
           // at the socket layer. This is the knob Supabase exposes for
           // Telegram-like responsiveness.
           params: { eventsPerSecond: 100 },
+          // Electron's main process runs Node.js (20.x in Electron 33) which
+          // has no native WebSocket global. Without an explicit transport,
+          // realtime-js's websocket-factory throws and channels silently stay
+          // in 'connecting' forever — the actual root cause of the cross-device
+          // mirror not working. Pass `ws` so RealtimeClient can connect.
+          transport: WebSocket as unknown as typeof globalThis.WebSocket,
         },
       })
       this.client.auth.onAuthStateChange((_event, session) => {
