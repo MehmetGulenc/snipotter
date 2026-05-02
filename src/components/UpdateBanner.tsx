@@ -25,9 +25,19 @@ export function UpdateBanner(): JSX.Element | null {
       <div className="flex items-center gap-2 bg-amber-500/10 px-4 py-2 text-xs text-amber-600 dark:text-amber-400 border-b border-amber-500/20">
         <Download className="h-3.5 w-3.5 shrink-0" />
         <span className="flex-1">
-          <span className="font-semibold">Yeni sürüm mevcut:</span> v{status.nextVersion} — indiriliyor…
+          <span className="font-semibold">Yeni sürüm hazır:</span> v{status.nextVersion}
         </span>
-        <button onClick={() => setDismissed(true)} className="rounded p-0.5 hover:bg-amber-500/20">
+        <button
+          onClick={() => window.snipotter.updater.downloadNow()}
+          className="rounded bg-amber-600 px-2 py-0.5 text-white hover:bg-amber-700"
+        >
+          İndir
+        </button>
+        <button
+          onClick={() => setDismissed(true)}
+          className="rounded p-0.5 hover:bg-amber-500/20"
+          title="Sonra hatırlat"
+        >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>

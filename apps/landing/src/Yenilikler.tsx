@@ -17,27 +17,33 @@ interface Release {
 
 const releases: Release[] = [
   {
-    version: '0.4.3',
+    version: '0.4.4',
     date: 'Mayıs 2026',
     badge: 'Güncel',
-    headline: 'Test sürümü — güncelleme bildirimini doğruluyoruz',
+    headline: 'Güncellemeyi sen başlatıyorsun',
     features: [
       {
-        emoji: '🧪',
-        title: 'Hızlı güncelleme testi',
-        desc: 'Bu küçük sürüm, yeni sürüm bildiriminin uygulamada düzgün gözüktüğünü doğrulamak için. Yeni bir özellik yok.',
+        emoji: '👇',
+        title: 'İndir butonu geldi',
+        desc: 'Yeni sürüm hazır olduğunda ekranın üstünde "İndir" butonu çıkıyor. Sen tıklayana kadar indirme başlamıyor — internetin yavaşken arkada veri yemiyor.',
       },
     ],
   },
   {
+    version: '0.4.3',
+    date: 'Mayıs 2026',
+    headline: 'Küçük hatalar giderildi',
+    features: [],
+  },
+  {
     version: '0.4.2',
     date: 'Mayıs 2026',
-    headline: 'Yeni sürümleri çok daha çabuk fark ediyorsun',
+    headline: 'Yeni sürümleri daha çabuk görüyorsun',
     features: [
       {
         emoji: '🔔',
-        title: 'Güncelleme bildirimi artık daha hızlı',
-        desc: 'Yeni bir sürüm çıktığında Snipotter\'ı eline aldığın anda fark ediyorsun. Eskiden 6 saatte bir kontrol ediyordu, artık her saat başı + uygulamayı tekrar açtığında otomatik bakıyor.',
+        title: 'Güncelleme bildirimi daha hızlı',
+        desc: 'Yeni sürüm çıktığında Snipotter\'ı bir sonraki açışında haberin oluyor. Saatler boyunca beklemiyorsun.',
       },
     ],
   },
@@ -48,8 +54,8 @@ const releases: Release[] = [
     features: [
       {
         emoji: '✏️',
-        title: 'Not editörü canlı senkron',
-        desc: 'Aynı notu iki cihazda açtıysan, birinde yazdığın anında diğerinin editöründe de beliriyor. Eskiden sadece kenardaki listede güncelleniyordu, editör eski içeriği gösteriyordu.',
+        title: 'Not editörü anlık güncelleniyor',
+        desc: 'Aynı notu iki cihazda açtıysan, birinde yazdığın anında diğerinin editöründe de beliriyor.',
       },
     ],
   },
@@ -61,7 +67,7 @@ const releases: Release[] = [
       {
         emoji: '🔄',
         title: 'Cihazlar arası otomatik pano',
-        desc: "Mac'te kopyaladığın anında Windows'a, Windows'ta kopyaladığın anında Mac'e düşüyor. Snipotter'ı açmana gerek yok — doğrudan Cmd/Ctrl+V ile yapıştır. Bu özellikteki önemli bir hatayı giderdik, artık çok daha güvenilir çalışıyor.",
+        desc: "Mac'te kopyaladığın anında Windows'a, Windows'ta kopyaladığın anında Mac'e düşüyor. Snipotter'ı açmana gerek yok — doğrudan Cmd/Ctrl+V ile yapıştır.",
       },
       {
         emoji: '⚡',
@@ -72,11 +78,6 @@ const releases: Release[] = [
         emoji: '🍎',
         title: 'Mac\'te tek tıkla güncelleme',
         desc: "Eskiden Mac'te yeni sürüm çıktığında DMG'yi indirip elinle kurman gerekiyordu. Artık \"Yeniden Başlat\" tuşuna basıyorsun, Snipotter kendini güncelliyor — tıpkı Windows'taki gibi.",
-      },
-      {
-        emoji: '🛡️',
-        title: 'Pano kilitlenme sorunu giderildi',
-        desc: 'Bazı durumlarda, başka bir cihazdan gelen içerik panonu sürekli geri yazıyor ve sen başka bir şey kopyalayamıyordun. Bu sorun tamamen çözüldü.',
       },
       {
         emoji: '🔵',
@@ -93,7 +94,7 @@ const releases: Release[] = [
       {
         emoji: '🔔',
         title: 'Güncelleme bildirimi',
-        desc: 'Yeni sürüm hazır olduğunda ekranın üstünde küçük bir bildirim çıkıyor. "Yeniden Başlat" tuşuna bassın, uygulama güncelleniyor — başka bir şey yapmana gerek yok.',
+        desc: 'Yeni sürüm hazır olduğunda ekranın üstünde küçük bir bildirim çıkıyor. "Yeniden Başlat" tuşuna basınca uygulama güncelleniyor.',
       },
       {
         emoji: '📝',
@@ -113,14 +114,9 @@ const releases: Release[] = [
         desc: "Mac'te kopyaladığın şey anında Windows'un panosuna düşüyor — Snipotter'ı hiç açmana gerek kalmadan Ctrl+V yapabilirsin. Ayarlar'dan tek tıkla açılıyor. Şifre veya API anahtarı gibi hassas içerikler asla paylaşılmaz.",
       },
       {
-        emoji: '🛡️',
-        title: 'Silinen notlar geri gelmiyor',
-        desc: 'Bazı kullanıcıların notlarının silinmesine rağmen geri geldiği bildirilen bir sorun vardı. Kökten çözüldü — şimdi sildiğin bir şey gitti demektir.',
-      },
-      {
         emoji: '🔍',
-        title: 'Pano değişikliklerini 2x hızlı yakala',
-        desc: 'Kopyaladığın şeyin uygulamaya yansıması için gereken süre yarı yarıya azaldı. Hissedilir fark var.',
+        title: 'Pano değişikliklerini daha hızlı yakala',
+        desc: 'Kopyaladığın şeyin uygulamaya yansıması için gereken süre yarı yarıya azaldı.',
       },
       {
         emoji: '📡',
@@ -136,8 +132,8 @@ const releases: Release[] = [
     features: [
       {
         emoji: '🚀',
-        title: "Anlık senkron — 50ms'nin altında",
-        desc: 'Bir cihazda kopyaladığın şey diğer cihazlara fısıltı hızında ulaşıyor. Artık kopyala-yapıştır arasında bekleme yok.',
+        title: 'Anlık senkron',
+        desc: 'Bir cihazda kopyaladığın şey diğer cihazlara saniyenin altında ulaşıyor. Artık kopyala-yapıştır arasında bekleme yok.',
       },
     ],
   },

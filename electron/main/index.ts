@@ -474,6 +474,10 @@ function wireIPC(): void {
     const status = await updater.checkNow()
     return { ok: true, data: status }
   })
+  ipcMain.handle(IPC.UPDATER_DOWNLOAD_NOW, async () => {
+    const status = await updater.downloadNow()
+    return { ok: true, data: status }
+  })
   ipcMain.handle(IPC.UPDATER_INSTALL_AND_RESTART, async () => {
     try {
       updater.installAndRestart()

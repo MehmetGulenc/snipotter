@@ -122,6 +122,7 @@ const api = {
   updater: {
     getStatus: () => invoke<UpdaterStatus>(IPC.UPDATER_GET_STATUS),
     checkNow: () => invoke<UpdaterStatus>(IPC.UPDATER_CHECK_NOW),
+    downloadNow: () => invoke<UpdaterStatus>(IPC.UPDATER_DOWNLOAD_NOW),
     installAndRestart: () => invoke<null>(IPC.UPDATER_INSTALL_AND_RESTART),
     openReleasePage: () => invoke<null>(IPC.UPDATER_OPEN_RELEASE_PAGE),
     /** True on macOS ad-hoc-signed builds, where in-app update install fails

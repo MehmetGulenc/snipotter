@@ -401,6 +401,14 @@ function UpdateSection({ onSecretClick }: { onSecretClick: () => void }): JSX.El
               <Download className="mr-2 h-4 w-4" />
               Yeniden başlat & güncelle
             </Button>
+          ) : status?.kind === 'available' ? (
+            <Button
+              onClick={() => void window.snipotter.updater.downloadNow()}
+              className="shrink-0"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              v{status.nextVersion} indir
+            </Button>
           ) : (
             <Button onClick={checkNow} disabled={isBusy} variant="outline" className="shrink-0">
               {isBusy ? (
@@ -443,7 +451,7 @@ function UpdateStatusLine({ status }: { status: UpdaterStatus | null }): JSX.Ele
     case 'idle':
       return (
         <div className="text-xs text-muted-foreground">
-          Otomatik kontrol açık · Açılıştan sonra ve her 6 saatte bir aranır
+          Yeni sürümleri otomatik kontrol ediyoruz
         </div>
       )
     case 'checking':
@@ -461,7 +469,7 @@ function UpdateStatusLine({ status }: { status: UpdaterStatus | null }): JSX.Ele
     case 'available':
       return (
         <div className="text-xs">
-          <span className="text-primary">v{status.nextVersion}</span> hazır · indiriliyor…
+          <span className="text-primary">v{status.nextVersion}</span> mevcut · indirmek istersen sağdaki butona tıkla
           {status.releaseNotes && (
             <pre className="mt-2 max-h-24 overflow-y-auto whitespace-pre-wrap rounded bg-muted/40 p-2 text-[11px] text-muted-foreground">
               {status.releaseNotes}

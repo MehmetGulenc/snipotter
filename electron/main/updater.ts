@@ -95,11 +95,10 @@ export class UpdaterService extends EventEmitter {
       if (process.platform === 'darwin') {
         this.latestMacDmgUrl = pickMacDmgUrl(info)
       }
-      // Download on all platforms. Mac uses a custom shell installer that
-      // bypasses Squirrel.Mac (which requires a paid Developer ID cert).
-      void autoUpdater.downloadUpdate()
-        .then((files) => { this.downloadedFiles = files })
-        .catch((err) => this.emitError(err))
+      // Wait for explicit user confirmation before downloading. The renderer
+      // surfaces the 'available' state as a banner with an "İndir" button
+      // that calls downloadNow(); previously we auto-started which used
+      // bandwidth without consent.
     })
     autoUpdater.on('update-not-available', () => {
       this.setStatus({
@@ -183,6 +182,20 @@ export class UpdaterService extends EventEmitter {
     } catch (err) {
       console.warn('[updater] silent check failed:', (err as Error).message)
     }
+  }
+
+  /** User-initiated download — kicks off the actual fetch only after the user
+   *  has acknowledged the available banner with "İndir". */
+  async downloadNow(): Promise<UpdaterStatus> {
+    if (!app.isPackaged) return this.status
+    if (this.status.kind !== 'available') return this.status
+    try {
+      const files = await autoUpdater.downloadUpdate()
+      this.downloadedFiles = files
+    } catch (err) {
+      this.emitError(err as Error)
+    }
+    return this.status
   }
 
   /** Manual check triggered from Settings UI; surfaces errors. */

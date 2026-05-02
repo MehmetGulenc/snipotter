@@ -195,6 +195,7 @@ export const IPC = {
   // Auto-updater
   UPDATER_GET_STATUS: 'updater:get-status',
   UPDATER_CHECK_NOW: 'updater:check-now',
+  UPDATER_DOWNLOAD_NOW: 'updater:download-now',
   UPDATER_INSTALL_AND_RESTART: 'updater:install-and-restart',
   UPDATER_STATUS_CHANGED: 'updater:status-changed',
   UPDATER_OPEN_RELEASE_PAGE: 'updater:open-release-page',
