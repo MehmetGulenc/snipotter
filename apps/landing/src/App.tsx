@@ -11,7 +11,15 @@ import {
   Search,
   Pin,
   Check,
+  Command,
+  PencilLine,
+  ImagePlus,
+  Wand2,
+  Share2,
+  LayoutGrid,
+  ArrowRight,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import logoUrl from './logo.svg'
 import { SmartDownloadButton } from './SmartDownloadButton'
@@ -27,8 +35,11 @@ export default function App(): JSX.Element {
       <Nav />
       <Hero />
       <LogoStrip />
+      <UseCases />
       <Features />
+      <HiddenFeatures />
       <HowItWorks />
+      <Shortcuts />
       <Privacy />
       <PricingCTA />
       <Footer />
@@ -65,6 +76,8 @@ function Nav(): JSX.Element {
         </Link>
         <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
           <a href="#features" className="hover:text-foreground">Özellikler</a>
+          <a href="#discover" className="hover:text-foreground">Keşfet</a>
+          <a href="#shortcuts" className="hover:text-foreground">Kısayollar</a>
           <a href="#how" className="hover:text-foreground">Nasıl çalışır</a>
           <a href="#privacy" className="hover:text-foreground">Gizlilik</a>
           <Link to="/yenilikler" className="hover:text-foreground">Yenilikler</Link>
@@ -153,7 +166,55 @@ function Hero(): JSX.Element {
   )
 }
 
+/* ===========================================================================
+   HeroMock — animated cross-device sync demo. Two device frames (Mac + phone)
+   with a pulsing sync indicator between them. A `currentClip` cycles every
+   ~3.6s through realistic content types (link, command, image, summary): it
+   first appears at the top of the Mac window, then 600ms later replicates
+   into the phone with a brief green flash + "synced" pill. Loops forever, no
+   GIFs, no autoplaying video, ~1KB of CSS over the static version.
+
+   This is the centrepiece of the "what does this thing do?" answer that
+   the friend's-test surfaced — visitors should see the value without
+   reading a single feature bullet.
+   ========================================================================= */
+const DEMO_CLIPS: { text: string; tag: string; sensitive?: boolean; image?: boolean }[] = [
+  { text: 'https://github.com/MehmetGulenc/snipotter', tag: 'link' },
+  { text: 'ssh -i ~/.ssh/prod.pem ubuntu@10.0.4.21', tag: 'komut' },
+  { text: 'snipotter@example.com', tag: 'email', sensitive: true },
+  { text: 'Toplantı notları: önce mobil, sonra masaüstü.', tag: 'özet' },
+  { text: 'Ekran görüntüsü', tag: 'görsel', image: true },
+]
+
 function HeroMock(): JSX.Element {
+  // index of the clip currently sitting at the top of the Mac. We cycle
+  // through DEMO_CLIPS, and the phone trails the Mac by 600ms via the
+  // `phoneIndex` state so visitors see the "Mac copied → phone received"
+  // sequence rather than two devices flashing simultaneously.
+  const [macIndex, setMacIndex] = useState(0)
+  const [phoneIndex, setPhoneIndex] = useState(0)
+  const [phoneFlash, setPhoneFlash] = useState(false)
+
+  useEffect(() => {
+    const tick = setInterval(() => {
+      setMacIndex((i) => (i + 1) % DEMO_CLIPS.length)
+    }, 3600)
+    return () => clearInterval(tick)
+  }, [])
+
+  // Trail the phone behind the Mac. The flash flag is a one-shot pulse used
+  // to tint the phone's top row green for ~800ms after each sync — same
+  // affordance the desktop app uses when realtime delivers a row.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setPhoneIndex(macIndex)
+      setPhoneFlash(true)
+      const off = setTimeout(() => setPhoneFlash(false), 800)
+      return () => clearTimeout(off)
+    }, 600)
+    return () => clearTimeout(t)
+  }, [macIndex])
+
   return (
     <div className="relative">
       {/* Floating glow behind the mock to give it depth without an image. */}
@@ -165,72 +226,170 @@ function HeroMock(): JSX.Element {
             'linear-gradient(135deg, hsl(252 83% 65% / 0.6), hsl(280 80% 60% / 0.4))',
         }}
       />
-      <div className="animate-float overflow-hidden rounded-2xl border border-border bg-card/80 shadow-2xl shadow-primary/10">
-        {/* Window chrome */}
-        <div className="flex items-center gap-1.5 border-b border-border/60 bg-card/90 px-3 py-2.5">
-          <span className="h-3 w-3 rounded-full bg-red-500/70" />
-          <span className="h-3 w-3 rounded-full bg-yellow-500/70" />
-          <span className="h-3 w-3 rounded-full bg-green-500/70" />
-          <div className="ml-3 flex-1">
-            <div className="flex items-center gap-2 rounded-md bg-background/60 px-2 py-1 text-xs text-muted-foreground">
-              <Search className="h-3 w-3" /> Pano ara…
+
+      {/* Two-column device grid. On phones we stack vertically and the
+          sync indicator sits between, drawn as a horizontal pulse instead. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1.6fr_auto_1fr] sm:items-center sm:gap-3">
+        {/* — Mac window — */}
+        <div className="animate-float overflow-hidden rounded-2xl border border-border bg-card/80 shadow-2xl shadow-primary/10">
+          <div className="flex items-center gap-1.5 border-b border-border/60 bg-card/90 px-3 py-2.5">
+            <span className="h-3 w-3 rounded-full bg-red-500/70" />
+            <span className="h-3 w-3 rounded-full bg-yellow-500/70" />
+            <span className="h-3 w-3 rounded-full bg-green-500/70" />
+            <div className="ml-3 flex-1">
+              <div className="flex items-center gap-2 rounded-md bg-background/60 px-2 py-1 text-xs text-muted-foreground">
+                <Search className="h-3 w-3" /> Pano ara…
+              </div>
             </div>
+            <span className="text-[10px] font-medium text-muted-foreground">macOS</span>
+          </div>
+          <div className="space-y-2 p-3">
+            {/* Top row is the active clip — re-keyed on every tick so the
+                clip-in animation replays. The remaining rows give context. */}
+            <MockClip key={`mac-${macIndex}`} clip={DEMO_CLIPS[macIndex]} time="şimdi" highlight />
+            <MockClip clip={DEMO_CLIPS[(macIndex + 4) % DEMO_CLIPS.length]} time="2dk önce" pinned />
+            <MockClip clip={DEMO_CLIPS[(macIndex + 3) % DEMO_CLIPS.length]} time="5dk önce" />
+            <MockClip clip={DEMO_CLIPS[(macIndex + 2) % DEMO_CLIPS.length]} time="bugün" />
           </div>
         </div>
 
-        {/* Mock clipboard rows */}
-        <div className="space-y-2 p-3">
-          <MockClip
-            pinned
-            text="https://github.com/MehmetGulenc/snipotter"
-            tag="link"
-            time="şimdi"
-          />
-          <MockClip
-            text="ssh -i ~/.ssh/prod.pem ubuntu@10.0.4.21"
-            tag="komut"
-            time="2dk önce"
-          />
-          <MockClip
-            text="snipotter@example.com"
-            tag="email"
-            time="5dk önce"
-            sensitive
-          />
-          <MockClip
-            text="Toplantı notları: yeni özellikler önce mobil, sonra masaüstü."
-            tag="özet"
-            time="bugün"
-          />
+        {/* — Sync indicator — Animated arrow with concentric pulses.
+             Rotates 90° on small screens so the geometry still reads
+             "Mac → phone" when the layout stacks. */}
+        <SyncIndicator />
+
+        {/* — Phone — */}
+        <div className="relative mx-auto w-full max-w-[210px] animate-float [animation-delay:1.5s]">
+          <div className="overflow-hidden rounded-[2rem] border border-border bg-card/80 p-1.5 shadow-2xl shadow-primary/10">
+            <div className="overflow-hidden rounded-[1.6rem] bg-background">
+              {/* Status bar sliver */}
+              <div className="flex items-center justify-between px-4 py-1.5 text-[9px] text-muted-foreground">
+                <span>9:41</span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  Snipotter
+                </span>
+              </div>
+              <div className="space-y-1.5 px-2 pb-3">
+                <MockClip
+                  key={`phone-${phoneIndex}`}
+                  clip={DEMO_CLIPS[phoneIndex]}
+                  time="şimdi"
+                  highlight
+                  flash={phoneFlash}
+                  compact
+                  syncedBadge={phoneFlash}
+                />
+                <MockClip
+                  clip={DEMO_CLIPS[(phoneIndex + 4) % DEMO_CLIPS.length]}
+                  time="2dk"
+                  compact
+                />
+                <MockClip
+                  clip={DEMO_CLIPS[(phoneIndex + 3) % DEMO_CLIPS.length]}
+                  time="5dk"
+                  compact
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function MockClip({
-  text,
-  tag,
-  time,
-  pinned,
-  sensitive,
-}: {
-  text: string
-  tag: string
+/**
+ * Pulsing arrow drawn between the Mac and phone mocks. Two concentric
+ * `pulse-ring` divs offset in time give the impression of data radiating
+ * outward; the inner glyph rotates 90° on stacked layouts so it still
+ * points the right direction.
+ */
+function SyncIndicator(): JSX.Element {
+  return (
+    <div className="relative flex items-center justify-center sm:px-1">
+      <div className="relative flex h-12 w-12 items-center justify-center rounded-full border border-primary/30 bg-primary/10 sm:h-10 sm:w-10">
+        <span
+          aria-hidden
+          className="absolute inset-0 animate-pulse-ring rounded-full bg-primary/30"
+        />
+        <span
+          aria-hidden
+          className="absolute inset-0 animate-pulse-ring rounded-full bg-primary/30 [animation-delay:0.8s]"
+        />
+        <RefreshCcw className="relative h-4 w-4 rotate-90 text-primary sm:rotate-0" />
+      </div>
+    </div>
+  )
+}
+
+interface MockClipProps {
+  clip: { text: string; tag: string; sensitive?: boolean; image?: boolean }
   time: string
   pinned?: boolean
-  sensitive?: boolean
-}): JSX.Element {
+  /** First row in a list — animates in on mount and keeps a subtle accent. */
+  highlight?: boolean
+  /** Brief green tint applied right after a sync. */
+  flash?: boolean
+  /** Tighter padding for the phone column. */
+  compact?: boolean
+  /** Show a "senkron" pill while the row is freshly synced. */
+  syncedBadge?: boolean
+}
+
+function MockClip({
+  clip,
+  time,
+  pinned,
+  highlight,
+  flash,
+  compact,
+  syncedBadge,
+}: MockClipProps): JSX.Element {
   return (
-    <div className="rounded-lg border border-border/60 bg-card/40 p-2.5 transition hover:border-primary/40">
+    <div
+      className={
+        'relative overflow-hidden rounded-lg border bg-card/40 transition ' +
+        (compact ? 'p-2' : 'p-2.5 ') +
+        (highlight ? 'border-primary/30 ' : 'border-border/60 ') +
+        (highlight ? 'animate-clip-in ' : '') +
+        (flash ? 'animate-sync-flash ' : '')
+      }
+    >
       <div className="flex items-start gap-2">
-        <div className="flex-1 truncate text-xs text-foreground">
-          {sensitive ? '••• gizli içerik •••' : text}
+        <div
+          className={
+            'flex-1 truncate text-foreground ' + (compact ? 'text-[11px]' : 'text-xs')
+          }
+        >
+          {clip.image ? (
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+              <span className="inline-block h-3 w-4 rounded-sm bg-gradient-to-br from-primary/40 to-fuchsia-500/40" />
+              Ekran görüntüsü
+            </span>
+          ) : clip.sensitive ? (
+            '••• gizli içerik •••'
+          ) : (
+            clip.text
+          )}
         </div>
         {pinned && <Pin className="h-3 w-3 shrink-0 text-primary" />}
       </div>
-      <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">
-        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{tag}</span>
+      <div
+        className={
+          'mt-1.5 flex items-center justify-between text-muted-foreground ' +
+          (compact ? 'text-[9px]' : 'text-[10px]')
+        }
+      >
+        <span className="inline-flex items-center gap-1">
+          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{clip.tag}</span>
+          {syncedBadge && (
+            <span className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 px-1 py-0.5 text-[8px] font-medium text-emerald-400">
+              <Zap className="h-2 w-2" />
+              senkron
+            </span>
+          )}
+        </span>
         <span>{time}</span>
       </div>
     </div>
@@ -330,6 +489,406 @@ function Features(): JSX.Element {
 }
 
 /* ===========================================================================
+   UseCases — three persona snapshots. Originally the landing answered
+   *what* Snipotter is but never *who it's for*; visitors who don't relate
+   to "clipboard manager" as a category bounced. Each persona names a
+   concrete daily moment ("Stack Overflow'dan komut kopyalıyorum") so the
+   reader recognises themselves in one of them within ~5 seconds.
+   ========================================================================= */
+const PERSONAS: { tag: string; title: string; copy: string; bullets: string[] }[] = [
+  {
+    tag: 'Geliştirici',
+    title: "Terminal'in ile telefon arasında",
+    copy: "SSH komutları, API key parçaları, hata logları — gün içinde defalarca cihaz değiştiriyorsun. Snipotter aynı pano havuzunu her ikisine de açar.",
+    bullets: [
+      'Stack Overflow\'dan kopyaladığın komut, telefondaki kılavuza otomatik yansır',
+      'Hassas tokenlar listede gizli, ama sen tek tıkla görebilirsin',
+      'AI etiket "komut", "json", "config" gibi otomatik kategorize eder',
+    ],
+  },
+  {
+    tag: 'İçerik üreticisi',
+    title: 'Telefondaki ilham, masaüstündeki düzen',
+    copy: 'Yolda gördüğün ilginç linki telefondan kopyala. Bilgisayara döndüğünde Snipotter\'da seni bekler. Notlara çevir, AI özet bağlasın.',
+    bullets: [
+      'Mobilden paylaş hedefi ile herhangi bir uygulamadan içerik düşür',
+      'Görsel kopyala — ekran görüntüsü diğer cihazda önizlemeli',
+      'Pinli öğeler her zaman üstte, kampanya fikirlerin kaybolmaz',
+    ],
+  },
+  {
+    tag: 'Öğrenci & araştırmacı',
+    title: 'Ders notu, kaynak, fikir — hepsi tek yerde',
+    copy: 'Tarayıcıda PDF, dersanede defter, akşam evde özet. Snipotter klipleri zamanla biriktirir, AI özetle uzun pasajlardan tek satır çıkarır.',
+    bullets: [
+      'Cmd+Shift+N ile aklına geleni 2 saniyede yazıya geçir',
+      'Aramaya başla, içerikten + etiketten + özetten birlikte arar',
+      'Hesap, e-posta, ödeme yok — sadece bir 6 haneli kod',
+    ],
+  },
+]
+
+function UseCases(): JSX.Element {
+  return (
+    <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="mb-12 max-w-2xl">
+        <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          Snipotter senin için ne yapar?
+        </h2>
+        <p className="mt-3 text-muted-foreground">
+          Üç farklı günlük rutin — büyük ihtimalle bir tanesinde kendini bulacaksın.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {PERSONAS.map((p) => (
+          <div
+            key={p.title}
+            className="flex flex-col gap-3 rounded-xl border border-border bg-card/40 p-6 transition hover:border-primary/40 hover:bg-card/60"
+          >
+            <span className="self-start rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary">
+              {p.tag}
+            </span>
+            <h3 className="text-lg font-semibold">{p.title}</h3>
+            <p className="text-sm text-muted-foreground">{p.copy}</p>
+            <ul className="mt-1 space-y-2 border-t border-border/60 pt-3">
+              {p.bullets.map((b) => (
+                <li key={b} className="flex items-start gap-2 text-sm">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                  <span className="text-muted-foreground">{b}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/* ===========================================================================
+   HiddenFeatures — six "you probably haven't noticed this yet" cards. This
+   section exists because user-testing surfaced the recurring complaint that
+   visitors thought Snipotter was "just a clipboard sync" — they had no idea
+   Quick Paste, Quick Note, the AI tagger, or the Android share/tile flows
+   existed. Each card embeds a small inline visual (no images/GIFs, just
+   styled DOM) that shows the surface in action.
+   ========================================================================= */
+function HiddenFeatures(): JSX.Element {
+  return (
+    <section id="discover" className="border-y border-border/40 bg-card/10">
+      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+        <div className="mb-12 max-w-2xl">
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-fuchsia-400/30 bg-fuchsia-400/10 px-3 py-1 text-xs text-fuchsia-300">
+            <Sparkles className="h-3 w-3" /> Çoğu kişinin ilk başta fark etmediği
+          </div>
+          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Snipotter sadece bir pano değil.
+          </h2>
+          <p className="mt-3 text-muted-foreground">
+            Görünenin ardında 6 küçük süper güç var. Kısayollar bilince akış
+            inanılmaz hızlanır — birkaç gün sonra her makineye otomatik kuruyor olacaksın.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <DiscoverCard
+            icon={<Command className="h-5 w-5" />}
+            badge={
+              <span className="inline-flex items-center gap-1.5 text-xs">
+                <Kbd>⌘</Kbd> <Kbd>⇧</Kbd> <Kbd>V</Kbd>
+              </span>
+            }
+            title="Hızlı yapıştır"
+            copy="Tek bir kısayol; son kopyaladığın 50 öğe ekranın üstüne düşer. Yazmaya başla, listeyi anlık filtrele. ↑↓ ile gez, Enter ile yapıştır. Akışın bozulmaz."
+            visual={<QuickPasteVisual />}
+          />
+          <DiscoverCard
+            icon={<PencilLine className="h-5 w-5" />}
+            badge={
+              <span className="inline-flex items-center gap-1.5 text-xs">
+                <Kbd>⌘</Kbd> <Kbd>⇧</Kbd> <Kbd>N</Kbd>
+              </span>
+            }
+            title="Hızlı not"
+            copy="Aklına bir şey geldi. Hangi uygulamada olursan ol, kısayola bas, küçük bir pencere açılır, yazıp ⌘+Enter ile kaydet. AI etiketleyip tüm cihazlarına gönderir."
+            visual={<QuickNoteVisual />}
+          />
+          <DiscoverCard
+            icon={<ImagePlus className="h-5 w-5" />}
+            badge={<span className="text-xs text-muted-foreground">PNG · JPG · Screenshot</span>}
+            title="Görsel pano öğeleri"
+            copy="Sadece metin değil — bir ekran görüntüsü kopyala, telefonundaki Snipotter'da önizlemeli olarak çıksın. Geri kopyalayıp herhangi bir uygulamaya yapıştır."
+            visual={<ImageVisual />}
+          />
+          <DiscoverCard
+            icon={<Wand2 className="h-5 w-5" />}
+            badge={<span className="text-xs text-muted-foreground">Otomatik · saniyeler içinde</span>}
+            title="AI özet & etiket"
+            copy="Uzun bir mail ya da dokümanın bir bölümünü kopyala. Snipotter arka planda kısa bir özet çıkarır, içeriği etiketler. Hassas görünen şeyleri ('email', 'kart no') tanır ve listede gizler."
+            visual={<AIVisual />}
+          />
+          <DiscoverCard
+            icon={<Share2 className="h-5 w-5" />}
+            badge={
+              <span className="inline-flex items-center gap-1.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                YENİ · Android
+              </span>
+            }
+            title="Paylaş hedefi"
+            copy="WhatsApp, Chrome, Twitter, herhangi bir uygulamada metni seç → Paylaş → Snipotter. O öğe pano kütüphanene düşer, masaüstündeki Mac'inde anında görünür."
+            visual={<ShareTargetVisual />}
+          />
+          <DiscoverCard
+            icon={<LayoutGrid className="h-5 w-5" />}
+            badge={
+              <span className="inline-flex items-center gap-1.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                YENİ · Android
+              </span>
+            }
+            title="Hızlı ayarlar tile"
+            copy="Telefonu kilitsiz tut, ekranı yukarıdan aşağı çek, 'Panoyu kaydet' tile'ına bas. O an panonda ne varsa Snipotter'a düşer — uygulamayı açmana gerek bile yok."
+            visual={<TileVisual />}
+          />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+interface DiscoverCardProps {
+  icon: React.ReactNode
+  badge?: React.ReactNode
+  title: string
+  copy: string
+  visual: React.ReactNode
+}
+
+function DiscoverCard({ icon, badge, title, copy, visual }: DiscoverCardProps): JSX.Element {
+  return (
+    <article className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card/40 transition hover:border-primary/40 hover:bg-card/60">
+      {/* Visual demo zone — fixed-ish height keeps the grid tidy regardless
+          of how big each individual mock is. */}
+      <div className="relative flex h-48 items-center justify-center overflow-hidden border-b border-border/60 bg-gradient-to-br from-primary/5 via-card/30 to-fuchsia-500/5 p-4">
+        {visual}
+      </div>
+      <div className="flex flex-1 flex-col gap-3 p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
+              {icon}
+            </div>
+            <h3 className="font-semibold">{title}</h3>
+          </div>
+          {badge}
+        </div>
+        <p className="text-sm leading-relaxed text-muted-foreground">{copy}</p>
+      </div>
+    </article>
+  )
+}
+
+/** Stylised keyboard key. Used both inline ("⌘") and inside visuals. */
+function Kbd({ children }: { children: React.ReactNode }): JSX.Element {
+  return (
+    <kbd className="inline-flex min-w-[1.4rem] items-center justify-center rounded border border-border bg-card px-1.5 py-0.5 text-[11px] font-medium text-foreground shadow-sm shadow-black/20">
+      {children}
+    </kbd>
+  )
+}
+
+/* — Visual: Quick Paste — keyboard + popup hovering above */
+function QuickPasteVisual(): JSX.Element {
+  return (
+    <div className="relative w-full max-w-xs">
+      {/* Floating popup */}
+      <div className="overflow-hidden rounded-lg border border-primary/40 bg-card shadow-xl shadow-primary/20">
+        <div className="flex items-center gap-2 border-b border-border/60 px-2.5 py-1.5 text-[10px] text-muted-foreground">
+          <Search className="h-3 w-3" />
+          ssh
+        </div>
+        <div className="space-y-0.5 p-1.5">
+          <div className="flex items-center gap-2 rounded bg-primary/15 px-2 py-1.5 text-[11px] text-foreground ring-1 ring-primary/40">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            ssh prod-01
+          </div>
+          <div className="px-2 py-1.5 text-[11px] text-muted-foreground">
+            ssh staging
+          </div>
+          <div className="px-2 py-1.5 text-[11px] text-muted-foreground">
+            ssh -i ~/.ssh/key…
+          </div>
+        </div>
+      </div>
+      {/* Keys below */}
+      <div className="mt-3 flex justify-center gap-1">
+        <Kbd>⌘</Kbd>
+        <Kbd>⇧</Kbd>
+        <Kbd>V</Kbd>
+      </div>
+    </div>
+  )
+}
+
+/* — Visual: Quick Note — small floating editor */
+function QuickNoteVisual(): JSX.Element {
+  return (
+    <div className="w-full max-w-xs">
+      <div className="overflow-hidden rounded-lg border border-primary/40 bg-card shadow-xl shadow-primary/20">
+        <div className="flex items-center gap-2 border-b border-border/60 px-2.5 py-1.5 text-[10px] text-muted-foreground">
+          <PencilLine className="h-3 w-3 text-primary" />
+          Snipotter — Hızlı Not
+        </div>
+        <div className="space-y-1 p-2.5 text-[11px] leading-relaxed text-foreground">
+          <div>Toplantı kararları:</div>
+          <div>— iOS önce</div>
+          <div>— Android'i Şubat'a</div>
+          <div className="text-muted-foreground">|</div>
+        </div>
+        <div className="flex items-center justify-between border-t border-border/60 px-2.5 py-1 text-[9px] text-muted-foreground">
+          <span>⌘+Enter ile kaydet</span>
+          <span>42 karakter</span>
+        </div>
+      </div>
+      <div className="mt-3 flex justify-center gap-1">
+        <Kbd>⌘</Kbd>
+        <Kbd>⇧</Kbd>
+        <Kbd>N</Kbd>
+      </div>
+    </div>
+  )
+}
+
+/* — Visual: Image clipboard — screenshot tile flying between two devices */
+function ImageVisual(): JSX.Element {
+  return (
+    <div className="flex w-full items-center justify-between gap-3 px-2">
+      {/* Mac */}
+      <div className="flex flex-1 flex-col gap-1.5">
+        <div className="aspect-video rounded border border-border bg-gradient-to-br from-primary/30 via-fuchsia-500/20 to-primary/10" />
+        <div className="text-center text-[9px] text-muted-foreground">Mac · ⌘C</div>
+      </div>
+      <ArrowRight className="h-4 w-4 shrink-0 text-primary" />
+      {/* Phone */}
+      <div className="flex w-12 flex-col items-center gap-1.5">
+        <div className="rounded-[6px] border border-border bg-card p-0.5">
+          <div className="aspect-[9/16] w-9 rounded-[3px] bg-gradient-to-br from-primary/30 via-fuchsia-500/20 to-primary/10" />
+        </div>
+        <div className="text-[9px] text-muted-foreground">Telefon</div>
+      </div>
+    </div>
+  )
+}
+
+/* — Visual: AI tagging — long text → summary + tags */
+function AIVisual(): JSX.Element {
+  return (
+    <div className="w-full max-w-xs space-y-2">
+      <div className="rounded border border-border/60 bg-background/60 p-2 text-[10px] leading-snug text-muted-foreground">
+        "Sayın katılımcılar, bu hafta yapılan toplantıda öne çıkan kararlar şunlardır:
+        ürün yol haritası 6 ay…"
+      </div>
+      <div className="flex justify-center">
+        <Wand2 className="h-3.5 w-3.5 animate-pulse text-primary" />
+      </div>
+      <div className="rounded border border-primary/30 bg-primary/5 p-2 text-[10px] leading-snug text-foreground">
+        Toplantı özeti — 6 aylık yol haritası ve ürün kararları.
+      </div>
+      <div className="flex flex-wrap justify-center gap-1">
+        {['toplantı', 'karar', 'yol-haritası'].map((t) => (
+          <span
+            key={t}
+            className="rounded bg-primary/15 px-1.5 py-0.5 text-[9px] text-primary"
+          >
+            {t}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* — Visual: Share Target — phone with system share sheet */
+function ShareTargetVisual(): JSX.Element {
+  const apps = [
+    { label: 'Mesajlar', tone: 'bg-emerald-500/30' },
+    { label: 'Snipotter', tone: 'bg-primary/40 ring-1 ring-primary' },
+    { label: 'Drive', tone: 'bg-yellow-500/30' },
+    { label: 'Notlar', tone: 'bg-fuchsia-500/30' },
+  ]
+  return (
+    <div className="relative mx-auto w-full max-w-[180px]">
+      <div className="overflow-hidden rounded-[1.5rem] border border-border bg-card/80 p-1 shadow-xl">
+        <div className="overflow-hidden rounded-[1.2rem] bg-background">
+          <div className="px-3 pt-2 text-[9px] text-muted-foreground">
+            "Cuma toplantı 14:00"
+          </div>
+          <div className="border-t border-border/60 bg-card/50 px-2 py-2">
+            <div className="mb-1.5 text-center text-[9px] text-muted-foreground">
+              Paylaş…
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {apps.map((a) => (
+                <div key={a.label} className="flex flex-col items-center gap-0.5">
+                  <div className={`h-7 w-7 rounded-lg ${a.tone}`} />
+                  <div className="truncate text-[7px] text-muted-foreground">
+                    {a.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* — Visual: Quick Settings tile — phone pull-down with custom tile */
+function TileVisual(): JSX.Element {
+  return (
+    <div className="relative mx-auto w-full max-w-[180px]">
+      <div className="overflow-hidden rounded-[1.5rem] border border-border bg-card/80 p-1 shadow-xl">
+        <div className="overflow-hidden rounded-[1.2rem] bg-background">
+          <div className="space-y-1.5 p-2">
+            <div className="grid grid-cols-3 gap-1.5">
+              <TileBtn label="Wi-Fi" />
+              <TileBtn label="BT" />
+              <TileBtn label="Uçak" />
+              <TileBtn label="Pil" />
+              <TileBtn label="Snipotter" highlight />
+              <TileBtn label="Konum" />
+            </div>
+            <div className="rounded-md border border-primary/40 bg-primary/10 p-1.5 text-center text-[8px] text-primary">
+              ✓ Panoya kaydedildi
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TileBtn({ label, highlight }: { label: string; highlight?: boolean }): JSX.Element {
+  return (
+    <div
+      className={
+        'flex flex-col items-center gap-0.5 rounded-md border p-1.5 ' +
+        (highlight
+          ? 'border-primary/50 bg-primary/15 text-primary'
+          : 'border-border/60 bg-card/50 text-muted-foreground')
+      }
+    >
+      <div
+        className={
+          'h-3 w-3 rounded-full ' + (highlight ? 'bg-primary' : 'bg-muted-foreground/40')
+        }
+      />
+      <span className="text-[7px]">{label}</span>
+    </div>
+  )
+}
+
+/* ===========================================================================
    How it works — three sequential steps with numbers. Helps newcomers grasp
    the pairing flow without reading a tutorial.
    ========================================================================= */
@@ -371,6 +930,105 @@ function HowItWorks(): JSX.Element {
         </div>
       </div>
     </section>
+  )
+}
+
+/* ===========================================================================
+   Shortcuts — single-page cheatsheet. Keyboard shortcuts are the biggest
+   power-user lever in Snipotter, but they were buried in the help docs;
+   listing them on the landing converts visitors who scan for "is this
+   keyboard-driven?" before downloading.
+   ========================================================================= */
+function Shortcuts(): JSX.Element {
+  // Global shortcuts run while the desktop app is in the background; in-app
+  // shortcuts only fire when one of Snipotter's own windows is focused. We
+  // separate them visually so users don't think every shortcut requires the
+  // app foreground.
+  const global = [
+    { keys: ['⌘', '⇧', 'V'], desc: 'Hızlı yapıştır — son 50 kopyayı aç' },
+    { keys: ['⌘', '⇧', 'N'], desc: 'Hızlı not — küçük editör panelini aç' },
+  ]
+  const inApp = [
+    { keys: ['↑', '↓'], desc: 'Listede gez' },
+    { keys: ['Enter'], desc: 'Seçili öğeyi panoya yapıştır' },
+    { keys: ['⌘', '1'], to: ['9'], desc: 'Listede 1-9. öğeye doğrudan atla' },
+    { keys: ['⌘', 'F'], desc: 'Pano içinde ara' },
+    { keys: ['⌘', 'P'], desc: 'Seçili öğeyi sabitle / kaldır' },
+    { keys: ['⌫'], desc: 'Seçili öğeyi sil' },
+    { keys: ['Esc'], desc: 'Pencereyi kapat' },
+  ]
+
+  return (
+    <section id="shortcuts" className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div className="mb-10 max-w-2xl">
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary">
+          <Command className="h-3 w-3" /> Klavyeden çıkmadan
+        </div>
+        <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          Tüm kısayollar
+        </h2>
+        <p className="mt-3 text-muted-foreground">
+          Maus'a hiç dokunmadan kullanılır. Birkaç gün sonra parmakların kendi
+          gidiyor.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="rounded-2xl border border-primary/20 bg-card/40 p-6">
+          <div className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+            <Zap className="h-4 w-4" /> Genel — uygulama arka planda olsa bile
+          </div>
+          <ul className="space-y-3">
+            {global.map((s) => (
+              <ShortcutRow key={s.desc} keys={s.keys} desc={s.desc} />
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-2xl border border-border bg-card/40 p-6">
+          <div className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+            <Search className="h-4 w-4" /> Uygulama içinde
+          </div>
+          <ul className="space-y-3">
+            {inApp.map((s) => (
+              <ShortcutRow key={s.desc} keys={s.keys} to={s.to} desc={s.desc} />
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        Windows / Linux'ta <Kbd>Ctrl</Kbd> kullanılır. Kısayollar Ayarlar → Kısayollar'dan değiştirilebilir.
+      </p>
+    </section>
+  )
+}
+
+function ShortcutRow({
+  keys,
+  to,
+  desc,
+}: {
+  keys: string[]
+  to?: string[]
+  desc: string
+}): JSX.Element {
+  return (
+    <li className="flex items-center justify-between gap-4 border-b border-border/40 pb-3 last:border-0 last:pb-0">
+      <span className="text-sm text-muted-foreground">{desc}</span>
+      <span className="flex shrink-0 items-center gap-1">
+        {keys.map((k) => (
+          <Kbd key={k}>{k}</Kbd>
+        ))}
+        {to && (
+          <>
+            <span className="text-xs text-muted-foreground">…</span>
+            {to.map((k) => (
+              <Kbd key={k}>{k}</Kbd>
+            ))}
+          </>
+        )}
+      </span>
+    </li>
   )
 }
 
