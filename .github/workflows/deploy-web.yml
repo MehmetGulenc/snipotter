@@ -12,8 +12,10 @@ name: Deploy Web
 #   NETLIFY_LANDING_SITE_ID   — Site ID for the landing site (Netlify dashboard
 #                               → Site → Site configuration → Site information)
 #   NETLIFY_WEB_SITE_ID       — Site ID for the web app site
-#   NEXT_PUBLIC_SUPABASE_URL          — Supabase project URL (apps/web only)
-#   NEXT_PUBLIC_SUPABASE_ANON_KEY     — Supabase anon JWT  (apps/web only)
+#
+# Supabase credentials are reused from the existing desktop-app secrets
+# (MAIN_VITE_SUPABASE_URL / MAIN_VITE_SUPABASE_ANON_KEY) and re-exposed to
+# Next.js with NEXT_PUBLIC_ prefix at build time below — no duplicate secrets needed.
 #
 # Each app is built+deployed in its own job so a failure in one doesn't block
 # the other. Skip deploy on PRs from forks (no secrets) — preview deploys can
@@ -84,8 +86,8 @@ jobs:
       - name: Build
         working-directory: apps/web
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.MAIN_VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
       - name: Deploy to Netlify
