@@ -1,4 +1,0 @@
-# SPA fallback — react-router handles /yenilikler etc. client-side, so any
-# unknown path should serve index.html instead of returning 404. Vite copies
-# this file from public/ to dist/ during build, where Netlify reads it on deploy.
-/*    /index.html    200
