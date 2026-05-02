@@ -576,6 +576,13 @@ app.whenReady().then(async () => {
   registerHotkeys()
   updater.start()
 
+  // Re-check for updates whenever the user brings the app back to foreground
+  // (focus or activate). Throttled to once per 15 minutes inside checkOnFocus
+  // so we don't hammer GitHub. Catches new releases between the hourly periodic
+  // checks — important right after a release ships.
+  app.on('browser-window-focus', () => updater.checkOnFocus())
+  app.on('activate', () => updater.checkOnFocus())
+
   // Open external links in user's default browser
   app.on('web-contents-created', (_e, wc) => {
     wc.setWindowOpenHandler(({ url }) => {

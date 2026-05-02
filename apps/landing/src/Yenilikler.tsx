@@ -17,10 +17,22 @@ interface Release {
 
 const releases: Release[] = [
   {
-    version: '0.4.1',
+    version: '0.4.2',
     date: 'Mayıs 2026',
     badge: 'Güncel',
-    headline: 'Notlar canlı senkron + cihazlar arası pano sağlamlaştırıldı',
+    headline: 'Yeni sürümleri çok daha çabuk fark ediyorsun',
+    features: [
+      {
+        emoji: '🔔',
+        title: 'Güncelleme bildirimi artık daha hızlı',
+        desc: 'Yeni bir sürüm çıktığında Snipotter\'ı eline aldığın anda fark ediyorsun. Eskiden 6 saatte bir kontrol ediyordu, artık her saat başı + uygulamayı tekrar açtığında otomatik bakıyor.',
+      },
+    ],
+  },
+  {
+    version: '0.4.1',
+    date: 'Mayıs 2026',
+    headline: 'Notlar canlı senkron',
     features: [
       {
         emoji: '✏️',

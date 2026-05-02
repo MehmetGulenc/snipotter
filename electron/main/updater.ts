@@ -33,8 +33,9 @@ export type UpdaterStatus =
   | { kind: 'downloaded'; currentVersion: string; nextVersion: string }
   | { kind: 'error'; currentVersion: string; message: string }
 
-const SIX_HOURS_MS = 6 * 60 * 60 * 1000
+const PERIODIC_CHECK_MS = 60 * 60 * 1000 // 1 hour
 const STARTUP_DELAY_MS = 30 * 1000
+const FOCUS_CHECK_THROTTLE_MS = 15 * 60 * 1000 // re-check on window focus, max once per 15 min
 const RELEASES_PAGE = 'https://github.com/MehmetGulenc/snipotter/releases/latest'
 
 function pickMacDmgUrl(info: UpdateInfo): string | null {
@@ -145,14 +146,25 @@ export class UpdaterService extends EventEmitter {
     })
   }
 
-  /** Schedule the first check after launch + a recurring 6-hour timer. */
+  /** Schedule the first check after launch + a recurring 1-hour timer. */
   start(): void {
     if (!app.isPackaged) {
       console.info('[updater] dev mode — auto-update disabled')
       return
     }
     setTimeout(() => void this.checkSilent(), STARTUP_DELAY_MS)
-    this.periodicTimer = setInterval(() => void this.checkSilent(), SIX_HOURS_MS)
+    this.periodicTimer = setInterval(() => void this.checkSilent(), PERIODIC_CHECK_MS)
+  }
+
+  /** Throttled check fired by the main process on window focus. Catches new
+   *  releases between the hourly periodic checks without hammering GitHub. */
+  private lastCheckedAt = 0
+  checkOnFocus(): void {
+    if (!app.isPackaged) return
+    if (this.status.kind === 'downloading' || this.status.kind === 'downloaded') return
+    if (Date.now() - this.lastCheckedAt < FOCUS_CHECK_THROTTLE_MS) return
+    this.lastCheckedAt = Date.now()
+    void this.checkSilent()
   }
 
   stop(): void {
@@ -165,6 +177,7 @@ export class UpdaterService extends EventEmitter {
   /** Silent background check — won't surface errors as user-visible state. */
   private async checkSilent(): Promise<void> {
     if (!app.isPackaged) return
+    this.lastCheckedAt = Date.now()
     try {
       await autoUpdater.checkForUpdates()
     } catch (err) {
