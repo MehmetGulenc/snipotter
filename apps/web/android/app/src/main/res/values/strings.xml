@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Snipotter</string>
+    <string name="title_activity_main">Snipotter</string>
+    <string name="package_name">com.snipotter.app</string>
+    <string name="custom_url_scheme">com.snipotter.app</string>
+    <string name="share_target_label">Snipotter\'a kaydet</string>
+    <string name="tile_label">Panoyu kaydet</string>
+    <string name="tile_subtitle_idle">Snipotter</string>
+    <string name="tile_toast_saved">Snipotter\'a kaydedildi</string>
+    <string name="tile_toast_empty">Pano boş</string>
+</resources>

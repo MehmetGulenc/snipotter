@@ -7,12 +7,14 @@ import { Notes } from './Notes'
 import { Settings } from './Settings'
 import { useStore } from '@/lib/store'
 import { subscribeWorkspace, listClipboard, listNotes } from '@/lib/api'
+import { initMobileBridge } from '@/lib/mobile'
 import { cn } from '@/lib/utils'
 import { Input } from './ui/Input'
 
 export function AppShell(): JSX.Element {
   const view = useStore((s) => s.view)
   const setView = useStore((s) => s.setView)
+  const user = useStore((s) => s.user)
   const workspace = useStore((s) => s.workspace)
   const query = useStore((s) => s.query)
   const setQuery = useStore((s) => s.setQuery)
@@ -34,6 +36,14 @@ export function AppShell(): JSX.Element {
     })
     return unsub
   }, [workspace?.id])
+
+  // Native (Android) bridge — share target, resume clipboard read, tile
+  // relaunch. No-op on web. Runs once after the workspace is ready because
+  // every capture path needs a workspace_id to insert into.
+  useEffect(() => {
+    if (!workspace || !user) return
+    void initMobileBridge({ workspaceId: workspace.id, userId: user.id })
+  }, [workspace?.id, user?.id])
 
   // Reconciliation backstop for realtime. Realtime (broadcast + postgres_changes)
   // handles the fast path; this interval catches anything the socket missed
