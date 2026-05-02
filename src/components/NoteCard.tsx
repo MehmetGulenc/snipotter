@@ -80,11 +80,24 @@ export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: Edit
   const [content, setContent] = useState(note?.content ?? '')
   const dirty = useRef(false)
 
+  // Reset dirty flag when the user navigates to a different note so the
+  // remote-update sync below can re-engage cleanly.
   useEffect(() => {
-    setTitle(note?.title ?? '')
-    setContent(note?.content ?? '')
     dirty.current = false
   }, [note?.id])
+
+  // Sync editor state from props. Two cases:
+  // - note.id changed: user navigated to a different note → adopt that note's text.
+  // - note.id same but title/content changed: a remote edit arrived (e.g. the
+  //   other paired device updated this note). Only adopt the remote text if
+  //   the user isn't mid-edit (dirty) — otherwise we'd clobber unsaved local
+  //   keystrokes. After 600ms of inactivity our debounce flushes and dirty
+  //   resets, so subsequent remote updates flow through.
+  useEffect(() => {
+    if (dirty.current) return
+    setTitle(note?.title ?? '')
+    setContent(note?.content ?? '')
+  }, [note?.id, note?.title, note?.content])
 
   // Debounced auto-save
   useEffect(() => {

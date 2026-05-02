@@ -17,9 +17,21 @@ interface Release {
 
 const releases: Release[] = [
   {
-    version: '0.4.0',
+    version: '0.4.1',
     date: 'Mayıs 2026',
     badge: 'Güncel',
+    headline: 'Notlar canlı senkron + cihazlar arası pano sağlamlaştırıldı',
+    features: [
+      {
+        emoji: '✏️',
+        title: 'Not editörü canlı senkron',
+        desc: 'Aynı notu iki cihazda açtıysan, birinde yazdığın anında diğerinin editöründe de beliriyor. Eskiden sadece kenardaki listede güncelleniyordu, editör eski içeriği gösteriyordu.',
+      },
+    ],
+  },
+  {
+    version: '0.4.0',
+    date: 'Mayıs 2026',
     headline: 'Cihazlar arası pano çok daha sağlam',
     features: [
       {
