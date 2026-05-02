@@ -17,9 +17,21 @@ interface Release {
 
 const releases: Release[] = [
   {
-    version: '0.4.2',
+    version: '0.4.3',
     date: 'Mayıs 2026',
     badge: 'Güncel',
+    headline: 'Test sürümü — güncelleme bildirimini doğruluyoruz',
+    features: [
+      {
+        emoji: '🧪',
+        title: 'Hızlı güncelleme testi',
+        desc: 'Bu küçük sürüm, yeni sürüm bildiriminin uygulamada düzgün gözüktüğünü doğrulamak için. Yeni bir özellik yok.',
+      },
+    ],
+  },
+  {
+    version: '0.4.2',
+    date: 'Mayıs 2026',
     headline: 'Yeni sürümleri çok daha çabuk fark ediyorsun',
     features: [
       {
