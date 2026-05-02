@@ -17,9 +17,41 @@ interface Release {
 
 const releases: Release[] = [
   {
+    version: '0.4.0',
+    date: 'Mayıs 2026',
+    badge: 'Güncel',
+    headline: 'Cihazlar arası pano artık gerçekten çalışıyor',
+    features: [
+      {
+        emoji: '🔄',
+        title: 'Otomatik panoya yazma — bu sefer gerçekten',
+        desc: "Mac'te kopyaladığın anında Windows'a (ya da tam tersine) düşüyor. Snipotter'ı açmana gerek yok, doğrudan Cmd/Ctrl+V yap. Önceki sürümlerde sessizce başarısız oluyordu — köküne indik, tamamen düzeldi.",
+      },
+      {
+        emoji: '⚡',
+        title: 'Anlık senkron sağlamlaştırıldı',
+        desc: 'Her iki cihaz da aynı çalışma alanındaysa kopyaladığın şey 50ms içinde diğer tarafta. Ağ kopsa otomatik yeniden bağlanıyor, kaçırdıkları geri çekiyor.',
+      },
+      {
+        emoji: '🍎',
+        title: 'Mac otomatik güncelleme imzasız build\'lerde de çalışıyor',
+        desc: 'Daha önce Mac\'te güncelleme indirilirken "kod imzası geçersiz" hatası veriyordu. Apple Developer hesabı gerektirmeden çalışan kendi installer\'ımızı yazdık — artık tek tıkla güncelliyor.',
+      },
+      {
+        emoji: '🔁',
+        title: 'Sonsuz döngü hatası kapatıldı',
+        desc: "Bir cihazda kopyaladığın şeyin diğer cihaza yazılması bazen geri tepiyor, panonu kilitliyordu. macOS\\'un asenkron pano davranışına özel bir önlem ekledik — artık tek seferde yazıyor ve duruyor.",
+      },
+      {
+        emoji: '🔵',
+        title: 'Yeni güncelleme rozeti',
+        desc: 'Yeni bir sürüm hazır olduğunda kenar çubuğundaki Ayarlar simgesinin üstünde küçük mavi bir nokta beliriyor. Rahatsız etmiyor ama gözden kaçmıyor.',
+      },
+    ],
+  },
+  {
     version: '0.3.3',
     date: 'Mayıs 2025',
-    badge: 'Güncel',
     headline: 'Güncelleme bildirimi & not başlıkları',
     features: [
       {

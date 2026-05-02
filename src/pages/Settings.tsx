@@ -41,6 +41,21 @@ function Field({
 export function Settings(): JSX.Element {
   const settings = useStore((s) => s.settings)
   const aiStatus = useStore((s) => s.aiStatus)
+  // Hidden diagnostics: tap version number 7 times to reveal the panel.
+  // Keeps the IPC + tracking always-on (it's cheap), so when a user reports
+  // a sync issue we can ask them to open the panel without shipping a new build.
+  const [secretClicks, setSecretClicks] = useState(0)
+  const [diagOpen, setDiagOpen] = useState(false)
+  const onSecretClick = (): void => {
+    setSecretClicks((n) => {
+      const next = n + 1
+      if (next >= 7) {
+        setDiagOpen(true)
+        return 0
+      }
+      return next
+    })
+  }
 
   if (!settings) {
     return <div className="p-8 text-sm text-muted-foreground">Ayarlar yükleniyor…</div>
@@ -188,14 +203,14 @@ export function Settings(): JSX.Element {
         </section>
 
         <DevicesSection />
-        <UpdateSection />
-        <DiagnosticsSection />
+        <UpdateSection onSecretClick={onSecretClick} />
+        {diagOpen && <DiagnosticsSection onClose={() => setDiagOpen(false)} />}
       </div>
     </div>
   )
 }
 
-function DiagnosticsSection(): JSX.Element {
+function DiagnosticsSection({ onClose }: { onClose: () => void }): JSX.Element {
   const [state, setState] = useState<DiagnosticsState | null>(null)
   const [testResult, setTestResult] = useState<string | null>(null)
 
@@ -236,9 +251,14 @@ function DiagnosticsSection(): JSX.Element {
 
   return (
     <section className="pt-6">
-      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Tanılama
-      </h3>
+      <div className="mb-1 flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Tanılama (gizli mod)
+        </h3>
+        <button onClick={onClose} className="text-[10px] text-muted-foreground hover:text-foreground">
+          Kapat
+        </button>
+      </div>
       <div className="space-y-3 rounded-lg border border-border bg-card/30 p-4 text-xs">
         <div className="flex items-center gap-3 flex-wrap">
           <ChannelBadge label="Pano" status={state.channels.clip} />
@@ -328,7 +348,7 @@ function ChannelBadge({ label, status }: { label: string; status: DiagnosticsSta
   )
 }
 
-function UpdateSection(): JSX.Element {
+function UpdateSection({ onSecretClick }: { onSecretClick: () => void }): JSX.Element {
   const [status, setStatus] = useState<UpdaterStatus | null>(null)
   const isMac = navigator.userAgent.includes('Macintosh')
 
@@ -364,7 +384,14 @@ function UpdateSection(): JSX.Element {
           <div className="flex-1">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Sparkles className="h-4 w-4 text-primary" />
-              Snipotter <span className="font-mono text-xs text-muted-foreground">v{cur}</span>
+              Snipotter{' '}
+              <span
+                onClick={onSecretClick}
+                className="cursor-default select-none font-mono text-xs text-muted-foreground"
+                title=""
+              >
+                v{cur}
+              </span>
             </div>
             <UpdateStatusLine status={status} />
           </div>
