@@ -1,8 +1,0 @@
-[build]
-  command = "npm run build"
-  publish = "out"
-
-# Static export — no Next.js runtime plugin needed.
-# NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY are baked in
-# at build time from .env.production. Both are public-safe (anon key
-# is gated by Supabase row-level security).
