@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Block any future admin paths if added later
+Disallow: /admin/
+
+Sitemap: https://snipotter.com/sitemap.xml

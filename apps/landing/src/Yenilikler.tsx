@@ -1,4 +1,5 @@
 import { Sparkles } from 'lucide-react'
+import { Helmet } from 'react-helmet-async'
 import logoUrl from './logo.svg'
 
 interface Feature {
@@ -193,6 +194,21 @@ const APP_URL = 'https://app.snipotter.com'
 export default function Yenilikler(): JSX.Element {
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <Helmet>
+        <title>Yenilikler — Snipotter sürüm notları</title>
+        <meta
+          name="description"
+          content="Snipotter'a eklenen yeni özellikler ve giderilen hatalar. Cihazlar arası pano, AI destekli notlar ve daha fazlası — tüm sürüm geçmişi."
+        />
+        <link rel="canonical" href="https://snipotter.com/yenilikler" />
+        <meta property="og:title" content="Yenilikler — Snipotter sürüm notları" />
+        <meta
+          property="og:description"
+          content="Snipotter'a eklenen yeni özellikler ve giderilen hatalar."
+        />
+        <meta property="og:url" content="https://snipotter.com/yenilikler" />
+        <meta property="og:type" content="article" />
+      </Helmet>
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/70 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-3">

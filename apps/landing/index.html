@@ -2,27 +2,116 @@
 <html lang="tr" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0a0a0f" />
-    <title>Snipotter — Akıllı Pano & Hızlı Notlar</title>
+
+    <title>Snipotter — Akıllı Pano Yöneticisi & AI Destekli Hızlı Notlar</title>
     <meta
       name="description"
-      content="Maccy benzeri pano yöneticisi + AI destekli hızlı notlar. macOS, Windows, Linux ve mobil cihazlar arasında gerçek zamanlı senkronizasyon. E-posta gerekmez."
+      content="Snipotter; Mac, Windows ve Linux'ta kopyaladığın her şeyi anında diğer cihazına taşıyan, AI destekli pano yöneticisi ve not uygulaması. Cihazlar arası gerçek zamanlı senkron, hassas içerik koruması, hızlı not alma. E-posta gerekmez, eşleştirme kodu ile dakikalar içinde kurulur."
     />
-    <meta property="og:title" content="Snipotter — Akıllı Pano & Hızlı Notlar" />
+    <meta
+      name="keywords"
+      content="snipotter, pano yöneticisi, clipboard manager, mac pano, windows pano, ai not, hızlı not alma, cihazlar arası kopyala yapıştır, gerçek zamanlı senkron, maccy alternatif, clipboard history, ücretsiz pano uygulaması"
+    />
+    <meta name="author" content="Snipotter" />
+    <meta name="robots" content="index, follow" />
+    <meta name="googlebot" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://snipotter.com/" />
+    <link rel="alternate" hreflang="tr" href="https://snipotter.com/" />
+    <link rel="alternate" hreflang="x-default" href="https://snipotter.com/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Snipotter" />
+    <meta property="og:locale" content="tr_TR" />
+    <meta property="og:title" content="Snipotter — Akıllı Pano Yöneticisi & Hızlı Notlar" />
     <meta
       property="og:description"
-      content="Cihazlar arası anlık pano + not senkronu. Eşleştirme kodu ile dakikalar içinde kurulur."
+      content="Mac ve Windows'ta kopyaladığın her şey anında diğer cihazına düşer. AI destekli pano + hızlı not alma. Eşleştirme kodu ile 1 dakikada kurulur."
     />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://snipotter.com" />
+    <meta property="og:url" content="https://snipotter.com/" />
+    <meta property="og:image" content="https://snipotter.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Snipotter — Mac ve Windows için akıllı pano yöneticisi" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Snipotter — Akıllı Pano Yöneticisi & Hızlı Notlar" />
+    <meta
+      name="twitter:description"
+      content="Cihazlar arası anında pano senkronu + AI destekli notlar. Mac, Windows, Linux."
+    />
+    <meta name="twitter:image" content="https://snipotter.com/og.png" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- Preconnect to fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
+
+    <!-- Structured data: Software Application -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Snipotter",
+        "alternateName": "Snipotter Pano Yöneticisi",
+        "description": "Cihazlar arası gerçek zamanlı senkron yapan akıllı pano yöneticisi ve AI destekli not uygulaması.",
+        "url": "https://snipotter.com",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "macOS, Windows, Linux",
+        "downloadUrl": "https://github.com/MehmetGulenc/snipotter/releases/latest",
+        "softwareVersion": "0.4.4",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock"
+        },
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": "5",
+          "ratingCount": "1",
+          "bestRating": "5"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "Snipotter",
+          "url": "https://snipotter.com"
+        }
+      }
+    </script>
+
+    <!-- Structured data: Organization -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Snipotter",
+        "url": "https://snipotter.com",
+        "logo": "https://snipotter.com/logo.svg",
+        "sameAs": ["https://github.com/MehmetGulenc/snipotter"]
+      }
+    </script>
+
+    <!-- Structured data: WebSite (with sitelinks search) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Snipotter",
+        "url": "https://snipotter.com",
+        "inLanguage": "tr-TR"
+      }
+    </script>
   </head>
   <body class="bg-background text-foreground font-sans antialiased">
     <div id="root"></div>
