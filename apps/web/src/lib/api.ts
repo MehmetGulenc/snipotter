@@ -193,6 +193,63 @@ export async function listClipboard(workspaceId: string): Promise<ClipboardItem[
   return ((data ?? []) as ClipboardRow[]).map(clipFromRow)
 }
 
+/**
+ * Insert a clipboard item from a plain text payload (mobile share target,
+ * Quick Settings tile, "save current clipboard" button). Mirrors the desktop
+ * monitor's hash format so dedupe works across platforms.
+ */
+export async function createClipFromText(
+  workspaceId: string,
+  userId: string,
+  text: string,
+  sourceApp: string | null = null,
+): Promise<ClipboardItem | null> {
+  const trimmed = text?.trim()
+  if (!trimmed) return null
+  const hash = await sha1(`${trimmed}`)
+
+  // Skip if the same payload was just inserted from another device. The
+  // desktop monitor does the same in-memory check; we go to the DB because we
+  // don't have a local cache of recent hashes on mobile.
+  const { data: existing } = await getSupabase()
+    .from('clipboard_items')
+    .select('*')
+    .eq('workspace_id', workspaceId)
+    .eq('hash', hash)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (existing) return clipFromRow(existing as ClipboardRow)
+
+  const { data, error } = await getSupabase()
+    .from('clipboard_items')
+    .insert({
+      workspace_id: workspaceId,
+      created_by: userId,
+      content_type: 'text',
+      text: trimmed,
+      hash,
+      html: null,
+      source_app: sourceApp,
+      pinned: false,
+      ai: null,
+    })
+    .select('*')
+    .single()
+  if (error) throw error
+  const clip = clipFromRow(data as ClipboardRow)
+  broadcastClipUpsert(clip)
+  return clip
+}
+
+async function sha1(input: string): Promise<string> {
+  const buf = new TextEncoder().encode(input)
+  const digest = await crypto.subtle.digest('SHA-1', buf)
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 export async function setClipPinned(id: string, pinned: boolean): Promise<void> {
   const { data, error } = await getSupabase()
     .from('clipboard_items')

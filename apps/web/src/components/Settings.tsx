@@ -185,7 +185,11 @@ export function Settings(): JSX.Element {
       </section>
 
       <footer className="pt-8 text-center text-[10px] text-muted-foreground">
-        Snipotter Web · v0.1.0
+        {/* Keep this in sync with apps/web/package.json's `version` field on
+            every notable release. Imports from package.json work at runtime
+            but Next.js' tsc include scope makes the type sloppy, so we
+            mirror the string here intentionally. */}
+        Snipotter Web · v0.5.0
       </footer>
     </div>
   )

@@ -1,15 +1,29 @@
 {
   "name": "snipotter-web",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Snipotter web companion — view clipboard + manage notes from any device",
   "scripts": {
     "dev": "next dev -p 5174",
     "build": "next build",
     "start": "next start -p 5174",
-    "lint": "next lint"
+    "lint": "next lint",
+    "android:sync": "next build && cap sync android",
+    "android:open": "next build && cap sync android && cap open android",
+    "android:run": "next build && cap sync android && cap run android",
+    "android:bundle": "next build && cap sync android && cd android && ./gradlew bundleRelease",
+    "android:assets": "capacitor-assets generate --android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/cli": "^8.3.1",
+    "@capacitor/clipboard": "^8.0.1",
+    "@capacitor/core": "^8.3.1",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/share": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "@supabase/supabase-js": "^2.45.4",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -17,10 +31,12 @@
     "next": "^14.2.16",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "send-intent": "^7.0.0",
     "tailwind-merge": "^2.5.4",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@types/node": "^22.7.5",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",

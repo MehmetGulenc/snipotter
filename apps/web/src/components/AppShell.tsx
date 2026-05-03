@@ -1,18 +1,20 @@
 'use client'
 import { useEffect } from 'react'
-import { Clipboard as ClipboardIcon, StickyNote, Settings as SettingsIcon, Search } from 'lucide-react'
+import { Clipboard as ClipboardIcon, StickyNote, Settings as SettingsIcon, Search, ExternalLink } from 'lucide-react'
 import { Logo } from './Logo'
 import { Library } from './Library'
 import { Notes } from './Notes'
 import { Settings } from './Settings'
 import { useStore } from '@/lib/store'
 import { subscribeWorkspace, listClipboard, listNotes } from '@/lib/api'
+import { initMobileBridge } from '@/lib/mobile'
 import { cn } from '@/lib/utils'
 import { Input } from './ui/Input'
 
 export function AppShell(): JSX.Element {
   const view = useStore((s) => s.view)
   const setView = useStore((s) => s.setView)
+  const user = useStore((s) => s.user)
   const workspace = useStore((s) => s.workspace)
   const query = useStore((s) => s.query)
   const setQuery = useStore((s) => s.setQuery)
@@ -34,6 +36,14 @@ export function AppShell(): JSX.Element {
     })
     return unsub
   }, [workspace?.id])
+
+  // Native (Android) bridge — share target, resume clipboard read, tile
+  // relaunch. No-op on web. Runs once after the workspace is ready because
+  // every capture path needs a workspace_id to insert into.
+  useEffect(() => {
+    if (!workspace || !user) return
+    void initMobileBridge({ workspaceId: workspace.id, userId: user.id })
+  }, [workspace?.id, user?.id])
 
   // Reconciliation backstop for realtime. Realtime (broadcast + postgres_changes)
   // handles the fast path; this interval catches anything the socket missed
@@ -86,8 +96,17 @@ export function AppShell(): JSX.Element {
       <header
         className="flex shrink-0 items-center gap-3 border-b border-border bg-card/40 px-4 pb-2.5 pt-[calc(env(safe-area-inset-top)+0.625rem)]"
       >
-        <Logo size={24} />
-        <div className="font-semibold">Snipotter</div>
+        {/* Wordmark doubles as a "back to landing" affordance — visitors who
+            land here from snipotter.com can't otherwise navigate back. */}
+        <a
+          href="https://snipotter.com/"
+          className="flex items-center gap-2 rounded transition-opacity hover:opacity-80"
+          title="snipotter.com'a dön"
+        >
+          <Logo size={24} />
+          <span className="font-semibold">Snipotter</span>
+          <ExternalLink className="hidden h-3 w-3 text-muted-foreground sm:block" />
+        </a>
         <a
           href="https://snipotter.com/yenilikler"
           target="_blank"

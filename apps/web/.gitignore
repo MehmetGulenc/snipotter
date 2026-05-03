@@ -12,3 +12,18 @@ node_modules/
 # Misc
 .DS_Store
 *.log
+
+# Capacitor / Android — keep the generated `android/` project committed but
+# ignore everything that should be regenerated on each build / each machine.
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/capacitor-cordova-android-plugins/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/key.properties
+android/app/release/
+*.keystore
+*.jks
