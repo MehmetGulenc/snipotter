@@ -31,6 +31,8 @@ const config: Config = {
         'clip-fly': 'clip-fly 6s ease-in-out infinite',
         'popup-open': 'popup-open 6s ease-in-out infinite',
         'pulse-soft': 'pulse-soft 3s ease-in-out infinite',
+        'wave-letter': 'wave-letter 1.4s ease-in-out',
+        'otter-breathe': 'otter-breathe 4s ease-in-out infinite',
       },
       keyframes: {
         'fade-in': {
@@ -96,6 +98,20 @@ const config: Config = {
         'pulse-soft': {
           '0%, 100%': { transform: 'scale(1)', opacity: '0.7' },
           '50%': { transform: 'scale(1.05)', opacity: '1' },
+        },
+        // Wordmark stagger — each letter rises 2px and falls back, with
+        // delays applied per-letter to produce a left-to-right wave when
+        // the page first paints (and again on hover). Uses translate3d
+        // so the GPU layer is reused.
+        'wave-letter': {
+          '0%, 70%, 100%': { transform: 'translate3d(0, 0, 0)' },
+          '40%': { transform: 'translate3d(0, -3px, 0)' },
+        },
+        // The "Otter" half breathes — a slow, gentle scale that draws
+        // the eye to the brand mark without ever being distracting.
+        'otter-breathe': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.08)' },
         },
       },
     },

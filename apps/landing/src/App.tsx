@@ -76,9 +76,9 @@ function Nav(): JSX.Element {
   return (
     <header className="sticky top-0 z-30 border-b border-border/60 bg-background/70 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-        <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
+        <Link to="/" className="flex items-center gap-2">
           <LogoMark />
-          Snipotter
+          <Wordmark />
         </Link>
         <nav className="hidden items-center gap-5 text-sm text-muted-foreground lg:flex">
           <a href="#discover" className="hover:text-foreground">Keşfet</a>
@@ -118,6 +118,60 @@ function LogoMark(): JSX.Element {
   )
 }
 
+/**
+ * Animated SnipOtter wordmark. The brand name has an otter hidden inside
+ * the second half — "Snip" + "Otter" — and the page until now did
+ * nothing to surface that. We render every letter individually so we can:
+ *   1. Capitalise the "O" in Otter so the otter-portion of the name is
+ *      legible at a glance ("SnipOtter").
+ *   2. Run a staggered wave on first paint and on hover, dragging the
+ *      eye left → right across the wordmark.
+ *   3. Apply a slow continuous "breathe" to the Otter portion so the
+ *      logo stays alive without distracting from page content.
+ *
+ * Implementation note: each letter is its own <span> so the per-letter
+ * animation-delay can shift them in time. The hover wave uses the
+ * `group-hover` Tailwind variant on the parent so a single class
+ * change replays the staggered animation.
+ */
+function Wordmark({ size = 'md' }: { size?: 'sm' | 'md' }): JSX.Element {
+  const letters = 'SnipOtter'.split('')
+  const sizeClass = size === 'sm' ? 'text-base' : 'text-base'
+  return (
+    <span
+      className={
+        'group inline-flex select-none font-semibold tracking-tight ' + sizeClass
+      }
+    >
+      {letters.map((l, i) => {
+        // Letters 4..8 are "Otter". Highlight them with the primary tint
+        // and the breathing animation; the leading "Snip" stays neutral
+        // so the otter half pops without extra colour for everyone.
+        const isOtter = i >= 4
+        return (
+          <span
+            key={i}
+            className={
+              'inline-block transition-transform ' +
+              (isOtter ? 'text-foreground ' : 'text-foreground ') +
+              // First letter of "Otter" gets the breathing accent.
+              (i === 4 ? 'animate-otter-breathe text-primary ' : '') +
+              // Stagger each letter on first paint and on hover so the
+              // wordmark "waves" instead of just sitting there.
+              'group-hover:animate-wave-letter'
+            }
+            style={{
+              animationDelay: i === 4 ? undefined : `${i * 60}ms`,
+            }}
+          >
+            {l}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
 /* ===========================================================================
    Hero — main pitch + dual CTAs. The mocked-up clipboard window beside the
    copy gives visitors an instant idea of the product without screenshots.
@@ -130,17 +184,16 @@ function Hero(): JSX.Element {
           <Sparkles className="h-3 w-3" /> Ücretsiz · macOS, Windows, Linux & Web
         </div>
         <h1 className="text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
-          Kopyaladığın hiçbir şey,
+          Kopyaladığın her şey,
           <br />
           <span className="bg-gradient-to-r from-primary to-fuchsia-400 bg-clip-text text-transparent">
-            artık kaybolmayacak.
+            anında tüm cihazlarında.
           </span>
         </h1>
         <p className="mt-5 max-w-xl text-base text-muted-foreground sm:text-lg">
-          Bir adres, bir Wi-Fi şifresi, akşam unutmaman gereken iki kelime — Mac
-          veya Windows bilgisayarında kopyala, tarayıcıdan eriş, diğer makinende
-          anında belirsin. Hesap, e-posta, şifre yok. Tek bir 6 haneli kodla
-          cihazların el ele tutuşur.
+          Bir adres, bir Wi-Fi şifresi, akşam unutmaman gereken iki kelime —
+          birinde kopyala, ötekinde seni hazır bulsun. Hesap, e-posta, şifre yok.
+          Tek bir 6 haneli kodla cihazların el ele tutuşur.
         </p>
 
         <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -647,24 +700,39 @@ function SyncIndicator(): JSX.Element {
    tools Snipotter integrates around (clipboard, AI providers, Supabase, etc).
    ========================================================================= */
 function LogoStrip(): JSX.Element {
-  // Strip lists what's actually shipping today (so first-time visitors don't
-  // try to install a non-existent native phone app). Coming-soon platforms
-  // are surfaced explicitly in the dedicated <ComingSoon /> section below.
-  const items = [
-    'macOS · Windows · Linux',
-    'Tarayıcıdan da çalışır',
-    'Anlık senkron',
-    'Akıllı özet & etiketleme',
-    'Hesap & e-posta gerekmez',
+  // Strip is the first thing visitors scroll past; it doubles as the
+  // platform announcement. We list what's shipping today as plain text,
+  // and Android gets a small "Yakında" badge above it so the upcoming
+  // platform is visible from the very top of the page without claiming
+  // it's available now.
+  const items: { label: string; comingSoon?: boolean }[] = [
+    { label: 'macOS · Windows · Linux' },
+    { label: 'Android', comingSoon: true },
+    { label: 'Tarayıcıdan da çalışır' },
+    { label: 'Anlık senkron' },
+    { label: 'Akıllı özet & etiketleme' },
+    { label: 'Hesap & e-posta gerekmez' },
   ]
   return (
     <section className="border-y border-border/40 bg-card/20">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-8 gap-y-3 px-4 py-6 text-xs text-muted-foreground sm:px-6">
-        {items.map((it) => (
-          <span key={it} className="font-medium tracking-wide">
-            {it}
-          </span>
-        ))}
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-8 gap-y-5 px-4 py-7 text-xs text-muted-foreground sm:px-6">
+        {items.map((it) =>
+          it.comingSoon ? (
+            <span
+              key={it.label}
+              className="relative inline-flex items-center font-medium tracking-wide text-foreground"
+            >
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-emerald-400/40 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-emerald-300">
+                Yakında
+              </span>
+              {it.label}
+            </span>
+          ) : (
+            <span key={it.label} className="font-medium tracking-wide">
+              {it.label}
+            </span>
+          ),
+        )}
       </div>
     </section>
   )
@@ -1562,48 +1630,37 @@ function Story(): JSX.Element {
         {/* Right: copy */}
         <div>
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary">
-            <Heart className="h-3 w-3" /> İsmin hikayesi
+            <Heart className="h-3 w-3" /> Bir İsmin Hikayesi
           </div>
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Su samurlarından öğrendik:{' '}
+            Su samurlarından iki şey öğrendik:{' '}
             <span className="bg-gradient-to-r from-sky-300 to-primary bg-clip-text text-transparent">
-              değerli olanı yanında taşı, ailenle el ele uyu.
+              değerli olanı yanında taşı, bağlarını sıkı tut.
             </span>
           </h2>
-          <div className="mt-5 space-y-4 text-base leading-relaxed text-muted-foreground">
+          <div className="mt-6 space-y-4 text-base leading-relaxed text-muted-foreground">
             <p>
-              Su samurlarının iki müthiş alışkanlığı var.{' '}
-              <span className="text-foreground">
-                Birincisi — uyumadan önce ön ayaklarıyla el ele tutuşurlar.
-              </span>{' '}
-              Sırtüstü yatıp, çevrelerine deniz yosunu sararlar. Gece akıntı
-              onları farklı yönlere sürüklemesin, sabah uyanınca hâlâ yan yana
-              olduklarını bilsinler diye.
+              Sırtüstü uyurken birbirlerinin elini tutarlar — gece akıntı
+              onları aileden ayırmasın, sabah hâlâ yan yana uyansınlar diye.
+              Ön kollarının altında küçük, doğal bir cep taşırlar; en
+              sevdikleri taşı, midye kabuklarını açan o sadık aletlerini
+              bazen yıllarca orada saklarlar.
             </p>
             <p>
-              <span className="text-foreground">
-                İkincisi — küçük bir cepleri vardır.
-              </span>{' '}
-              Ön kollarının altında, derilerinde gizli bir kıvrım. Oraya en
-              sevdikleri taşı koyarlar; herhangi bir taş değil — yıllarca
-              yanlarında taşıdıkları, midye kabuklarını kıracak en sadık
-              aletleri. Aynı taş, aylar, hatta yıllar boyunca.
-            </p>
-            <p>
-              <span className="text-foreground">İsim oradan geliyor.</span>{' '}
-              <span className="font-mono text-primary">snip</span> (kesip
-              kopyalamak) +{' '}
+              İsim oradan geliyor:{' '}
+              <span className="font-mono text-primary">snip</span> (kopyalamak)
+              +{' '}
               <span className="font-mono text-primary">otter</span> (su samuru).
-              Cihazların{' '}
-              <span className="text-foreground">el ele</span>; her gün kopyaladığın
-              değerli her şey de senin{' '}
-              <span className="text-foreground">küçük cebinde</span> — saatler,
+            </p>
+            <p>
+              <span className="text-foreground">Cihazların el ele tutuşur.</span>{' '}
+              Kopyaladığın her değerli şey, senin dijital cebinde — saatler,
               günler, aylar sonra hâlâ orada.
             </p>
-            <p className="text-sm">
-              Küçük, bağımsız bir takım yapıyor. Reklam yok, izleyici yok,
-              e-posta zorunlu değil. 6 haneli kod, gerisi senin. Açık kaynak,
-              istediğin satırı incele.
+            <p className="border-l-2 border-primary/40 pl-4 italic">
+              Reklam yok. Takipçi yok. Hesap zorunluluğu yok.
+              <br />
+              Sadece senin cihazların, senin verilerin, sarsılmaz bir sadakat.
             </p>
           </div>
           <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -1927,7 +1984,9 @@ function Footer(): JSX.Element {
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-8 text-xs text-muted-foreground sm:flex-row sm:px-6">
         <div className="flex items-center gap-2">
           <LogoMark />
-          <span>© {new Date().getFullYear()} Snipotter</span>
+          <span className="inline-flex items-center gap-1">
+            © {new Date().getFullYear()} <Wordmark />
+          </span>
         </div>
         <div className="flex items-center gap-5">
           <a href={REPO_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-foreground">
