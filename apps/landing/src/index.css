@@ -8,6 +8,26 @@ body,
   height: 100%;
 }
 
+/* Stop a single rogue child from making the whole page horizontally
+   scrollable on phones (~320–360 px). Multiple bug reports came in showing
+   the header bleeding past the gradient on small Androids — caused by an
+   animated `translate` briefly extending past 100vw, plus the occasional
+   long unbroken URL inside a clip mock. We clip at the root and let long
+   strings wrap by default so callouts never push past their column. */
+html {
+  overflow-x: hidden;
+}
+body {
+  overflow-x: clip;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+@supports (overflow: clip) {
+  html {
+    overflow-x: clip;
+  }
+}
+
 /* Soft scrollbar that matches the dark theme. */
 ::-webkit-scrollbar {
   width: 10px;
