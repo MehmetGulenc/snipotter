@@ -18,6 +18,25 @@ const config: Config = {
       fontFamily: {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
       },
+      animation: {
+        'wave-letter': 'wave-letter 1.4s ease-in-out',
+        'otter-breathe': 'otter-breathe 4s ease-in-out infinite',
+      },
+      keyframes: {
+        // Per-letter wordmark wave; replays on hover via group-hover.
+        'wave-letter': {
+          '0%, 70%, 100%': { transform: 'translate3d(0, 0, 0)' },
+          '40%': { transform: 'translate3d(0, -3px, 0)' },
+        },
+        // Slow breathing on the "O" of "SnipOtter" — keeps the brand
+        // mark alive without distracting from product chrome. Mirrors
+        // the same animation in apps/landing/tailwind.config.ts so the
+        // mark behaves identically on both surfaces.
+        'otter-breathe': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.08)' },
+        },
+      },
     },
   },
   plugins: [],

@@ -189,7 +189,7 @@ export function Settings(): JSX.Element {
             every notable release. Imports from package.json work at runtime
             but Next.js' tsc include scope makes the type sloppy, so we
             mirror the string here intentionally. */}
-        Snipotter Web · v0.5.0
+        Snipotter Web · v0.5.1
       </footer>
     </div>
   )

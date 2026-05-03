@@ -96,15 +96,18 @@ export function AppShell(): JSX.Element {
       <header
         className="flex shrink-0 items-center gap-3 border-b border-border bg-card/40 px-4 pb-2.5 pt-[calc(env(safe-area-inset-top)+0.625rem)]"
       >
-        {/* Wordmark doubles as a "back to landing" affordance — visitors who
-            land here from snipotter.com can't otherwise navigate back. */}
+        {/* Wordmark doubles as a "back to landing" affordance — visitors
+            who land here from snipotter.com can't otherwise navigate back.
+            The "SnipOtter" rendering matches the marketing site: a
+            primary-tinted "O" that breathes plus a per-letter wave on
+            hover. Same animations defined in tailwind.config.ts. */}
         <a
           href="https://snipotter.com/"
-          className="flex items-center gap-2 rounded transition-opacity hover:opacity-80"
+          className="group flex items-center gap-2 rounded transition-opacity hover:opacity-90"
           title="snipotter.com'a dön"
         >
           <Logo size={24} />
-          <span className="font-semibold">Snipotter</span>
+          <Wordmark />
           <ExternalLink className="hidden h-3 w-3 text-muted-foreground sm:block" />
         </a>
         <a
@@ -167,5 +170,36 @@ function NavBtn({
       <Icon className="h-5 w-5" />
       {label}
     </button>
+  )
+}
+
+/**
+ * Animated SnipOtter wordmark — same shape as apps/landing's marketing
+ * version. Renders the brand name letter-by-letter so the "Otter" half
+ * of the name is legible (capital O, primary tint, slow breathing
+ * animation) and a per-letter wave plays on hover. Deliberately inlined
+ * here rather than shared via a library because the app and landing
+ * don't share a build pipeline.
+ */
+function Wordmark(): JSX.Element {
+  const letters = 'SnipOtter'.split('')
+  return (
+    <span className="group inline-flex select-none text-base font-semibold tracking-tight">
+      {letters.map((l, i) => (
+        <span
+          key={i}
+          className={cn(
+            'inline-block transition-transform group-hover:animate-wave-letter',
+            // The capital "O" of "Otter" carries the brand accent — slow
+            // breathing pulse + primary colour so the otter half reads
+            // immediately even at small sizes.
+            i === 4 && 'animate-otter-breathe text-primary',
+          )}
+          style={{ animationDelay: i === 4 ? undefined : `${i * 60}ms` }}
+        >
+          {l}
+        </span>
+      ))}
+    </span>
   )
 }
