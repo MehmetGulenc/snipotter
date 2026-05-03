@@ -1,6 +1,6 @@
 'use client'
 import { useEffect } from 'react'
-import { Clipboard as ClipboardIcon, StickyNote, Settings as SettingsIcon, Search } from 'lucide-react'
+import { Clipboard as ClipboardIcon, StickyNote, Settings as SettingsIcon, Search, ExternalLink } from 'lucide-react'
 import { Logo } from './Logo'
 import { Library } from './Library'
 import { Notes } from './Notes'
@@ -96,8 +96,17 @@ export function AppShell(): JSX.Element {
       <header
         className="flex shrink-0 items-center gap-3 border-b border-border bg-card/40 px-4 pb-2.5 pt-[calc(env(safe-area-inset-top)+0.625rem)]"
       >
-        <Logo size={24} />
-        <div className="font-semibold">Snipotter</div>
+        {/* Wordmark doubles as a "back to landing" affordance — visitors who
+            land here from snipotter.com can't otherwise navigate back. */}
+        <a
+          href="https://snipotter.com/"
+          className="flex items-center gap-2 rounded transition-opacity hover:opacity-80"
+          title="snipotter.com'a dön"
+        >
+          <Logo size={24} />
+          <span className="font-semibold">Snipotter</span>
+          <ExternalLink className="hidden h-3 w-3 text-muted-foreground sm:block" />
+        </a>
         <a
           href="https://snipotter.com/yenilikler"
           target="_blank"
