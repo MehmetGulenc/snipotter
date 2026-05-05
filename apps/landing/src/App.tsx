@@ -31,6 +31,10 @@ import { SmartDownloadButton } from './SmartDownloadButton'
 // URLs are centralised so we can swap them later without hunting the JSX.
 const APP_URL = 'https://app.snipotter.com'
 const REPO_URL = 'https://github.com/MehmetGulenc/snipotter'
+// Microsoft Store product page. The same product ID is also used inside
+// SmartDownloadButton.tsx; if it ever changes, search the repo for the
+// constant name to keep both in sync.
+const MS_STORE_WEB_URL = 'https://apps.microsoft.com/detail/9PPS95VQ5L6L?hl=tr-TR&gl=TR'
 
 export default function App(): JSX.Element {
   return (
@@ -218,6 +222,20 @@ function Hero(): JSX.Element {
             <LinuxIcon className="h-3.5 w-3.5" /> Linux
           </span>
         </div>
+
+        {/* Microsoft Store live badge — sits right under the platform list
+            so Windows visitors immediately see the official store option
+            without having to dig through the smart-download flow. */}
+        <a
+          href={MS_STORE_WEB_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-300 transition hover:border-sky-400/60 hover:bg-sky-500/20"
+        >
+          <span className="flex h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_hsl(142_76%_50%)]" />
+          Microsoft Store'da yayında
+          <ArrowRight className="h-3 w-3" />
+        </a>
       </div>
 
       <HeroMock />
@@ -1534,62 +1552,97 @@ function ShortcutRow({
    "coming soon" cards with the relevant store glyphs make it explicit.
    ========================================================================= */
 function ComingSoon(): JSX.Element {
-  const slots = [
-    {
-      title: 'Telefon için Snipotter',
-      sub: 'Çok yakında',
-      copy: 'Telefondan kopyaladığın bir metni masaüstüne, masaüstünden bir adresi telefonuna — düşürmek için bir kez paylaş, gerisini Snipotter halletsin. Hazırlık aşamasında.',
-      icon: <Smartphone className="h-5 w-5" />,
-      tone: 'from-emerald-500/20 to-emerald-700/10',
-    },
-    {
-      title: 'Mağazalar üzerinden kurulum',
-      sub: 'Çok yakında',
-      copy: 'Şu an .exe ve .dmg yükleyici ile geliyoruz. Önümüzdeki sürümle Microsoft Store ve Google Play üzerinden tek tıkla kurabileceksin — güncellemeler otomatik.',
-      icon: <WindowsIcon className="h-5 w-5" />,
-      tone: 'from-sky-500/20 to-sky-700/10',
-    },
-  ]
+  // Two-card section: one celebrates the Microsoft Store launch (now live),
+  // the other previews native Android (still in flight). The "Live"
+  // variant ships a "Mağazadan aç" CTA; the "Çok yakında" variant just
+  // explains what's coming. This way the same component honestly reflects
+  // both states without making visitors hunt for two separate sections.
   return (
     <section className="border-y border-border/40 bg-card/10">
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
         <div className="mb-10 max-w-2xl">
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
-            <Hourglass className="h-3 w-3" /> Çok yakında
+            <Hourglass className="h-3 w-3" /> Yeni & yakında
           </div>
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Daha bitmedi.
+            Yeni adresler, yeni cihazlar.
           </h2>
           <p className="mt-3 text-muted-foreground">
-            Snipotter şu an macOS, Windows ve Linux'ta çalışıyor — tarayıcıdan da
-            erişilir. Sırada iki güzel haber var:
+            Snipotter macOS, Windows ve Linux'ta çalışıyor; tarayıcıdan da erişilir.
+            Sırada bir yeni mağaza, bir de yeni cihaz var:
           </p>
         </div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {slots.map((s) => (
-            <div
-              key={s.title}
-              className={`relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br ${s.tone} p-6 transition hover:border-emerald-400/40`}
-            >
-              <div className="flex items-start gap-4">
-                <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-card/80 text-emerald-300 ring-1 ring-emerald-400/30">
-                  {s.icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-lg font-semibold">{s.title}</h3>
-                  <div className="text-xs text-emerald-300/80">{s.sub}</div>
-                  <p className="mt-3 text-sm text-muted-foreground">{s.copy}</p>
-                </div>
+          {/* LIVE — Microsoft Store */}
+          <a
+            href={MS_STORE_WEB_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="group relative overflow-hidden rounded-2xl border border-sky-400/30 bg-gradient-to-br from-sky-500/20 to-sky-700/10 p-6 transition hover:border-sky-400/60 hover:shadow-lg hover:shadow-sky-500/20"
+          >
+            <div className="flex items-start gap-4">
+              <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-card/80 text-sky-300 ring-1 ring-sky-400/30">
+                <WindowsIcon className="h-5 w-5" />
               </div>
-              <div
-                aria-hidden
-                className="pointer-events-none absolute -bottom-10 -right-10 h-40 w-40 rounded-full bg-emerald-400/10 blur-3xl"
-              />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-semibold">Microsoft Store</h3>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    Şimdi canlı
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-sky-300/80">
+                  Microsoft Store onaylı, otomatik güncelleme dahil
+                </div>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Microsoft tarafından imzalı, SmartScreen uyarısı yok. Tek
+                  tıkla kur, güncellemelerini Store yönetir.
+                </p>
+                <span className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-sky-300 transition group-hover:gap-2">
+                  Mağazadan aç
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </span>
+              </div>
             </div>
-          ))}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -bottom-10 -right-10 h-40 w-40 rounded-full bg-sky-400/15 blur-3xl"
+            />
+          </a>
+
+          {/* COMING SOON — Android */}
+          <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-emerald-500/15 to-emerald-700/5 p-6 transition hover:border-emerald-400/40">
+            <div className="flex items-start gap-4">
+              <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-card/80 text-emerald-300 ring-1 ring-emerald-400/30">
+                <Smartphone className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-semibold">Android için Snipotter</h3>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                    <Hourglass className="h-2.5 w-2.5" />
+                    Çok yakında
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-emerald-300/80">
+                  Native uygulama hazırlık aşamasında
+                </div>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Telefondan herhangi bir uygulamadaki metni paylaş, hızlı ayarlar
+                  düğmesiyle anında pano kaydet, masaüstündeki kütüphanenle aynı
+                  sırada gör.
+                </p>
+              </div>
+            </div>
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -bottom-10 -right-10 h-40 w-40 rounded-full bg-emerald-400/10 blur-3xl"
+            />
+          </div>
         </div>
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Çıkar çıkmaz haberin olsun mu?{' '}
+          Android sürümü çıkar çıkmaz haberin olsun mu?{' '}
           <Link to="/yenilikler" className="text-primary hover:underline">
             Yenilikler sayfasını
           </Link>{' '}
