@@ -21,6 +21,8 @@ import { App } from '@capacitor/app'
 import { Clipboard } from '@capacitor/clipboard'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import { SplashScreen } from '@capacitor/splash-screen'
+import { Preferences } from '@capacitor/preferences'
+import { Device } from '@capacitor/device'
 import { SendIntent } from 'send-intent'
 import { createClipFromText } from './api'
 
@@ -41,6 +43,13 @@ let initialized = false
 export async function initMobileBridge({ workspaceId, userId }: InitArgs): Promise<void> {
   if (!isNative() || initialized) return
   initialized = true
+
+  // Anonymous launch heartbeat — admin.snipotter.com counts active
+  // installs and DAU/WAU/MAU. Fires once per app session, fully
+  // anonymous (random device UUID stored via Capacitor Preferences,
+  // OS+arch + version + locale; no email/IP/account). Failures are
+  // swallowed silently so a network blip can never delay the splash.
+  void sendLaunchHeartbeat()
 
   // Cosmetic: keep the status bar in sync with our dark UI. Splash hide is a
   // safety net — capacitor.config sets launchAutoHide=true but on cold start
@@ -130,4 +139,62 @@ function sourceFromIntent(mime: string | undefined): string {
   if (mime.startsWith('text/')) return 'android-share-text'
   if (mime.startsWith('image/')) return 'android-share-image'
   return 'android-share'
+}
+
+/* ---------------------------------------------------------------------------
+   Anonymous launch heartbeat. Mirrors what the Electron app does in
+   electron/main/telemetry.ts so admin.snipotter.com can count Snipotter
+   Android installs alongside desktop installs in DAU/WAU/MAU.
+
+   Privacy:
+     • deviceId is a random UUID generated client-side and persisted via
+       Capacitor Preferences (encrypted on Android via Keystore-backed
+       SharedPreferences). No email, no IP storage, no Supabase user_id.
+     • Capacitor's Device API gives us OS + version which is the only
+       extra info we attach.
+     • Failures are silenced — the heartbeat is a nice-to-have, never a
+       blocker for the actual app.
+   ------------------------------------------------------------------------ */
+const HEARTBEAT_URL =
+  process.env.NEXT_PUBLIC_HEARTBEAT_URL ?? 'https://api.snipotter.com/heartbeat'
+const DEVICE_ID_KEY = 'snipotter.deviceId'
+
+async function ensureDeviceId(): Promise<string> {
+  const { value } = await Preferences.get({ key: DEVICE_ID_KEY })
+  if (value) return value
+  // crypto.randomUUID is available in WebView on Android 8+
+  const id =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  await Preferences.set({ key: DEVICE_ID_KEY, value: id })
+  return id
+}
+
+async function sendLaunchHeartbeat(): Promise<void> {
+  try {
+    const [deviceId, deviceInfo, appInfo] = await Promise.all([
+      ensureDeviceId(),
+      Device.getInfo(),
+      App.getInfo().catch(() => null),
+    ])
+    const platform = `${deviceInfo.operatingSystem}-${deviceInfo.osVersion}`
+    const controller = new AbortController()
+    const t = setTimeout(() => controller.abort(), 5000)
+    await fetch(HEARTBEAT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        appSlug: 'snipotter-android',
+        deviceId,
+        platform,
+        version: appInfo?.version ?? null,
+        language: deviceInfo.operatingSystem,
+      }),
+      signal: controller.signal,
+    })
+    clearTimeout(t)
+  } catch {
+    /* offline / cf worker down / aborted — never surface to the user */
+  }
 }

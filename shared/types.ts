@@ -116,6 +116,14 @@ export interface AppSettings {
    * user's current local clipboard whenever a remote copy arrives.
    */
   autoMirrorClipboard: boolean
+  /**
+   * When enabled, the app pings api.snipotter.com/heartbeat once per
+   * launch with a fully anonymous payload (random device UUID stored
+   * locally, OS+arch, app version). The data is used only to count
+   * active installs and DAU/WAU/MAU on admin.snipotter.com — no email,
+   * IP, account, or content. Default ON; toggle off to opt out fully.
+   */
+  telemetryEnabled: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -130,6 +138,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   launchAtLogin: false,
   redactSensitive: true,
   autoMirrorClipboard: false,
+  telemetryEnabled: true,
 }
 
 export interface AuthState {

@@ -57,6 +57,14 @@ function sanitize(s: AppSettings): AppSettings {
   if (typeof out.autoMirrorClipboard !== 'boolean') {
     out.autoMirrorClipboard = DEFAULT_SETTINGS.autoMirrorClipboard
   }
+  // Migration for v0.7: anonymous heartbeat telemetry. Defaults to ON
+  // because the payload is genuinely anonymous (random device UUID,
+  // OS+arch, app version — no PII, no IP storage). Users who want to
+  // opt out flip this in Settings; the launch ping is skipped on next
+  // start.
+  if (typeof out.telemetryEnabled !== 'boolean') {
+    out.telemetryEnabled = DEFAULT_SETTINGS.telemetryEnabled
+  }
   return out
 }
 

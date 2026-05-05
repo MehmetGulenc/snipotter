@@ -358,8 +358,52 @@ async function msAccessToken(env: Env): Promise<string | null> {
   return data.access_token ?? null
 }
 
-/* ---------- Google Play (skeleton) ---------- */
+/* ---------- Google Play ---------- */
 
+interface PlayServiceAccount {
+  client_email: string
+  private_key: string
+  token_uri: string
+}
+
+interface PlayReviewsResponse {
+  reviews?: Array<{
+    reviewId: string
+    authorName?: string
+    comments?: Array<{
+      userComment?: {
+        text?: string
+        starRating?: number
+        reviewerLanguage?: string
+        lastModified?: { seconds: string }
+      }
+    }>
+  }>
+}
+
+interface PlayMetricResponse {
+  rows?: Array<{
+    aggregationPeriod: { startTime: string; endTime: string }
+    metrics: Record<string, { decimalValue?: { value?: string }; integerValue?: string }>
+  }>
+}
+
+/**
+ * Google Play Developer Reporting API + Reviews API.
+ *
+ * Auth: service account JSON → self-signed JWT → OAuth 2.0 access token.
+ * No external library needed; we build the JWT manually with the Web
+ * Crypto API (Cloudflare Workers expose `crypto.subtle`).
+ *
+ * Endpoints used:
+ *   • playdeveloperreporting.googleapis.com/v1beta1/apps/{pkg}/...
+ *       cumulativeUserMetricSet:query        → active devices, ratings
+ *       installsMetricSet:query              → daily install delta
+ *   • androidpublisher.googleapis.com/androidpublisher/v3/applications/{pkg}/reviews
+ *       Last 7 days of reviews (Play API window).
+ *
+ * Skips silently when the secret or play_package_name is missing.
+ */
 async function pullPlay(env: Env, app: AppRow): Promise<SourceResult> {
   if (!env.PLAY_SERVICE_ACCOUNT_JSON_B64) {
     return { source: 'play', appSlug: app.slug, ok: false, detail: 'PLAY_SERVICE_ACCOUNT_JSON_B64 not set' }
@@ -368,23 +412,225 @@ async function pullPlay(env: Env, app: AppRow): Promise<SourceResult> {
     return { source: 'play', appSlug: app.slug, ok: false, detail: 'no play_package_name' }
   }
 
-  // 1. Decode service account JSON, mint a JWT, exchange for OAuth token
-  // 2. Hit playdeveloperreporting.googleapis.com/v1beta1/apps/{pkg}/...
-  //    metrics: cumulative-active-devices, daily-installs, ratings
-  // 3. Reviews via androidpublisher.googleapis.com/.../reviews
-  // Deferred to PR-3 (Android publish lock-step).
+  let sa: PlayServiceAccount
+  try {
+    const json = atob(env.PLAY_SERVICE_ACCOUNT_JSON_B64)
+    sa = JSON.parse(json) as PlayServiceAccount
+  } catch {
+    return { source: 'play', appSlug: app.slug, ok: false, detail: 'service account JSON parse failed' }
+  }
+
+  const token = await mintGoogleAccessToken(sa, [
+    'https://www.googleapis.com/auth/playdeveloperreporting',
+    'https://www.googleapis.com/auth/androidpublisher',
+  ])
+  if (!token) {
+    return { source: 'play', appSlug: app.slug, ok: false, detail: 'token mint failed' }
+  }
+
+  const today = isoDaysAgo(0)
+  const yesterdayDate = isoDaysAgo(1)
+  const pkg = encodeURIComponent(app.play_package_name)
+  const headers = { Authorization: `Bearer ${token}` }
+
+  // — Reviews (last 7 days; Play API doesn't expose older)
+  let reviewCount = 0
+  try {
+    const rRes = await fetch(
+      `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${pkg}/reviews?maxResults=100`,
+      { headers },
+    )
+    if (rRes.ok) {
+      const data = (await rRes.json()) as PlayReviewsResponse
+      for (const review of data.reviews ?? []) {
+        const last = review.comments?.[review.comments.length - 1]?.userComment
+        if (!last) continue
+        const ts = last.lastModified?.seconds
+          ? new Date(Number(last.lastModified.seconds) * 1000).toISOString()
+          : new Date().toISOString()
+        await upsertReview(env, {
+          app_id: app.id,
+          source: 'play',
+          external_id: review.reviewId,
+          author: review.authorName ?? null,
+          rating: last.starRating ?? null,
+          body: last.text ?? null,
+          language: last.reviewerLanguage ?? null,
+          created_at: ts,
+          raw: review as unknown as Record<string, unknown>,
+        })
+        reviewCount++
+      }
+    }
+  } catch {
+    /* swallow — reviews failure shouldn't block install metrics */
+  }
+
+  // — Cumulative active devices + rating averages
+  let activeDevices: number | null = null
+  let ratingAvg: number | null = null
+  let ratingCount: number | null = null
+  try {
+    const mRes = await fetch(
+      `https://playdeveloperreporting.googleapis.com/v1beta1/apps/${pkg}/cumulativeUserMetricSet:query`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dimensions: [],
+          metrics: ['activeDevices', 'rating', 'ratingsCount'],
+          timelineSpec: {
+            aggregationPeriod: 'DAILY',
+            startTime: { year: Number(yesterdayDate.slice(0, 4)), month: Number(yesterdayDate.slice(5, 7)), day: Number(yesterdayDate.slice(8, 10)) },
+            endTime: { year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)), day: Number(today.slice(8, 10)) },
+          },
+        }),
+      },
+    )
+    if (mRes.ok) {
+      const data = (await mRes.json()) as PlayMetricResponse
+      const latest = data.rows?.[data.rows.length - 1]
+      if (latest) {
+        activeDevices = parseMetric(latest.metrics?.activeDevices)
+        ratingAvg = parseMetric(latest.metrics?.rating)
+        ratingCount = parseMetric(latest.metrics?.ratingsCount)
+      }
+    }
+  } catch {
+    /* metric pull failed — leave nulls, don't blow up */
+  }
+
+  // — Today's install delta
+  let installsToday: number | null = null
+  try {
+    const iRes = await fetch(
+      `https://playdeveloperreporting.googleapis.com/v1beta1/apps/${pkg}/installsMetricSet:query`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dimensions: [],
+          metrics: ['installsCount'],
+          timelineSpec: {
+            aggregationPeriod: 'DAILY',
+            startTime: { year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)), day: Number(today.slice(8, 10)) },
+            endTime: { year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)), day: Number(today.slice(8, 10)) },
+          },
+        }),
+      },
+    )
+    if (iRes.ok) {
+      const data = (await iRes.json()) as PlayMetricResponse
+      installsToday = parseMetric(data.rows?.[0]?.metrics?.installsCount)
+    }
+  } catch {
+    /* installs pull failed */
+  }
+
+  // installs_total: yesterday's snapshot + today's delta. If neither
+  // exists yet (first run), just store today's delta as the total.
+  const prev = await sb<{ installs_total: number | null }[]>(
+    env,
+    `metric_snapshots?app_id=eq.${app.id}&source=eq.play&date=eq.${yesterdayDate}&select=installs_total`,
+  )
+  const prevTotal = prev && prev.length > 0 ? (prev[0].installs_total ?? 0) : 0
+  const installsTotal = installsToday != null ? prevTotal + installsToday : prevTotal
+
   await upsertSnapshot(env, {
     app_id: app.id,
     source: 'play',
-    date: isoDaysAgo(0),
-    installs_total: null,
-    installs_delta: null,
-    active_users: null,
-    rating_avg: null,
-    rating_count: null,
-    meta: { stub: 'PR-3 will wire Play Developer Reporting API here' },
+    date: today,
+    installs_total: installsTotal,
+    installs_delta: installsToday,
+    active_users: activeDevices,
+    rating_avg: ratingAvg,
+    rating_count: ratingCount,
+    meta: { newReviewsToday: reviewCount },
   })
-  return { source: 'play', appSlug: app.slug, ok: false, detail: 'PR-3 stub' }
+
+  return {
+    source: 'play',
+    appSlug: app.slug,
+    ok: true,
+    installs: installsTotal,
+    detail: `+${installsToday ?? 0} today, ${reviewCount} reviews scanned`,
+  }
+}
+
+function parseMetric(metric: { decimalValue?: { value?: string }; integerValue?: string } | undefined): number | null {
+  if (!metric) return null
+  if (metric.integerValue) return Number(metric.integerValue)
+  if (metric.decimalValue?.value) return Number(metric.decimalValue.value)
+  return null
+}
+
+/** Build a Google OAuth 2.0 access token from a service-account JSON.
+ *  Flow:
+ *    1. Build JWT header + claim set (1h expiry).
+ *    2. Sign with the SA's RSA private key via Web Crypto API.
+ *    3. POST to token_uri with assertion → access token.
+ *  Notes:
+ *    • Cloudflare Workers don't have node:crypto; we use crypto.subtle.
+ *    • PKCS#8 PEM in the SA JSON requires base64 → ArrayBuffer transform. */
+async function mintGoogleAccessToken(sa: PlayServiceAccount, scopes: string[]): Promise<string | null> {
+  const now = Math.floor(Date.now() / 1000)
+  const header = btoaUrl(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+  const claim = btoaUrl(
+    JSON.stringify({
+      iss: sa.client_email,
+      scope: scopes.join(' '),
+      aud: sa.token_uri,
+      exp: now + 3600,
+      iat: now,
+    }),
+  )
+  const toSign = `${header}.${claim}`
+
+  const keyBuffer = pemToArrayBuffer(sa.private_key)
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    keyBuffer,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(toSign))
+  const assertion = `${toSign}.${arrayBufferToB64Url(sig)}`
+
+  const res = await fetch(sa.token_uri, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }),
+  })
+  if (!res.ok) return null
+  const data = (await res.json()) as { access_token?: string }
+  return data.access_token ?? null
+}
+
+function btoaUrl(s: string): string {
+  return btoa(s).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
+}
+
+function arrayBufferToB64Url(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoaUrl(bin)
+}
+
+function pemToArrayBuffer(pem: string): ArrayBuffer {
+  const b64 = pem
+    .replace('-----BEGIN PRIVATE KEY-----', '')
+    .replace('-----END PRIVATE KEY-----', '')
+    .replace(/[\r\n\s]/g, '')
+  const bin = atob(b64)
+  const buf = new ArrayBuffer(bin.length)
+  const view = new Uint8Array(buf)
+  for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i)
+  return buf
 }
 
 /* ---------- Cloudflare Workers Analytics ---------- */

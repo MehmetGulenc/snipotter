@@ -19,6 +19,7 @@ import {
 import { createTray, refreshMenu } from './tray'
 import { registerHotkeys, unregisterAll, setRecordingPaused, validateAccelerator } from './hotkeys'
 import { UpdaterService } from './updater'
+import { sendLaunchHeartbeat } from './telemetry'
 import { hostname, userInfo } from 'node:os'
 import {
   IPC,
@@ -579,6 +580,13 @@ app.whenReady().then(async () => {
   createTray(monitor)
   registerHotkeys()
   updater.start()
+
+  // Anonymous launch heartbeat → admin.snipotter.com sees us as one
+  // active install in DAU/WAU/MAU. Settings.telemetryEnabled gates the
+  // whole call, default ON, payload is genuinely anonymous (random
+  // device UUID, OS+arch, version, locale). Fire-and-forget — failures
+  // never block startup.
+  void sendLaunchHeartbeat()
 
   // Re-check for updates whenever the user brings the app back to foreground
   // (focus or activate). Throttled to once per 15 minutes inside checkOnFocus

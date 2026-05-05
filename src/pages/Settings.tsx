@@ -110,6 +110,17 @@ export function Settings(): JSX.Element {
               className="h-4 w-4 accent-primary"
             />
           </Field>
+          <Field
+            label="Anonim kullanım istatistiği"
+            description="Snipotter'ın bugün kaç cihazda kullanıldığını saymama yardımcı ol. Sadece anonim cihaz kimliği + işletim sistemi + sürüm gönderilir; e-posta, IP, hesap veya pano içeriği yok. İstediğin zaman kapatabilirsin."
+          >
+            <input
+              type="checkbox"
+              checked={settings.telemetryEnabled}
+              onChange={(e) => update({ telemetryEnabled: e.target.checked })}
+              className="h-4 w-4 accent-primary"
+            />
+          </Field>
         </section>
 
         <section className="pt-6">
