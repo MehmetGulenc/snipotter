@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "snipotter-cron",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+
+  // Cron triggers — every night at 03:00 UTC (06:00 TRT). Cloudflare
+  // routes the same handler to scheduled() with the matched cron string.
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  },
+
+  // We also expose a manual /run?source=github trigger over HTTP for
+  // ad-hoc backfills and post-deploy smoke tests. Protected by
+  // CRON_TRIGGER_SECRET (not committed).
+  "vars": {},
+
+  // Required secrets (set via `wrangler secret put`):
+  //   SUPABASE_URL                 https://<project>.supabase.co
+  //   SUPABASE_SERVICE_KEY         service_role JWT
+  //   CRON_TRIGGER_SECRET          random string for /run auth
+  //
+  // Optional (per-source — pulls skip silently if missing):
+  //   GITHUB_TOKEN                 lifts rate limit 60→5000/h, optional
+  //   MS_TENANT_ID                 Azure AD tenant
+  //   MS_CLIENT_ID                 Entra ID app registration
+  //   MS_CLIENT_SECRET             client secret
+  //   PLAY_SERVICE_ACCOUNT_JSON_B64 base64 JSON service account key
+  //   CLOUDFLARE_ACCOUNT_ID        for analytics API
+  //   CLOUDFLARE_API_TOKEN         for analytics API
+}

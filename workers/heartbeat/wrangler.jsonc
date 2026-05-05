@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "snipotter-heartbeat",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+
+  // Bind the route to api.snipotter.com/heartbeat. Configure the Custom
+  // Domain after first deploy in the Cloudflare dashboard. Until then
+  // the worker is reachable at snipotter-heartbeat.<account>.workers.dev.
+
+  // Vars / secrets — populate via `wrangler secret put` after deploy.
+  // We deliberately keep the Supabase service-role key out of the repo
+  // and set it via the Cloudflare dashboard or:
+  //   wrangler secret put SUPABASE_SERVICE_KEY
+  //
+  // Required:
+  //   SUPABASE_URL              https://<project>.supabase.co
+  //   SUPABASE_SERVICE_KEY      service_role JWT (NEVER commit)
+  "vars": {
+    "ALLOWED_APP_SLUGS": "snipotter-desktop,snipotter-android"
+  }
+}

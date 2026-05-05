@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+  background: hsl(240 10% 4%);
+  color: hsl(0 0% 98%);
+}
+
+/* Same overflow guard as the marketing site. */
+html {
+  overflow-x: hidden;
+}
+body {
+  overflow-x: clip;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+@supports (overflow: clip) {
+  html {
+    overflow-x: clip;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(240 6% 18%);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(240 6% 25%);
+}
+::selection {
+  background: hsl(252 83% 65% / 0.35);
+  color: hsl(0 0% 98%);
+}

@@ -1,0 +1,32 @@
+{
+  "name": "snipotter-admin",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Snipotter admin dashboard — single pane of glass across all platforms (Microsoft Store, Google Play, GitHub Releases, Cloudflare, Supabase, in-app heartbeats).",
+  "scripts": {
+    "dev": "next dev -p 5180",
+    "build": "next build",
+    "start": "next start -p 5180",
+    "lint": "next lint",
+    "deploy": "next build && wrangler deploy"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.453.0",
+    "next": "^14.2.16",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.3"
+  }
+}
