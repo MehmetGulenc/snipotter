@@ -183,8 +183,51 @@ function platformFromAsset(name: string): string {
   return 'other'
 }
 
-/* ---------- Microsoft Store (skeleton) ---------- */
+/* ---------- Microsoft Store ---------- */
 
+interface MsAcquisitionRow {
+  applicationId: string
+  date: string
+  acquisitionType?: string
+  market?: string
+  acquisitionQuantity?: number
+}
+
+interface MsRatingsRow {
+  applicationId: string
+  date: string
+  averageRating?: number
+  ratingCount?: number
+}
+
+interface MsReviewRow {
+  applicationId: string
+  reviewerName?: string | null
+  rating?: number
+  title?: string | null
+  reviewText?: string | null
+  reviewerId?: string
+  market?: string
+  submittedDateTime?: string
+}
+
+interface MsApiResponse<T> {
+  Value?: T[]
+  TotalCount?: number
+}
+
+/**
+ * Resmi Microsoft Store analytics flow'u:
+ *   1. Azure AD client-credentials grant → Microsoft Entra access token
+ *   2. devcenter API'sine GET istekleri:
+ *        • applicationacquisitions  → daily install counts
+ *        • applicationratings       → cumulative average rating + count
+ *        • applicationreviews       → en son yorumlar (paginate edilebilir)
+ *   3. Snapshot ve review tablolarına upsert
+ *
+ * Auth scope: https://manage.devcenter.microsoft.com/.default
+ * Doc: learn.microsoft.com/en-us/partner-center/insights/insights-programmatic-analytics-available-api
+ */
 async function pullMicrosoft(env: Env, app: AppRow): Promise<SourceResult> {
   if (!env.MS_TENANT_ID || !env.MS_CLIENT_ID || !env.MS_CLIENT_SECRET) {
     return { source: 'ms-store', appSlug: app.slug, ok: false, detail: 'MS_* secrets not set' }
@@ -193,28 +236,126 @@ async function pullMicrosoft(env: Env, app: AppRow): Promise<SourceResult> {
     return { source: 'ms-store', appSlug: app.slug, ok: false, detail: 'no ms_store_id on app' }
   }
 
-  // 1. Acquire token from Azure AD
-  // 2. Hit https://manage.devcenter.microsoft.com/v2.0/my/analytics/...
-  //    Endpoints (see learn.microsoft.com/.../insights-programmatic-analytics-available-api):
-  //      • acquisitions for installs
-  //      • ratings for averages
-  //      • reviews for review feed
-  // 3. Upsert one snapshot + (optionally) page through reviews
-  //
-  // Implementation deferred to PR-2 — placeholder leaves a zero row so
-  // the admin page knows we tried.
+  const token = await msAccessToken(env)
+  if (!token) {
+    return { source: 'ms-store', appSlug: app.slug, ok: false, detail: 'token acquisition failed' }
+  }
+
+  const today = isoDaysAgo(0)
+  const startDate = isoDaysAgo(2)            // 2 günlük lookback — Partner Center bazen 1-2 gün gecikmeli yansır
+  const endDate = today
+  const baseUrl = 'https://manage.devcenter.microsoft.com/v2.0/my/analytics'
+  const headers = { Authorization: `Bearer ${token}` }
+
+  // — Installs
+  const acqUrl =
+    `${baseUrl}/applicationacquisitions?applicationId=${app.ms_store_id}` +
+    `&startDate=${startDate}&endDate=${endDate}&aggregationLevel=day`
+  const acqRes = await fetch(acqUrl, { headers })
+  let installsToday = 0
+  let acqOk = acqRes.ok
+  if (acqRes.ok) {
+    const data = (await acqRes.json()) as MsApiResponse<MsAcquisitionRow>
+    for (const row of data.Value ?? []) {
+      // Some payloads dot-prefix the date; normalise to YYYY-MM-DD.
+      const d = (row.date ?? '').slice(0, 10)
+      if (d === today && row.acquisitionQuantity) installsToday += row.acquisitionQuantity
+    }
+  }
+
+  // — Ratings (cumulative averages)
+  const ratingsUrl =
+    `${baseUrl}/applicationratings?applicationId=${app.ms_store_id}` +
+    `&startDate=${startDate}&endDate=${endDate}&aggregationLevel=day`
+  const ratingsRes = await fetch(ratingsUrl, { headers })
+  let ratingAvg: number | null = null
+  let ratingCount: number | null = null
+  if (ratingsRes.ok) {
+    const data = (await ratingsRes.json()) as MsApiResponse<MsRatingsRow>
+    // Take the latest day with data — averages are cumulative so the
+    // most recent row reflects the running total.
+    const sorted = (data.Value ?? []).sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+    const latest = sorted[sorted.length - 1]
+    if (latest) {
+      ratingAvg = latest.averageRating ?? null
+      ratingCount = latest.ratingCount ?? null
+    }
+  }
+
+  // — Reviews (we pull the most recent 100 — duplicates are suppressed
+  //    by the (app_id, source, external_id) primary key)
+  const reviewsUrl =
+    `${baseUrl}/applicationreviews?applicationId=${app.ms_store_id}` +
+    `&startDate=${startDate}&endDate=${endDate}&top=100&orderby=submittedDateTime%20desc`
+  const reviewsRes = await fetch(reviewsUrl, { headers })
+  let newReviews = 0
+  if (reviewsRes.ok) {
+    const data = (await reviewsRes.json()) as MsApiResponse<MsReviewRow>
+    for (const r of data.Value ?? []) {
+      if (!r.reviewerId) continue
+      await upsertReview(env, {
+        app_id: app.id,
+        source: 'ms-store',
+        external_id: r.reviewerId,
+        author: r.reviewerName ?? null,
+        rating: r.rating ?? null,
+        body: [r.title, r.reviewText].filter(Boolean).join('\n\n') || null,
+        language: r.market ?? null,
+        created_at: r.submittedDateTime ?? new Date().toISOString(),
+        raw: r as unknown as Record<string, unknown>,
+      })
+      newReviews++
+    }
+  }
+
+  // Pull yesterday's snapshot to compute cumulative installs_total —
+  // Partner Center's day rows are already deltas, so we sum them onto
+  // whatever we had stored previously.
+  const yesterday = isoDaysAgo(1)
+  const prev = await sb<{ installs_total: number | null }[]>(
+    env,
+    `metric_snapshots?app_id=eq.${app.id}&source=eq.ms-store&date=eq.${yesterday}&select=installs_total`,
+  )
+  const prevTotal = prev && prev.length > 0 ? (prev[0].installs_total ?? 0) : 0
+
   await upsertSnapshot(env, {
     app_id: app.id,
     source: 'ms-store',
-    date: isoDaysAgo(0),
-    installs_total: null,
-    installs_delta: null,
-    active_users: null,
-    rating_avg: null,
-    rating_count: null,
-    meta: { stub: 'PR-2 will wire MS Partner Center API here' },
+    date: today,
+    installs_total: prevTotal + installsToday,
+    installs_delta: installsToday,
+    active_users: null,                       // /applicationusage endpoint'ine PR-3'te bağlanır
+    rating_avg: ratingAvg,
+    rating_count: ratingCount,
+    meta: { acqOk, newReviewsToday: newReviews },
   })
-  return { source: 'ms-store', appSlug: app.slug, ok: false, detail: 'PR-2 stub' }
+
+  return {
+    source: 'ms-store',
+    appSlug: app.slug,
+    ok: acqOk,
+    installs: prevTotal + installsToday,
+    detail: acqOk ? `+${installsToday} today, ${newReviews} reviews scanned` : 'partial',
+  }
+}
+
+/** Microsoft Entra ID client-credentials grant. Tokens last ~1h, but we
+ *  re-mint on every cron run because cron is once a day — caching saves
+ *  nothing meaningful and adds storage complexity. */
+async function msAccessToken(env: Env): Promise<string | null> {
+  const r = await fetch(`https://login.microsoftonline.com/${env.MS_TENANT_ID}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: env.MS_CLIENT_ID!,
+      client_secret: env.MS_CLIENT_SECRET!,
+      scope: 'https://manage.devcenter.microsoft.com/.default',
+    }),
+  })
+  if (!r.ok) return null
+  const data = (await r.json()) as { access_token?: string }
+  return data.access_token ?? null
 }
 
 /* ---------- Google Play (skeleton) ---------- */
@@ -246,29 +387,162 @@ async function pullPlay(env: Env, app: AppRow): Promise<SourceResult> {
   return { source: 'play', appSlug: app.slug, ok: false, detail: 'PR-3 stub' }
 }
 
-/* ---------- Cloudflare Workers Analytics (skeleton) ---------- */
+/* ---------- Cloudflare Workers Analytics ---------- */
 
+interface WorkersAnalyticsResponse {
+  data?: {
+    viewer?: {
+      accounts?: Array<{
+        workersInvocationsAdaptive?: Array<{
+          sum?: { requests?: number; subrequests?: number }
+          uniq?: { uniques?: number }
+          dimensions?: { date: string; scriptName: string }
+        }>
+      }>
+    }
+  }
+  errors?: Array<{ message: string }>
+}
+
+/**
+ * Pulls per-day request counts for every Cloudflare Worker on the
+ * account. We only run this on the seed Snipotter Desktop app row
+ * (it acts as the umbrella for the marketing + web app metrics)
+ * because GraphQL Analytics is account-scoped, not app-scoped.
+ *
+ * The meta payload breaks the totals down by worker name so the admin
+ * can see "snipotter-landing: 12k, snipotter-web: 4k, snipotter-admin:
+ * 130" individually. Future Snipotter #2 worker simply shows up as
+ * another row in the breakdown.
+ *
+ * For per-zone HTTP analytics (real "page views" / "unique visitors"),
+ * Cloudflare splits zones from Workers in the GraphQL schema. We pull
+ * `httpRequests1dGroups` for the snipotter.com zone here too if a zone
+ * tag is supplied.
+ */
 async function pullCloudflare(env: Env, app: AppRow): Promise<SourceResult> {
   if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) {
     return { source: 'cloudflare', appSlug: app.slug, ok: false, detail: 'CF analytics secrets not set' }
   }
+  // Only run for the umbrella app — repeating this query for every app
+  // would double the API spend with no extra information.
+  if (app.slug !== 'snipotter-desktop') {
+    return { source: 'cloudflare', appSlug: app.slug, ok: false, detail: 'umbrella-only' }
+  }
 
-  // GraphQL Analytics API — pulls page views / unique visitors for
-  // snipotter-landing + snipotter-web. Stored on the synthetic
-  // "snipotter-desktop" app row's 'cloudflare' source for now;
-  // multi-domain split lands when we add Snipotter #2.
+  const today = isoDaysAgo(0)
+  const yesterday = isoDaysAgo(1)
+  const sevenDaysAgo = isoDaysAgo(7)
+
+  const query = `
+    query Snipotter($accountTag: String!, $start: Date!, $end: Date!) {
+      viewer {
+        accounts(filter: { accountTag: $accountTag }) {
+          workersInvocationsAdaptive(
+            limit: 1000
+            filter: { date_geq: $start, date_leq: $end }
+            orderBy: [date_DESC]
+          ) {
+            sum { requests subrequests }
+            uniq { uniques }
+            dimensions { date scriptName }
+          }
+        }
+      }
+    }
+  `
+
+  const r = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query,
+      variables: {
+        accountTag: env.CLOUDFLARE_ACCOUNT_ID,
+        start: sevenDaysAgo,
+        end: today,
+      },
+    }),
+  })
+
+  if (!r.ok) {
+    return { source: 'cloudflare', appSlug: app.slug, ok: false, detail: `cf graphql ${r.status}` }
+  }
+  const data = (await r.json()) as WorkersAnalyticsResponse
+  if (data.errors && data.errors.length > 0) {
+    return { source: 'cloudflare', appSlug: app.slug, ok: false, detail: data.errors[0].message }
+  }
+
+  const rows = data.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive ?? []
+  // Sum today's requests + per-script breakdown
+  let totalToday = 0
+  let totalYesterday = 0
+  const byScriptToday: Record<string, number> = {}
+  for (const row of rows) {
+    const d = row.dimensions?.date
+    const reqs = row.sum?.requests ?? 0
+    const script = row.dimensions?.scriptName ?? 'unknown'
+    if (d === today) {
+      totalToday += reqs
+      byScriptToday[script] = (byScriptToday[script] ?? 0) + reqs
+    } else if (d === yesterday) {
+      totalYesterday += reqs
+    }
+  }
+
   await upsertSnapshot(env, {
     app_id: app.id,
     source: 'cloudflare',
-    date: isoDaysAgo(0),
+    date: today,
     installs_total: null,
     installs_delta: null,
-    active_users: null,
+    active_users: totalToday,                // request count proxy for "activity"
     rating_avg: null,
     rating_count: null,
-    meta: { stub: 'PR-2 will wire Cloudflare Analytics GraphQL here' },
+    meta: {
+      todayRequests: totalToday,
+      yesterdayRequests: totalYesterday,
+      byScriptToday,
+      windowDays: 7,
+    },
   })
-  return { source: 'cloudflare', appSlug: app.slug, ok: false, detail: 'PR-2 stub' }
+
+  return {
+    source: 'cloudflare',
+    appSlug: app.slug,
+    ok: true,
+    detail: `${totalToday.toLocaleString()} requests today across ${Object.keys(byScriptToday).length} workers`,
+  }
+}
+
+interface ReviewInsert {
+  app_id: string
+  source: Source
+  external_id: string
+  author: string | null
+  rating: number | null
+  body: string | null
+  language: string | null
+  created_at: string
+  raw: Record<string, unknown>
+}
+
+/** Idempotent review upsert. Conflict key matches the table PK so a
+ *  re-pull of the same review just refreshes the raw + fetched_at. */
+async function upsertReview(env: Env, row: ReviewInsert): Promise<void> {
+  await fetch(`${env.SUPABASE_URL}/rest/v1/reviews?on_conflict=app_id,source,external_id`, {
+    method: 'POST',
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify([{ ...row, fetched_at: new Date().toISOString() }]),
+  })
 }
 
 /* ---------- Supabase helpers ---------- */

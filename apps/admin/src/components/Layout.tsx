@@ -13,6 +13,7 @@ import {
   Boxes,
   LogOut,
   Loader2,
+  Cloud,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getSession, signOut, type SessionUser } from '@/lib/auth'
@@ -30,6 +31,7 @@ const NAV: NavItem[] = [
   { href: '/google-play/', label: 'Google Play', icon: Smartphone, hint: 'Android yayınlanınca' },
   { href: '/github/', label: 'GitHub Releases', icon: Github },
   { href: '/web/', label: 'Web uygulaması', icon: Globe, hint: 'app.snipotter.com' },
+  { href: '/cloudflare/', label: 'Cloudflare', icon: Cloud, hint: 'Worker request\'leri' },
   { href: '/desktop/', label: 'Aktif kurulumlar', icon: HardDrive, hint: 'In-app heartbeat' },
   { href: '/reviews/', label: 'Yorumlar', icon: MessageSquare, hint: 'Tüm mağazalar' },
   { href: '/apps/', label: 'Uygulamalar', icon: Boxes },
