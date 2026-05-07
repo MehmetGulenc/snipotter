@@ -46,8 +46,14 @@ set +a
 
 cd "$REPO_ROOT"
 
-# Wrangler komutlarının npx üzerinden hep aynı pinli sürümü kullanması için
-WRANGLER="npx --yes wrangler@4.40.3"
+# nvm'le yüklü node 22'yi etkinleştir — sistemin default node sürümü
+# eski olabilir (örn. 18) ve npx wrangler@4.40.3 sessizce başarısız olur.
+if [[ -s "$HOME/.nvm/nvm.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "$HOME/.nvm/nvm.sh"
+  nvm use 22 >/dev/null 2>&1 || nvm use --lts >/dev/null 2>&1 || true
+fi
+echo "▸ node $(node --version 2>/dev/null || echo 'YOK')   npx $(npx --version 2>/dev/null || echo 'YOK')"
 
 put_secret() {
   local worker_dir="$1"
@@ -58,9 +64,18 @@ put_secret() {
     return 0
   fi
   pushd "$worker_dir" >/dev/null
-  printf '%s' "$value" | $WRANGLER secret put "$name" >/dev/null 2>&1 \
-    && echo "  ✓ $name" \
-    || echo "  ✗ $name (wrangler secret put başarısız)"
+  # CLOUDFLARE_API_TOKEN env var'ı set ise wrangler OAuth login yerine
+  # onu kullanır. Ama bu env var bizim için yalnızca *worker secret*
+  # olarak yazılacak bir değer (analytics okuma izni var, secret-put
+  # izni yok). Wrangler komut satırında etkin olmaması için subshell'de
+  # unset ederek çağırıyoruz — orijinal değer .env'den okunmuş olarak
+  # kalmaya devam eder.
+  if printf '%s' "$value" | env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_API_KEY -u CLOUDFLARE_EMAIL \
+        npx --yes wrangler@4.40.3 secret put "$name" >/dev/null 2>&1; then
+    echo "  ✓ $name"
+  else
+    echo "  ✗ $name (wrangler hata verdi — bana çıktıyı yapıştır)"
+  fi
   popd >/dev/null
 }
 
@@ -86,7 +101,13 @@ echo ""
 echo "▸ İlk cron pull'u tetikleniyor (GitHub Releases — anında doluyor)"
 if [[ -n "${CRON_TRIGGER_SECRET:-}" ]]; then
   CRON_HOST="${CRON_HOST:-https://snipotter-cron.mehmetgulenc915.workers.dev}"
-  RESP=$(curl -s "${CRON_HOST}/run?source=github&secret=${CRON_TRIGGER_SECRET}" || echo "")
+  # -G + --data-urlencode: secret base64 içinde +/= varsa düzgün encode
+  # eder. Düz string interpolation worker tarafında yanlış decode'a yol
+  # açıyor (URLSearchParams.get '+'i boşluğa çevirir).
+  RESP=$(curl -sG \
+    --data-urlencode "source=github" \
+    --data-urlencode "secret=${CRON_TRIGGER_SECRET}" \
+    "${CRON_HOST}/run" || echo "")
   if [[ -n "$RESP" ]]; then
     echo "  ✓ ${RESP:0:200}…"
   else
