@@ -414,10 +414,26 @@ async function pullPlay(env: Env, app: AppRow): Promise<SourceResult> {
 
   let sa: PlayServiceAccount
   try {
-    const json = atob(env.PLAY_SERVICE_ACCOUNT_JSON_B64)
+    // Tolere et: Workers'ın atob'u "up to 2 terminal '=' + length % 4 == 0"
+    // gibi katı. Operator değeri kopyala-yapıştır'la üretirken artık
+    // karakter sızdırmış olabilir (gerçek bir prod incident'ından).
+    // Adımlar: whitespace at, varsa eski padding'i sıfırla, length % 4 == 1
+    // ise son karakteri at (encode'da anlamı yok — bu yarım sextet),
+    // sonra doğru padding'i ekle.
+    let clean = env.PLAY_SERVICE_ACCOUNT_JSON_B64.replace(/\s+/g, '').replace(/=+$/, '')
+    if (clean.length % 4 === 1) clean = clean.slice(0, -1)
+    const padded = clean + '='.repeat((4 - (clean.length % 4)) % 4)
+    const json = atob(padded)
     sa = JSON.parse(json) as PlayServiceAccount
-  } catch {
-    return { source: 'play', appSlug: app.slug, ok: false, detail: 'service account JSON parse failed' }
+    // Bazı SA JSON'larında private_key literal `\n` ile yazılır
+    // (özellikle GUI editör + base64 zinciri sonrasında). RSA imza
+    // adımı PEM'i tekrar parse ederken gerçek satır sonu bekler.
+    if (sa.private_key && sa.private_key.includes('\\n')) {
+      sa.private_key = sa.private_key.replace(/\\n/g, '\n')
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { source: 'play', appSlug: app.slug, ok: false, detail: `sa parse: ${msg}` }
   }
 
   const token = await mintGoogleAccessToken(sa, [
@@ -641,7 +657,6 @@ interface WorkersAnalyticsResponse {
       accounts?: Array<{
         workersInvocationsAdaptive?: Array<{
           sum?: { requests?: number; subrequests?: number }
-          uniq?: { uniques?: number }
           dimensions?: { date: string; scriptName: string }
         }>
       }>
@@ -690,7 +705,6 @@ async function pullCloudflare(env: Env, app: AppRow): Promise<SourceResult> {
             orderBy: [date_DESC]
           ) {
             sum { requests subrequests }
-            uniq { uniques }
             dimensions { date scriptName }
           }
         }
