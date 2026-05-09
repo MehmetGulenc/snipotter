@@ -1,7 +1,7 @@
 {
   "name": "snipotter",
-  "version": "0.4.5",
-  "description": "Snipotter \u2014 Cross-platform clipboard manager + AI-powered quick notes with realtime sync",
+  "version": "0.5.0",
+  "description": "Snipotter — Cross-platform clipboard manager + AI-powered quick notes with realtime sync",
   "main": "./out/main/index.js",
   "author": {
     "name": "Mehmet Gulenc",
