@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import type { ClipboardItem } from '@shared/types'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
@@ -9,6 +9,7 @@ interface Props {
   item: ClipboardItem
   selected?: boolean
   onSelect?: () => void
+  onCheckboxPointerDown?: (e: React.PointerEvent) => void
   onCopy: (item: ClipboardItem) => void
   onPin: (item: ClipboardItem) => void
   onPromote: (item: ClipboardItem) => void
@@ -20,7 +21,7 @@ interface Props {
 // string. Treat such rows as sensitive too so old DB entries still hide.
 const LEGACY_REDACTED = '••• redacted •••'
 
-export function ClipboardCard({ item, selected, onSelect, onCopy, onPin, onPromote, onDelete, onReenrich }: Props): JSX.Element {
+export const ClipboardCard = memo(function ClipboardCard({ item, selected, onSelect, onCheckboxPointerDown, onCopy, onPin, onPromote, onDelete, onReenrich }: Props): JSX.Element {
   const [revealed, setRevealed] = useState(false)
   const sensitive =
     item.ai?.tags?.includes('sensitive') === true || item.text === LEGACY_REDACTED
@@ -34,6 +35,7 @@ export function ClipboardCard({ item, selected, onSelect, onCopy, onPin, onPromo
 
   return (
     <article
+      data-clip-id={item.id}
       className={`group relative flex flex-col gap-2 rounded-lg border p-3 transition-colors animate-fade-in overflow-hidden ${
         selected ? 'border-primary bg-primary/5' : 'border-border bg-card/40 hover:border-primary/40 hover:bg-card/60'
       }`}
@@ -42,6 +44,10 @@ export function ClipboardCard({ item, selected, onSelect, onCopy, onPin, onPromo
       {onSelect && (
         <div className="absolute left-2 top-2 z-10">
           <button
+            onPointerDown={(e) => {
+              e.stopPropagation()
+              onCheckboxPointerDown?.(e)
+            }}
             onClick={(e) => {
               e.stopPropagation()
               onSelect()
@@ -145,4 +151,4 @@ export function ClipboardCard({ item, selected, onSelect, onCopy, onPin, onPromo
       </div>
     </article>
   )
-}
+})

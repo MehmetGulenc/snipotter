@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { Note } from '@shared/types'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
@@ -11,13 +11,21 @@ interface Props {
   selected?: boolean
   onSelect: () => void
   onToggleSelect?: () => void
+  onCheckboxPointerDown?: (e: React.PointerEvent) => void
 }
 
-export function NoteCard({ note, active, selected, onSelect, onToggleSelect }: Props): JSX.Element {
+export const NoteCard = memo(function NoteCard({
+  note,
+  active,
+  selected,
+  onSelect,
+  onToggleSelect,
+  onCheckboxPointerDown,
+}: Props): JSX.Element {
   return (
     <button
+      data-note-id={note.id}
       onClick={(e) => {
-        // If clicking on the selection area (left side), toggle selection
         if (onToggleSelect && (e.target as HTMLElement).closest('.select-area')) {
           onToggleSelect()
           return
@@ -36,6 +44,10 @@ export function NoteCard({ note, active, selected, onSelect, onToggleSelect }: P
       {onToggleSelect && (
         <div
           className="select-area absolute left-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded border transition-colors"
+          onPointerDown={(e) => {
+            e.stopPropagation()
+            onCheckboxPointerDown?.(e)
+          }}
           onClick={(e) => {
             e.stopPropagation()
             onToggleSelect()
@@ -65,7 +77,7 @@ export function NoteCard({ note, active, selected, onSelect, onToggleSelect }: P
       </div>
     </button>
   )
-}
+})
 
 interface EditorProps {
   note: Note | null

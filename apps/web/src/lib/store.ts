@@ -19,10 +19,12 @@ interface Store {
   setClipboard: (items: ClipboardItem[]) => void
   upsertClip: (item: ClipboardItem) => void
   removeClip: (id: string) => void
+  removeClips: (ids: string[]) => void
 
   setNotes: (notes: Note[]) => void
   upsertNote: (note: Note) => void
   removeNote: (id: string) => void
+  removeNotes: (ids: string[]) => void
 }
 
 const sortClips = (a: ClipboardItem[]) =>
@@ -63,6 +65,10 @@ export const useStore = create<Store>((set) => ({
       return { clipboard: sortClips([item, ...without]) }
     }),
   removeClip: (id) => set((s) => ({ clipboard: s.clipboard.filter((c) => c.id !== id) })),
+  removeClips: (ids) => {
+    const set_ = new Set(ids)
+    set((s) => ({ clipboard: s.clipboard.filter((c) => !set_.has(c.id)) }))
+  },
 
   setNotes: (notes) => set({ notes: sortNotes(notes) }),
   upsertNote: (note) =>
@@ -75,4 +81,8 @@ export const useStore = create<Store>((set) => ({
       return { notes: sortNotes([note, ...without]) }
     }),
   removeNote: (id) => set((s) => ({ notes: s.notes.filter((n) => n.id !== id) })),
+  removeNotes: (ids) => {
+    const set_ = new Set(ids)
+    set((s) => ({ notes: s.notes.filter((n) => !set_.has(n.id)) }))
+  },
 }))

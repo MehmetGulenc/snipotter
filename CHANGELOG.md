@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0] - 2026-05-10
+
+### 🗑️ Toplu Silme & Drag-to-Select
+
+Notlar ve Kütüphane bölümlerinde seçim + silme deneyimi tamamen yenilendi.
+
+- **Anlık toplu silme**: 10.000 not seçsen bile "Sil"e basınca UI anında temizlenir — artık 200 sıralı istek yok, tek Supabase sorgusuna indirgendi.
+- **Geri al (Undo)**: `confirm()` diyaloğu kalktı. Sil'e basınca notlar anında gider, alt barda 5 saniyelik "Geri al" linki çıkar.
+- **Sürükleyerek seçim (Desktop)**: Checkbox'a mouse-down yapıp sürükle — üstünden geçtiğin kartlar otomatik seçilir.
+- **Dokunarak seçim (Mobil/Web)**: Bir karta 400ms basılı tut → seçim moduna girer + parmağı aşağı sürükle → birden fazla öğe seçilir.
+- **Yapışkan Sil butonu**: Liste ne kadar aşağı kaydırılırsa kaydırılsın Sil butonu artık her zaman görünür (sidebar/ekranın altına sabitlendi).
+- **Performans**: `NoteCard` ve `ClipboardCard` `React.memo` ile sarıldı; "Tümünü Seç" tıklandığında artık donmuyor.
+- **Web/Mobil**: `apps/web` uygulamasına da tam çoklu seçim, uzun basış ve toplu silme eklendi.
+
 ## [0.3.3] - 2025-05-01
 
 ### 🔔 Update Notification Banner

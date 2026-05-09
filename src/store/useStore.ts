@@ -32,11 +32,13 @@ interface SnipotterState {
   setClipboard: (items: ClipboardItem[]) => void
   upsertClipboard: (item: ClipboardItem & { deleted?: boolean }) => void
   removeClipboard: (id: string) => void
+  removeClipboards: (ids: string[]) => void
 
   // Notes actions
   setNotes: (notes: Note[]) => void
   upsertNote: (note: Note & { deleted?: boolean }) => void
   removeNote: (id: string) => void
+  removeNotes: (ids: string[]) => void
 
   // AI status
   aiStatus: {
@@ -80,6 +82,10 @@ export const useStore = create<SnipotterState>((set) => ({
     }),
   removeClipboard: (id) =>
     set((s) => ({ clipboard: s.clipboard.filter((c) => c.id !== id) })),
+  removeClipboards: (ids) => {
+    const set_ = new Set(ids)
+    set((s) => ({ clipboard: s.clipboard.filter((c) => !set_.has(c.id)) }))
+  },
 
   setNotes: (notes) => set({ notes: sortNotes(notes) }),
   upsertNote: (note) =>
@@ -96,6 +102,10 @@ export const useStore = create<SnipotterState>((set) => ({
       return { notes: sortNotes([note, ...state.notes]) }
     }),
   removeNote: (id) => set((s) => ({ notes: s.notes.filter((n) => n.id !== id) })),
+  removeNotes: (ids) => {
+    const set_ = new Set(ids)
+    set((s) => ({ notes: s.notes.filter((n) => !set_.has(n.id)) }))
+  },
 
   aiStatus: null,
   setAiStatus: (s) => set({ aiStatus: s }),

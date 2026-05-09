@@ -166,6 +166,7 @@ export const IPC = {
   // Clipboard
   CLIP_LIST: 'clip:list',
   CLIP_DELETE: 'clip:delete',
+  CLIP_DELETE_MANY: 'clip:delete-many',
   CLIP_PIN: 'clip:pin',
   CLIP_COPY: 'clip:copy',
   CLIP_PROMOTE_TO_NOTE: 'clip:promote-to-note',
@@ -177,6 +178,7 @@ export const IPC = {
   NOTE_CREATE: 'note:create',
   NOTE_UPDATE: 'note:update',
   NOTE_DELETE: 'note:delete',
+  NOTE_DELETE_MANY: 'note:delete-many',
   NOTE_PIN: 'note:pin',
   NOTE_UPDATED: 'note:updated', // pushed from main
 

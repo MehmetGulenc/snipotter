@@ -307,6 +307,16 @@ function wireIPC(): void {
       return { ok: false, error: (err as Error).message }
     }
   })
+  ipcMain.handle(IPC.CLIP_DELETE_MANY, async (_e, ids: string[]) => {
+    supabase.broadcastClipDeletedMany(ids)
+    try {
+      await supabase.deleteClipboardMany(ids)
+      return { ok: true, data: null }
+    } catch (err) {
+      console.error('[ipc] CLIP_DELETE_MANY failed:', (err as Error).message)
+      return { ok: false, error: (err as Error).message }
+    }
+  })
   ipcMain.handle(IPC.CLIP_PIN, async (_e, { id, pinned }: { id: string; pinned: boolean }) => {
     await supabase.setClipboardPinned(id, pinned)
     // After DB update, broadcast the new state so other devices see pin toggle instantly.
@@ -392,6 +402,16 @@ function wireIPC(): void {
       // optimistic remove so the note comes back immediately rather than
       // after the next 15s reconciliation cycle.
       console.error('[ipc] NOTE_DELETE failed:', (err as Error).message)
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+  ipcMain.handle(IPC.NOTE_DELETE_MANY, async (_e, ids: string[]) => {
+    supabase.broadcastNoteDeletedMany(ids)
+    try {
+      await supabase.deleteNotesMany(ids)
+      return { ok: true, data: null }
+    } catch (err) {
+      console.error('[ipc] NOTE_DELETE_MANY failed:', (err as Error).message)
       return { ok: false, error: (err as Error).message }
     }
   })

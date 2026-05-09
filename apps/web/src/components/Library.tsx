@@ -1,10 +1,15 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
-import { Copy, Pin, PinOff, Trash2, Check, Image as ImageIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Copy, Pin, PinOff, Trash2, Check, Image as ImageIcon, CheckSquare, Square, Undo2, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { listClipboard, setClipPinned, deleteClip } from '@/lib/api'
+import { listClipboard, setClipPinned, deleteClip, deleteClipMany } from '@/lib/api'
 import { cn, relativeTime, firstLine } from '@/lib/utils'
 import type { ClipboardItem } from '@/lib/types'
+
+interface PendingDelete {
+  items: ClipboardItem[]
+  timer: ReturnType<typeof setTimeout>
+}
 
 export function Library(): JSX.Element {
   const workspace = useStore((s) => s.workspace)
@@ -12,8 +17,24 @@ export function Library(): JSX.Element {
   const setItems = useStore((s) => s.setClipboard)
   const upsert = useStore((s) => s.upsertClip)
   const remove = useStore((s) => s.removeClip)
+  const removeClips = useStore((s) => s.removeClips)
   const query = useStore((s) => s.query)
   const [loaded, setLoaded] = useState(false)
+
+  // multi-select
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectMode, setSelectMode] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+
+  // drag-to-select
+  const dragActive = useRef(false)
+  const dragMode = useRef<'select' | 'deselect'>('select')
+  const dragVisited = useRef<Set<string>>(new Set())
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // long-press
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const touchMoved = useRef(false)
 
   useEffect(() => {
     if (!workspace) return
@@ -33,8 +54,131 @@ export function Library(): JSX.Element {
     )
   }, [items, query])
 
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }, [])
+
+  const selectAll = () => setSelectedIds(new Set(filtered.map((i) => i.id)))
+  const allSelected = filtered.length > 0 && selectedIds.size === filtered.length
+  const hasSelection = selectedIds.size > 0
+
+  const deleteSelected = useCallback(() => {
+    if (selectedIds.size === 0) return
+    const ids = Array.from(selectedIds)
+    const itemObjects = ids.map((id) => items.find((i) => i.id === id)).filter(Boolean) as ClipboardItem[]
+
+    removeClips(ids)
+    setSelectedIds(new Set())
+    setSelectMode(false)
+
+    if (pendingDelete) {
+      clearTimeout(pendingDelete.timer)
+      void deleteClipMany(pendingDelete.items.map((i) => i.id))
+    }
+
+    const timer = setTimeout(async () => {
+      setPendingDelete(null)
+      await deleteClipMany(ids)
+    }, 5000)
+
+    setPendingDelete({ items: itemObjects, timer })
+  }, [selectedIds, items, pendingDelete, removeClips])
+
+  const undoDelete = useCallback(() => {
+    if (!pendingDelete) return
+    clearTimeout(pendingDelete.timer)
+    pendingDelete.items.forEach((i) => upsert(i))
+    setPendingDelete(null)
+  }, [pendingDelete, upsert])
+
+  // Drag-to-select
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragActive.current) return
+    const el = document.elementFromPoint(e.clientX, e.clientY)
+    const card = el?.closest<HTMLElement>('[data-clip-id]')
+    const id = card?.dataset.clipId
+    if (!id || dragVisited.current.has(id)) return
+    dragVisited.current.add(id)
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (dragMode.current === 'select') next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }, [])
+
+  const handlePointerUp = useCallback(() => {
+    dragActive.current = false
+    dragVisited.current = new Set()
+  }, [])
+
+  const startDrag = useCallback((itemId: string, alreadySelected: boolean, e: React.PointerEvent) => {
+    e.preventDefault()
+    dragActive.current = true
+    dragMode.current = alreadySelected ? 'deselect' : 'select'
+    dragVisited.current = new Set([itemId])
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (dragMode.current === 'select') next.add(itemId)
+      else next.delete(itemId)
+      return next
+    })
+    try {
+      listRef.current?.setPointerCapture(e.pointerId)
+    } catch { /* ignore */ }
+  }, [])
+
+  const handleTouchStart = useCallback((itemId: string) => {
+    touchMoved.current = false
+    longPressTimer.current = setTimeout(() => {
+      if (!touchMoved.current) {
+        navigator.vibrate?.(30)
+        setSelectMode(true)
+        setSelectedIds(new Set([itemId]))
+      }
+    }, 400)
+  }, [])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    touchMoved.current = true
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+    if (!selectMode) return
+    const touch = e.touches[0]
+    const el = document.elementFromPoint(touch.clientX, touch.clientY)
+    const card = el?.closest<HTMLElement>('[data-clip-id]')
+    const id = card?.dataset.clipId
+    if (!id || dragVisited.current.has(id)) return
+    dragVisited.current.add(id)
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.add(id)
+      return next
+    })
+  }, [selectMode])
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+    dragVisited.current = new Set()
+  }, [])
+
   if (!loaded) return <Empty title="Yükleniyor…" hint="Pano kütüphanesi alınıyor." />
-  if (filtered.length === 0)
+  if (filtered.length === 0 && !pendingDelete)
     return (
       <Empty
         title={query ? 'Sonuç yok' : 'Henüz pano öğesi yok'}
@@ -47,22 +191,112 @@ export function Library(): JSX.Element {
     )
 
   return (
-    <div className="space-y-2 px-3 pb-24 pt-3 sm:px-6">
-      {filtered.map((it) => (
-        <Card key={it.id} item={it} upsert={upsert} remove={remove} />
-      ))}
+    <div className="flex h-full flex-col">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between border-b border-border px-3 py-2 sm:px-6">
+        {selectMode ? (
+          <>
+            <button
+              onClick={allSelected ? () => setSelectedIds(new Set()) : selectAll}
+              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              {allSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+              {allSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}
+            </button>
+            <button onClick={exitSelectMode} className="rounded p-1 text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          </>
+        ) : (
+          <span className="text-sm text-muted-foreground">{filtered.length} öğe</span>
+        )}
+      </div>
+
+      <div
+        ref={listRef}
+        className={cn('flex-1 space-y-2 overflow-y-auto px-3 pb-4 pt-3 sm:px-6', selectMode && 'touch-none')}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        {filtered.map((it) => {
+          const isSelected = selectedIds.has(it.id)
+          return (
+            <Card
+              key={it.id}
+              item={it}
+              selected={isSelected}
+              selectMode={selectMode}
+              upsert={upsert}
+              remove={remove}
+              onToggleSelect={() => toggleSelection(it.id)}
+              onCheckboxPointerDown={(e) => startDrag(it.id, isSelected, e)}
+              onTouchStart={() => handleTouchStart(it.id)}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            />
+          )
+        })}
+      </div>
+
+      {/* Sticky bottom bar */}
+      {(hasSelection || pendingDelete) && (
+        <div className="border-t border-border bg-card px-4 py-3">
+          {pendingDelete ? (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-muted-foreground">
+                {pendingDelete.items.length} öğe silindi
+              </span>
+              <button
+                onClick={undoDelete}
+                className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+              >
+                <Undo2 className="h-4 w-4" />
+                Geri al
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-muted-foreground">
+                {selectedIds.size} öğe seçili
+              </span>
+              <button
+                onClick={deleteSelected}
+                className="flex items-center gap-1.5 rounded-lg bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/20 active:bg-destructive/30"
+              >
+                <Trash2 className="h-4 w-4" />
+                Sil
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
 function Card({
   item,
+  selected,
+  selectMode,
   upsert,
   remove,
+  onToggleSelect,
+  onCheckboxPointerDown,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
 }: {
   item: ClipboardItem
+  selected: boolean
+  selectMode: boolean
   upsert: (i: ClipboardItem) => void
   remove: (id: string) => void
+  onToggleSelect: () => void
+  onCheckboxPointerDown: (e: React.PointerEvent) => void
+  onTouchStart: () => void
+  onTouchMove: (e: React.TouchEvent) => void
+  onTouchEnd: () => void
 }): JSX.Element {
   const [copied, setCopied] = useState(false)
 
@@ -92,8 +326,6 @@ function Card({
 
   const onDelete = async () => {
     if (!confirm('Bu öğeyi sil?')) return
-    // Optimistic remove. If the server rejects (RLS, offline, etc.) put the
-    // item back so the UI doesn't lie about a successful delete.
     remove(item.id)
     try {
       await deleteClip(item.id)
@@ -108,13 +340,48 @@ function Card({
 
   return (
     <div
+      data-clip-id={item.id}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
       className={cn(
-        'group rounded-lg border border-border bg-card/40 p-3 transition-colors',
-        item.pinned && 'border-primary/40 bg-primary/5',
+        'group relative rounded-lg border border-border bg-card/40 p-3 transition-colors',
+        item.pinned && !selected && 'border-primary/40 bg-primary/5',
+        selected && 'border-primary bg-primary/10',
+        !selectMode && 'hover:border-primary/30',
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <button onClick={onCopy} className="flex-1 min-w-0 text-left">
+      {/* Checkbox */}
+      {(selectMode || selected) && (
+        <button
+          className="absolute left-3 top-3 z-10"
+          onPointerDown={(e) => {
+            e.stopPropagation()
+            onCheckboxPointerDown(e)
+          }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleSelect()
+          }}
+        >
+          <div
+            className={cn(
+              'flex h-5 w-5 items-center justify-center rounded border',
+              selected
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-border bg-background/80',
+            )}
+          >
+            {selected && <Check className="h-3.5 w-3.5" />}
+          </div>
+        </button>
+      )}
+
+      <div className={cn('flex items-start justify-between gap-3', (selectMode || selected) && 'pl-8')}>
+        <button
+          onClick={selectMode ? onToggleSelect : onCopy}
+          className="flex-1 min-w-0 text-left"
+        >
           {isImage ? (
             <div className="space-y-1.5">
               <img
@@ -151,54 +418,38 @@ function Card({
           )}
         </button>
 
-        <div className="flex shrink-0 flex-col gap-1">
-          <button
-            onClick={onCopy}
-            className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-            title="Kopyala"
-          >
-            {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
-          </button>
-          <button
-            onClick={onPin}
-            className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-            title={item.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
-          >
-            {item.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
-          </button>
-          <button
-            onClick={onDelete}
-            className="rounded p-1.5 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-            title="Sil"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
+        {!selectMode && (
+          <div className="flex shrink-0 flex-col gap-1">
+            <button
+              onClick={onCopy}
+              className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              title="Kopyala"
+            >
+              {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={onPin}
+              className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              title={item.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
+            >
+              {item.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={onDelete}
+              className="rounded p-1.5 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+              title="Sil"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
 /**
- * Copy a data-URL image to the clipboard. Two browser quirks matter here:
- *
- *   1. ClipboardItem's MIME map effectively only accepts `image/png` on
- *      Safari/iOS, so JPEGs/WEBPs from the desktop app are re-encoded to PNG
- *      via a canvas before being written.
- *
- *   2. iOS Safari requires `navigator.clipboard.write()` to be invoked
- *      synchronously within the user-gesture handler. Any `await` between
- *      the click and the `write` call drops the transient activation and
- *      the platform rejects with "The request is not allowed by the user
- *      agent or the platform in the current context".
- *
- *      Even passing a Promise<Blob> to ClipboardItem isn't enough on its
- *      own if we `await` something earlier — the call to clipboard.write
- *      itself has to fire on the same microtask as the click. So we:
- *        - parse the data URL into a Blob synchronously (no fetch/await),
- *        - if it's already PNG, hand the Blob straight in,
- *        - otherwise hand in a Promise<Blob> that the browser will await
- *          itself while keeping the activation alive.
+ * Copy a data-URL image to the clipboard.
  */
 function copyImage(dataUrl: string): Promise<void> {
   if (!navigator.clipboard || typeof window.ClipboardItem !== 'function') {
@@ -207,13 +458,10 @@ function copyImage(dataUrl: string): Promise<void> {
     )
   }
 
-  // Synchronous data URL -> Blob conversion. Avoids the async fetch() round
-  // trip that was burning the user-gesture token on iOS Safari.
   const initial = dataUrlToBlob(dataUrl)
   const png: Blob | Promise<Blob> =
     initial.type === 'image/png' ? initial : encodeAsPng(dataUrl)
 
-  // No await between the click handler and this call — gesture stays valid.
   return navigator.clipboard
     .write([new ClipboardItem({ 'image/png': png })])
     .catch((err: unknown) => {
@@ -222,7 +470,6 @@ function copyImage(dataUrl: string): Promise<void> {
     })
 }
 
-/** Synchronously decode a `data:<mime>;base64,...` URL into a Blob. */
 function dataUrlToBlob(dataUrl: string): Blob {
   const match = /^data:([^;,]+)(;base64)?,(.*)$/.exec(dataUrl)
   if (!match) throw new Error('Geçersiz data URL')

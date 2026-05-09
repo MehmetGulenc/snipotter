@@ -1,19 +1,31 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/store/useStore'
 import { NoteCard, NoteEditor } from '@/components/NoteCard'
 import { Button } from '@/components/ui/Button'
 import type { Note } from '@shared/types'
-import { Plus, Trash2, CheckSquare, Square } from 'lucide-react'
+import { Plus, Trash2, CheckSquare, Square, Undo2 } from 'lucide-react'
+
+interface PendingDelete {
+  notes: Note[]
+  timer: ReturnType<typeof setTimeout>
+}
 
 export function Notes(): JSX.Element {
   const notes = useStore((s) => s.notes)
   const upsert = useStore((s) => s.upsertNote)
-  const remove = useStore((s) => s.removeNote)
+  const removeNote = useStore((s) => s.removeNote)
+  const removeNotes = useStore((s) => s.removeNotes)
   const query = useStore((s) => s.query)
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+
+  // drag-to-select state (refs to avoid re-renders during drag)
+  const dragActive = useRef(false)
+  const dragMode = useRef<'select' | 'deselect'>('select')
+  const dragVisited = useRef<Set<string>>(new Set())
+  const listRef = useRef<HTMLDivElement>(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -45,20 +57,18 @@ export function Notes(): JSX.Element {
       setActiveId(r.data.id)
     }
   }
-  const onUpdate = async (id: string, partial: Partial<Note>) => {
+  const onUpdate = useCallback(async (id: string, partial: Partial<Note>) => {
     const r = await window.snipotter.notes.update(id, partial)
     if (r.ok && r.data) upsert(r.data)
-  }
+  }, [upsert])
   const onPin = async (note: Note) => {
     const r = await window.snipotter.notes.pin(note.id, !note.pinned)
     if (r.ok && r.data) upsert(r.data)
   }
   const onDelete = async (note: Note) => {
-    remove(note.id) // optimistic remove
+    removeNote(note.id)
     const r = await window.snipotter.notes.delete(note.id)
     if (!r.ok) {
-      // DB deletion was blocked (e.g. RLS: note belongs to a different session).
-      // Put the note back into the store immediately so the user isn't misled.
       upsert(note)
       console.error('[notes] delete failed, reverted:', r.error)
     }
@@ -68,14 +78,14 @@ export function Notes(): JSX.Element {
     if (r.ok) upsert({ ...note, ai: r.data })
   }
 
-  const toggleSelection = (id: string) => {
+  const toggleSelection = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
-  }
+  }, [])
 
   const selectAll = () => {
     setSelectedIds(new Set(filtered.map((n) => n.id)))
@@ -85,34 +95,79 @@ export function Notes(): JSX.Element {
     setSelectedIds(new Set())
   }
 
-  const deleteSelected = async () => {
+  const deleteSelected = () => {
     if (selectedIds.size === 0) return
-    if (!confirm(`${selectedIds.size} notu silmek istediğine emin misin?`)) return
-    setBulkDeleting(true)
+
     const ids = Array.from(selectedIds)
-    // Keep the note objects so we can revert individual failures.
     const noteObjects = ids.map((id) => notes.find((n) => n.id === id)).filter(Boolean) as Note[]
-    // Optimistic: remove from UI immediately
-    ids.forEach((id) => {
-      remove(id)
-      if (activeId === id) setActiveId(null)
-    })
+
+    // Optimistic: remove from UI immediately (single state update)
+    removeNotes(ids)
+    if (activeId && selectedIds.has(activeId)) setActiveId(null)
     setSelectedIds(new Set())
-    // Delete from backend; revert any that the DB rejected.
-    let failCount = 0
-    for (const note of noteObjects) {
-      const r = await window.snipotter.notes.delete(note.id)
-      if (!r.ok) {
-        upsert(note) // revert optimistic remove
-        failCount++
-        console.error('[notes] bulk delete failed for', note.id, r.error)
-      }
+
+    // Cancel any existing pending delete before starting a new one
+    if (pendingDelete) {
+      clearTimeout(pendingDelete.timer)
+      void window.snipotter.notes.deleteMany(pendingDelete.notes.map((n) => n.id))
     }
-    if (failCount > 0) {
-      alert(`${failCount} not silinemedi. Bu notlar başka bir oturumdan oluşturulmuş olabilir.`)
-    }
-    setBulkDeleting(false)
+
+    const timer = setTimeout(async () => {
+      setPendingDelete(null)
+      await window.snipotter.notes.deleteMany(ids)
+    }, 5000)
+
+    setPendingDelete({ notes: noteObjects, timer })
   }
+
+  const undoDelete = () => {
+    if (!pendingDelete) return
+    clearTimeout(pendingDelete.timer)
+    pendingDelete.notes.forEach((n) => upsert(n))
+    setPendingDelete(null)
+  }
+
+  // Drag-to-select: pointer events on list container
+  const handleListPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragActive.current) return
+    const el = document.elementFromPoint(e.clientX, e.clientY)
+    const card = el?.closest<HTMLElement>('[data-note-id]')
+    const id = card?.dataset.noteId
+    if (!id || dragVisited.current.has(id)) return
+    dragVisited.current.add(id)
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (dragMode.current === 'select') next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }, [])
+
+  const handleListPointerUp = useCallback(() => {
+    dragActive.current = false
+    dragVisited.current = new Set()
+    listRef.current?.releasePointerCapture?.(0)
+  }, [])
+
+  // Called from NoteCard checkbox pointerdown — starts drag-select
+  const handleCheckboxPointerDown = useCallback((noteId: string, alreadySelected: boolean, e: React.PointerEvent) => {
+    e.preventDefault()
+    dragActive.current = true
+    dragMode.current = alreadySelected ? 'deselect' : 'select'
+    dragVisited.current = new Set([noteId])
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (dragMode.current === 'select') next.add(noteId)
+      else next.delete(noteId)
+      return next
+    })
+    // Capture pointer on the list container so pointermove fires even outside card bounds
+    try {
+      listRef.current?.setPointerCapture(e.pointerId)
+    } catch {
+      // ignore
+    }
+  }, [])
 
   const hasSelection = selectedIds.size > 0
   const allSelected = filtered.length > 0 && selectedIds.size === filtered.length
@@ -130,36 +185,26 @@ export function Notes(): JSX.Element {
                 size="sm"
                 variant="ghost"
                 onClick={allSelected ? clearSelection : selectAll}
-                disabled={bulkDeleting}
                 title={allSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}
               >
                 {allSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
               </Button>
             )}
-            {hasSelection ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={deleteSelected}
-                disabled={bulkDeleting}
-                className="text-destructive hover:text-destructive"
-                title="Seçilileri Sil"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            ) : (
+            {hasSelection ? null : (
               <Button size="sm" variant="ghost" onClick={onCreate}>
                 <Plus className="h-4 w-4" />
               </Button>
             )}
           </div>
         </div>
-        {hasSelection && (
-          <div className="border-b border-border bg-primary/5 px-3 py-1.5 text-[11px] text-primary">
-            {selectedIds.size} not seçili
-          </div>
-        )}
-        <div className="scrollbar-thin flex-1 space-y-1 overflow-y-auto p-2">
+
+        <div
+          ref={listRef}
+          className={`scrollbar-thin flex-1 space-y-1 overflow-y-auto p-2 ${dragActive.current ? 'touch-none select-none' : ''}`}
+          onPointerMove={handleListPointerMove}
+          onPointerUp={handleListPointerUp}
+          onPointerCancel={handleListPointerUp}
+        >
           {filtered.length === 0 ? (
             <p className="px-2 py-4 text-center text-xs text-muted-foreground">
               {query ? 'Sonuç yok.' : 'Henüz not yok. Cmd+Shift+N veya + butonu.'}
@@ -173,10 +218,44 @@ export function Notes(): JSX.Element {
                 selected={selectedIds.has(n.id)}
                 onSelect={() => setActiveId(n.id)}
                 onToggleSelect={() => toggleSelection(n.id)}
+                onCheckboxPointerDown={(e) => handleCheckboxPointerDown(n.id, selectedIds.has(n.id), e)}
               />
             ))
           )}
         </div>
+
+        {/* Sticky bottom bar — visible whenever there's a selection or pending undo */}
+        {(hasSelection || pendingDelete) && (
+          <div className="border-t border-border bg-card px-3 py-2">
+            {pendingDelete ? (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {pendingDelete.notes.length} not silindi
+                </span>
+                <button
+                  onClick={undoDelete}
+                  className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                >
+                  <Undo2 className="h-3.5 w-3.5" />
+                  Geri al
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {selectedIds.size} not seçili
+                </span>
+                <button
+                  onClick={deleteSelected}
+                  className="flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/20"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Sil
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </aside>
 
       <NoteEditor

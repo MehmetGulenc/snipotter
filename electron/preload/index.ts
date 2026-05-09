@@ -50,6 +50,7 @@ const api = {
   clipboard: {
     list: () => invoke<ClipboardItem[]>(IPC.CLIP_LIST),
     delete: (id: string) => invoke<null>(IPC.CLIP_DELETE, id),
+    deleteMany: (ids: string[]) => invoke<null>(IPC.CLIP_DELETE_MANY, ids),
     pin: (id: string, pinned: boolean) => invoke<null>(IPC.CLIP_PIN, { id, pinned }),
     copy: (item: ClipboardItem) => invoke<null>(IPC.CLIP_COPY, item),
     promoteToNote: (item: ClipboardItem) => invoke<Note | null>(IPC.CLIP_PROMOTE_TO_NOTE, item),
@@ -71,6 +72,7 @@ const api = {
       invoke<Note | null>(IPC.NOTE_UPDATE, { id, partial }),
     pin: (id: string, pinned: boolean) => invoke<Note | null>(IPC.NOTE_PIN, { id, pinned }),
     delete: (id: string) => invoke<null>(IPC.NOTE_DELETE, id),
+    deleteMany: (ids: string[]) => invoke<null>(IPC.NOTE_DELETE_MANY, ids),
     onUpdated: (cb: (note: Note & { deleted?: boolean }) => void) => {
       const fn = (_: unknown, note: Note & { deleted?: boolean }) => cb(note)
       ipcRenderer.on(IPC.NOTE_UPDATED, fn)

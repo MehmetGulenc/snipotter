@@ -475,6 +475,15 @@ export class SupabaseService extends EventEmitter {
     }
   }
 
+  async deleteClipboardMany(ids: string[]): Promise<void> {
+    if (!this.client || !this.workspaceId || ids.length === 0) return
+    const { error } = await this.client
+      .from('clipboard_items')
+      .delete()
+      .in('id', ids)
+    if (error) throw new Error(`[supabase] deleteClipboardMany: ${error.message}`)
+  }
+
   async listNotes(): Promise<Note[]> {
     if (!this.client || !this.workspaceId) return []
     const { data, error } = await this.client
@@ -553,6 +562,15 @@ export class SupabaseService extends EventEmitter {
         )
       }
     }
+  }
+
+  async deleteNotesMany(ids: string[]): Promise<void> {
+    if (!this.client || !this.workspaceId || ids.length === 0) return
+    const { error } = await this.client
+      .from('notes')
+      .delete()
+      .in('id', ids)
+    if (error) throw new Error(`[supabase] deleteNotesMany: ${error.message}`)
   }
 
   private async subscribeRealtime(): Promise<void> {
@@ -818,6 +836,28 @@ export class SupabaseService extends EventEmitter {
       event: 'note:deleted',
       payload: { id, from: this.clientId },
     })
+  }
+
+  broadcastClipDeletedMany(ids: string[]): void {
+    if (!this.broadcastChannel || ids.length === 0) return
+    for (const id of ids) {
+      void this.broadcastChannel.send({
+        type: 'broadcast',
+        event: 'clip:deleted',
+        payload: { id, from: this.clientId },
+      })
+    }
+  }
+
+  broadcastNoteDeletedMany(ids: string[]): void {
+    if (!this.broadcastChannel || ids.length === 0) return
+    for (const id of ids) {
+      void this.broadcastChannel.send({
+        type: 'broadcast',
+        event: 'note:deleted',
+        payload: { id, from: this.clientId },
+      })
+    }
   }
 
   private unsubscribeRealtime(): void {

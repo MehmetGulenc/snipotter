@@ -272,6 +272,13 @@ export async function deleteClip(id: string): Promise<void> {
   if (error) throw error
 }
 
+export async function deleteClipMany(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  ids.forEach((id) => broadcastClipDeleted(id))
+  const { error } = await getSupabase().from('clipboard_items').delete().in('id', ids)
+  if (error) throw error
+}
+
 // ---------- Notes ----------
 
 export async function listNotes(workspaceId: string): Promise<Note[]> {
@@ -337,6 +344,13 @@ export async function deleteNote(id: string): Promise<void> {
     // anonymous session). Throw so the caller can revert the optimistic remove.
     throw new Error('Bu not başka bir oturumdan oluşturulmuş ve bu hesapla silinemiyor.')
   }
+}
+
+export async function deleteNoteMany(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  ids.forEach((id) => broadcastNoteDeleted(id))
+  const { error } = await getSupabase().from('notes').delete().in('id', ids)
+  if (error) throw error
 }
 
 // ---------- Realtime ----------
