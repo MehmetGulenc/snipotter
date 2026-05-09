@@ -21,20 +21,25 @@ const config: Config = {
       animation: {
         'wave-letter': 'wave-letter 1.4s ease-in-out',
         'otter-breathe': 'otter-breathe 4s ease-in-out infinite',
+        'brand-reveal': 'brand-reveal 0.45s ease-out both',
+        'logo-glow': 'logo-glow 3.5s ease-in-out infinite',
       },
       keyframes: {
-        // Per-letter wordmark wave; replays on hover via group-hover.
         'wave-letter': {
-          '0%, 70%, 100%': { transform: 'translate3d(0, 0, 0)' },
-          '40%': { transform: 'translate3d(0, -3px, 0)' },
+          '0%, 65%, 100%': { transform: 'translate3d(0, 0, 0)' },
+          '35%': { transform: 'translate3d(0, -3px, 0)' },
         },
-        // Slow breathing on the "O" of "SnipOtter" — keeps the brand
-        // mark alive without distracting from product chrome. Mirrors
-        // the same animation in apps/landing/tailwind.config.ts so the
-        // mark behaves identically on both surfaces.
         'otter-breathe': {
           '0%, 100%': { transform: 'scale(1)' },
-          '50%': { transform: 'scale(1.08)' },
+          '50%': { transform: 'scale(1.1)' },
+        },
+        'brand-reveal': {
+          from: { opacity: '0', transform: 'translateX(-6px) scale(0.82)' },
+          to: { opacity: '1', transform: 'translateX(0) scale(1)' },
+        },
+        'logo-glow': {
+          '0%, 100%': { opacity: '0.2', transform: 'scale(1)' },
+          '50%': { opacity: '0.5', transform: 'scale(1.25)' },
         },
       },
     },

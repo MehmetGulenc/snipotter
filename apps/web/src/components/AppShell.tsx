@@ -106,7 +106,11 @@ export function AppShell(): JSX.Element {
           className="group flex items-center gap-2 rounded transition-opacity hover:opacity-90"
           title="snipotter.com'a dön"
         >
-          <Logo size={24} />
+          {/* Logo with soft glow */}
+          <div className="relative flex items-center justify-center">
+            <div className="absolute h-8 w-8 animate-logo-glow rounded-full bg-fuchsia-500/40 blur-md" />
+            <Logo size={24} className="relative" />
+          </div>
           <Wordmark />
           <ExternalLink className="hidden h-3 w-3 text-muted-foreground sm:block" />
         </a>
@@ -182,20 +186,27 @@ function NavBtn({
  * don't share a build pipeline.
  */
 function Wordmark(): JSX.Element {
-  const letters = 'SnipOtter'.split('')
+  const snip = 'Snip'.split('')
+  const otter = 'Otter'.split('')
   return (
-    <span className="group inline-flex select-none text-base font-semibold tracking-tight">
-      {letters.map((l, i) => (
+    <span className="group inline-flex select-none items-baseline text-base font-bold tracking-tight">
+      {snip.map((l, i) => (
+        <span
+          key={i}
+          className="inline-block animate-brand-reveal text-fuchsia-400 group-hover:animate-wave-letter"
+          style={{ animationDelay: `${i * 40}ms` }}
+        >
+          {l}
+        </span>
+      ))}
+      {otter.map((l, i) => (
         <span
           key={i}
           className={cn(
-            'inline-block transition-transform group-hover:animate-wave-letter',
-            // The capital "O" of "Otter" carries the brand accent — slow
-            // breathing pulse + primary colour so the otter half reads
-            // immediately even at small sizes.
-            i === 4 && 'animate-otter-breathe text-primary',
+            'inline-block animate-brand-reveal text-violet-300 group-hover:animate-wave-letter',
+            i === 0 && 'animate-otter-breathe',
           )}
-          style={{ animationDelay: i === 4 ? undefined : `${i * 60}ms` }}
+          style={{ animationDelay: `${(i + 4) * 40}ms` }}
         >
           {l}
         </span>

@@ -63,11 +63,35 @@ const config: Config = {
           from: { opacity: '0', transform: 'translateY(4px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        // Wordmark: soldan sağa harf girişi — her harf biraz gecikmeyle belirir
+        'brand-reveal': {
+          from: { opacity: '0', transform: 'translateX(-6px) scale(0.82)' },
+          to: { opacity: '1', transform: 'translateX(0) scale(1)' },
+        },
+        // Hover'da hafif yukarı-aşağı dalga
+        'letter-wave': {
+          '0%, 65%, 100%': { transform: 'translate3d(0, 0, 0)' },
+          '35%': { transform: 'translate3d(0, -3px, 0)' },
+        },
+        // Logo arkasındaki hafif ışıltı
+        'logo-glow': {
+          '0%, 100%': { opacity: '0.2', transform: 'scale(1)' },
+          '50%': { opacity: '0.5', transform: 'scale(1.25)' },
+        },
+        // "O" harfinin yavaş nefes alması
+        'otter-breathe': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.1)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
         'fade-in': 'fade-in 0.2s ease-out',
+        'brand-reveal': 'brand-reveal 0.45s ease-out both',
+        'letter-wave': 'letter-wave 1.2s ease-in-out',
+        'logo-glow': 'logo-glow 3.5s ease-in-out infinite',
+        'otter-breathe': 'otter-breathe 4s ease-in-out infinite',
       },
       fontFamily: {
         sans: [
