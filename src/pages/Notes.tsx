@@ -15,6 +15,8 @@ export function Notes(): JSX.Element {
   const upsert = useStore((s) => s.upsertNote)
   const removeNote = useStore((s) => s.removeNote)
   const removeNotes = useStore((s) => s.removeNotes)
+  const shieldNotes = useStore((s) => s.shieldNotes)
+  const unshieldNotes = useStore((s) => s.unshieldNotes)
   const query = useStore((s) => s.query)
 
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -101,20 +103,23 @@ export function Notes(): JSX.Element {
     const ids = Array.from(selectedIds)
     const noteObjects = ids.map((id) => notes.find((n) => n.id === id)).filter(Boolean) as Note[]
 
-    // Optimistic: remove from UI immediately (single state update)
+    // Shield these IDs so reconciliation/realtime can't resurrect them during undo window
+    shieldNotes(ids)
     removeNotes(ids)
     if (activeId && selectedIds.has(activeId)) setActiveId(null)
     setSelectedIds(new Set())
 
-    // Cancel any existing pending delete before starting a new one
+    // Commit any previous pending delete immediately before starting a new batch
     if (pendingDelete) {
       clearTimeout(pendingDelete.timer)
-      void window.snipotter.notes.deleteMany(pendingDelete.notes.map((n) => n.id))
+      const prevIds = pendingDelete.notes.map((n) => n.id)
+      void window.snipotter.notes.deleteMany(prevIds).then(() => unshieldNotes(prevIds))
     }
 
     const timer = setTimeout(async () => {
       setPendingDelete(null)
       await window.snipotter.notes.deleteMany(ids)
+      unshieldNotes(ids)
     }, 5000)
 
     setPendingDelete({ notes: noteObjects, timer })
@@ -123,6 +128,8 @@ export function Notes(): JSX.Element {
   const undoDelete = () => {
     if (!pendingDelete) return
     clearTimeout(pendingDelete.timer)
+    // Unshield first so the store accepts the restored notes
+    unshieldNotes(pendingDelete.notes.map((n) => n.id))
     pendingDelete.notes.forEach((n) => upsert(n))
     setPendingDelete(null)
   }

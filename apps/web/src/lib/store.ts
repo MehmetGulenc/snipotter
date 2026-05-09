@@ -25,6 +25,15 @@ interface Store {
   upsertNote: (note: Note) => void
   removeNote: (id: string) => void
   removeNotes: (ids: string[]) => void
+
+  // Pending-delete shields — block reconciliation/realtime from resurrecting
+  // items that are in the 5-second undo window (still in DB, removed from UI).
+  _shieldedNoteIds: Set<string>
+  _shieldedClipIds: Set<string>
+  shieldNotes: (ids: string[]) => void
+  unshieldNotes: (ids: string[]) => void
+  shieldClips: (ids: string[]) => void
+  unshieldClips: (ids: string[]) => void
 }
 
 const sortClips = (a: ClipboardItem[]) =>
@@ -48,16 +57,40 @@ export const useStore = create<Store>((set) => ({
   clipboard: [],
   notes: [],
 
+  _shieldedNoteIds: new Set(),
+  _shieldedClipIds: new Set(),
+  shieldNotes: (ids) =>
+    set((s) => ({ _shieldedNoteIds: new Set([...s._shieldedNoteIds, ...ids]) })),
+  unshieldNotes: (ids) =>
+    set((s) => {
+      const next = new Set(s._shieldedNoteIds)
+      ids.forEach((id) => next.delete(id))
+      return { _shieldedNoteIds: next }
+    }),
+  shieldClips: (ids) =>
+    set((s) => ({ _shieldedClipIds: new Set([...s._shieldedClipIds, ...ids]) })),
+  unshieldClips: (ids) =>
+    set((s) => {
+      const next = new Set(s._shieldedClipIds)
+      ids.forEach((id) => next.delete(id))
+      return { _shieldedClipIds: next }
+    }),
+
   setUser: (u) => set({ user: u }),
   setWorkspace: (w) => set({ workspace: w }),
   setLoading: (b) => set({ loading: b }),
   setView: (v) => set({ view: v }),
   setQuery: (q) => set({ query: q }),
 
-  setClipboard: (items) => set({ clipboard: sortClips(items) }),
+  setClipboard: (items) =>
+    set((s) => ({
+      clipboard: s._shieldedClipIds.size
+        ? sortClips(items.filter((c) => !s._shieldedClipIds.has(c.id)))
+        : sortClips(items),
+    })),
   upsertClip: (item) =>
     set((s) => {
-      // Handle realtime delete events
+      if (s._shieldedClipIds.has(item.id)) return s
       if ('deleted' in item && item.deleted) {
         return { clipboard: s.clipboard.filter((c) => c.id !== item.id) }
       }
@@ -70,10 +103,15 @@ export const useStore = create<Store>((set) => ({
     set((s) => ({ clipboard: s.clipboard.filter((c) => !set_.has(c.id)) }))
   },
 
-  setNotes: (notes) => set({ notes: sortNotes(notes) }),
+  setNotes: (notes) =>
+    set((s) => ({
+      notes: s._shieldedNoteIds.size
+        ? sortNotes(notes.filter((n) => !s._shieldedNoteIds.has(n.id)))
+        : sortNotes(notes),
+    })),
   upsertNote: (note) =>
     set((s) => {
-      // Handle realtime delete events - note has 'deleted' flag
+      if (s._shieldedNoteIds.has(note.id)) return s
       if ('deleted' in note && note.deleted) {
         return { notes: s.notes.filter((n) => n.id !== note.id) }
       }

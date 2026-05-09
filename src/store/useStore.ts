@@ -40,6 +40,17 @@ interface SnipotterState {
   removeNote: (id: string) => void
   removeNotes: (ids: string[]) => void
 
+  // Pending-delete shields — IDs in these sets are filtered out of any
+  // incoming setNotes/upsertNote/setClipboard/upsertClipboard call so that
+  // the 15s reconciliation loop and realtime replays can't resurrect items
+  // that the user just deleted while the undo timer is still running.
+  _shieldedNoteIds: Set<string>
+  _shieldedClipIds: Set<string>
+  shieldNotes: (ids: string[]) => void
+  unshieldNotes: (ids: string[]) => void
+  shieldClips: (ids: string[]) => void
+  unshieldClips: (ids: string[]) => void
+
   // AI status
   aiStatus: {
     enabled: boolean
@@ -66,9 +77,34 @@ export const useStore = create<SnipotterState>((set) => ({
   settings: null,
   setSettings: (s) => set({ settings: s }),
 
-  setClipboard: (items) => set({ clipboard: items }),
+  _shieldedNoteIds: new Set(),
+  _shieldedClipIds: new Set(),
+  shieldNotes: (ids) =>
+    set((s) => ({ _shieldedNoteIds: new Set([...s._shieldedNoteIds, ...ids]) })),
+  unshieldNotes: (ids) =>
+    set((s) => {
+      const next = new Set(s._shieldedNoteIds)
+      ids.forEach((id) => next.delete(id))
+      return { _shieldedNoteIds: next }
+    }),
+  shieldClips: (ids) =>
+    set((s) => ({ _shieldedClipIds: new Set([...s._shieldedClipIds, ...ids]) })),
+  unshieldClips: (ids) =>
+    set((s) => {
+      const next = new Set(s._shieldedClipIds)
+      ids.forEach((id) => next.delete(id))
+      return { _shieldedClipIds: next }
+    }),
+
+  setClipboard: (items) =>
+    set((s) => ({
+      clipboard: s._shieldedClipIds.size
+        ? sortClipboard(items.filter((c) => !s._shieldedClipIds.has(c.id)))
+        : sortClipboard(items),
+    })),
   upsertClipboard: (item) =>
     set((state) => {
+      if (state._shieldedClipIds.has(item.id)) return state
       if (item.deleted) {
         return { clipboard: state.clipboard.filter((c) => c.id !== item.id) }
       }
@@ -87,9 +123,15 @@ export const useStore = create<SnipotterState>((set) => ({
     set((s) => ({ clipboard: s.clipboard.filter((c) => !set_.has(c.id)) }))
   },
 
-  setNotes: (notes) => set({ notes: sortNotes(notes) }),
+  setNotes: (notes) =>
+    set((s) => ({
+      notes: s._shieldedNoteIds.size
+        ? sortNotes(notes.filter((n) => !s._shieldedNoteIds.has(n.id)))
+        : sortNotes(notes),
+    })),
   upsertNote: (note) =>
     set((state) => {
+      if (state._shieldedNoteIds.has(note.id)) return state
       if (note.deleted) {
         return { notes: state.notes.filter((n) => n.id !== note.id) }
       }

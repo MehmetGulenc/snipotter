@@ -14,6 +14,8 @@ export function Library(): JSX.Element {
   const upsert = useStore((s) => s.upsertClipboard)
   const removeClipboard = useStore((s) => s.removeClipboard)
   const removeClipboards = useStore((s) => s.removeClipboards)
+  const shieldClips = useStore((s) => s.shieldClips)
+  const unshieldClips = useStore((s) => s.unshieldClips)
   const upsertNote = useStore((s) => s.upsertNote)
   const query = useStore((s) => s.query)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -76,17 +78,20 @@ export function Library(): JSX.Element {
     const ids = Array.from(selectedIds)
     const itemObjects = ids.map((id) => items.find((i) => i.id === id)).filter(Boolean) as ClipboardItem[]
 
+    shieldClips(ids)
     removeClipboards(ids)
     setSelectedIds(new Set())
 
     if (pendingDelete) {
       clearTimeout(pendingDelete.timer)
-      void window.snipotter.clipboard.deleteMany(pendingDelete.items.map((i) => i.id))
+      const prevIds = pendingDelete.items.map((i) => i.id)
+      void window.snipotter.clipboard.deleteMany(prevIds).then(() => unshieldClips(prevIds))
     }
 
     const timer = setTimeout(async () => {
       setPendingDelete(null)
       await window.snipotter.clipboard.deleteMany(ids)
+      unshieldClips(ids)
     }, 5000)
 
     setPendingDelete({ items: itemObjects, timer })
@@ -95,6 +100,7 @@ export function Library(): JSX.Element {
   const undoDelete = () => {
     if (!pendingDelete) return
     clearTimeout(pendingDelete.timer)
+    unshieldClips(pendingDelete.items.map((i) => i.id))
     pendingDelete.items.forEach((i) => upsert(i))
     setPendingDelete(null)
   }

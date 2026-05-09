@@ -18,6 +18,8 @@ export function Library(): JSX.Element {
   const upsert = useStore((s) => s.upsertClip)
   const remove = useStore((s) => s.removeClip)
   const removeClips = useStore((s) => s.removeClips)
+  const shieldClips = useStore((s) => s.shieldClips)
+  const unshieldClips = useStore((s) => s.unshieldClips)
   const query = useStore((s) => s.query)
   const [loaded, setLoaded] = useState(false)
 
@@ -77,29 +79,33 @@ export function Library(): JSX.Element {
     const ids = Array.from(selectedIds)
     const itemObjects = ids.map((id) => items.find((i) => i.id === id)).filter(Boolean) as ClipboardItem[]
 
+    shieldClips(ids)
     removeClips(ids)
     setSelectedIds(new Set())
     setSelectMode(false)
 
     if (pendingDelete) {
       clearTimeout(pendingDelete.timer)
-      void deleteClipMany(pendingDelete.items.map((i) => i.id))
+      const prevIds = pendingDelete.items.map((i) => i.id)
+      void deleteClipMany(prevIds).then(() => unshieldClips(prevIds))
     }
 
     const timer = setTimeout(async () => {
       setPendingDelete(null)
       await deleteClipMany(ids)
+      unshieldClips(ids)
     }, 5000)
 
     setPendingDelete({ items: itemObjects, timer })
-  }, [selectedIds, items, pendingDelete, removeClips])
+  }, [selectedIds, items, pendingDelete, removeClips, shieldClips, unshieldClips])
 
   const undoDelete = useCallback(() => {
     if (!pendingDelete) return
     clearTimeout(pendingDelete.timer)
+    unshieldClips(pendingDelete.items.map((i) => i.id))
     pendingDelete.items.forEach((i) => upsert(i))
     setPendingDelete(null)
-  }, [pendingDelete, upsert])
+  }, [pendingDelete, upsert, unshieldClips])
 
   // Drag-to-select
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
