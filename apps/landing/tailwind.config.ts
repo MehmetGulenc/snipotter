@@ -33,6 +33,8 @@ const config: Config = {
         'pulse-soft': 'pulse-soft 3s ease-in-out infinite',
         'wave-letter': 'wave-letter 1.4s ease-in-out',
         'otter-breathe': 'otter-breathe 4s ease-in-out infinite',
+        'brand-reveal': 'brand-reveal 0.45s ease-out both',
+        'logo-glow': 'logo-glow 3.5s ease-in-out infinite',
       },
       keyframes: {
         'fade-in': {
@@ -111,7 +113,15 @@ const config: Config = {
         // the eye to the brand mark without ever being distracting.
         'otter-breathe': {
           '0%, 100%': { transform: 'scale(1)' },
-          '50%': { transform: 'scale(1.08)' },
+          '50%': { transform: 'scale(1.1)' },
+        },
+        'brand-reveal': {
+          from: { opacity: '0', transform: 'translateX(-6px) scale(0.82)' },
+          to: { opacity: '1', transform: 'translateX(0) scale(1)' },
+        },
+        'logo-glow': {
+          '0%, 100%': { opacity: '0.2', transform: 'scale(1)' },
+          '50%': { opacity: '0.5', transform: 'scale(1.25)' },
         },
       },
     },

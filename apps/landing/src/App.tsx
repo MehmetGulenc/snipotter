@@ -110,68 +110,45 @@ function Nav(): JSX.Element {
 
 function LogoMark(): JSX.Element {
   return (
-    <img
-      src={logoUrl}
-      alt=""
-      aria-hidden
-      width={32}
-      height={32}
-      draggable={false}
-      className="h-8 w-8 shrink-0 select-none"
-    />
+    <div className="relative flex items-center justify-center">
+      <div className="absolute h-10 w-10 animate-logo-glow rounded-full bg-fuchsia-500/40 blur-md" />
+      <img
+        src={logoUrl}
+        alt=""
+        aria-hidden
+        width={32}
+        height={32}
+        draggable={false}
+        className="relative h-8 w-8 shrink-0 select-none"
+      />
+    </div>
   )
 }
 
-/**
- * Animated SnipOtter wordmark. The brand name has an otter hidden inside
- * the second half — "Snip" + "Otter" — and the page until now did
- * nothing to surface that. We render every letter individually so we can:
- *   1. Capitalise the "O" in Otter so the otter-portion of the name is
- *      legible at a glance ("SnipOtter").
- *   2. Run a staggered wave on first paint and on hover, dragging the
- *      eye left → right across the wordmark.
- *   3. Apply a slow continuous "breathe" to the Otter portion so the
- *      logo stays alive without distracting from page content.
- *
- * Implementation note: each letter is its own <span> so the per-letter
- * animation-delay can shift them in time. The hover wave uses the
- * `group-hover` Tailwind variant on the parent so a single class
- * change replays the staggered animation.
- */
 function Wordmark({ size = 'md' }: { size?: 'sm' | 'md' }): JSX.Element {
-  const letters = 'SnipOtter'.split('')
+  const snip = 'Snip'.split('')
+  const otter = 'Otter'.split('')
   const sizeClass = size === 'sm' ? 'text-base' : 'text-base'
   return (
-    <span
-      className={
-        'group inline-flex select-none font-semibold tracking-tight ' + sizeClass
-      }
-    >
-      {letters.map((l, i) => {
-        // Letters 4..8 are "Otter". Highlight them with the primary tint
-        // and the breathing animation; the leading "Snip" stays neutral
-        // so the otter half pops without extra colour for everyone.
-        const isOtter = i >= 4
-        return (
-          <span
-            key={i}
-            className={
-              'inline-block transition-transform ' +
-              (isOtter ? 'text-foreground ' : 'text-foreground ') +
-              // First letter of "Otter" gets the breathing accent.
-              (i === 4 ? 'animate-otter-breathe text-primary ' : '') +
-              // Stagger each letter on first paint and on hover so the
-              // wordmark "waves" instead of just sitting there.
-              'group-hover:animate-wave-letter'
-            }
-            style={{
-              animationDelay: i === 4 ? undefined : `${i * 60}ms`,
-            }}
-          >
-            {l}
-          </span>
-        )
-      })}
+    <span className={`group inline-flex select-none items-baseline font-bold tracking-tight ${sizeClass}`}>
+      {snip.map((l, i) => (
+        <span
+          key={i}
+          className="inline-block animate-brand-reveal text-fuchsia-400 group-hover:animate-wave-letter"
+          style={{ animationDelay: `${i * 40}ms` }}
+        >
+          {l}
+        </span>
+      ))}
+      {otter.map((l, i) => (
+        <span
+          key={i}
+          className={`inline-block animate-brand-reveal text-violet-300 group-hover:animate-wave-letter${i === 0 ? ' animate-otter-breathe' : ''}`}
+          style={{ animationDelay: `${(i + 4) * 40}ms` }}
+        >
+          {l}
+        </span>
+      ))}
     </span>
   )
 }
