@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/store/useStore'
 import type { ClipboardItem } from '@shared/types'
-import { Search, Pin, Image as ImageIcon, Trash2, Monitor, Clock } from 'lucide-react'
+import { Search, Pin, Image as ImageIcon, Trash2, Monitor, Clock, FileText } from 'lucide-react'
 import { cn, formatDateTime, relativeTime } from '@/lib/utils'
 
 const VISIBLE_LIMIT = 50
@@ -23,6 +23,7 @@ export function QuickPaste(): JSX.Element {
   const items = useStore((s) => s.clipboard)
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
@@ -72,6 +73,7 @@ export function QuickPaste(): JSX.Element {
   }, [selectedId])
 
   const selectedItem = flat.find((it) => it.id === selectedId) ?? null
+  const hoveredItem = flat.find((it) => it.id === hoveredId) ?? null
 
   const moveBy = (delta: number): void => {
     if (flat.length === 0) return
@@ -132,7 +134,10 @@ export function QuickPaste(): JSX.Element {
       className="flex h-screen w-screen overflow-hidden rounded-xl border border-white/10 bg-background/85 text-foreground shadow-2xl backdrop-blur-xl"
     >
       {/* Left: search + list */}
-      <div className="flex w-[280px] shrink-0 flex-col border-r border-white/10">
+      <div className={cn(
+        "flex shrink-0 flex-col transition-all duration-150",
+        hoveredItem ? "w-[280px] border-r border-white/10" : "w-full"
+      )}>
         <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
@@ -146,7 +151,7 @@ export function QuickPaste(): JSX.Element {
             autoComplete="off"
           />
         </div>
-        <div ref={listRef} className="flex-1 overflow-y-auto py-1">
+        <div ref={listRef} className="flex-1 overflow-y-auto py-1" onMouseLeave={() => setHoveredId(null)}>
           {flat.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
               <ImageIcon className="mb-2 h-6 w-6 opacity-40" />
@@ -159,34 +164,30 @@ export function QuickPaste(): JSX.Element {
               {sections.pinned.length > 0 && <SectionHeader label="Sabitlenmiş" />}
               {sections.pinned.map((it, i) => (
                 <Row key={it.id} item={it} index={i} selected={it.id === selectedId}
-                  onSelect={setSelectedId} onActivate={pasteSelected} />
+                  onSelect={setSelectedId} onHover={setHoveredId} onActivate={pasteSelected} />
               ))}
               {sections.recent.length > 0 && sections.pinned.length > 0 && (
                 <SectionHeader label="Son kopyalananlar" />
               )}
               {sections.recent.map((it, i) => (
                 <Row key={it.id} item={it} index={sections.pinned.length + i}
-                  selected={it.id === selectedId} onSelect={setSelectedId} onActivate={pasteSelected} />
+                  selected={it.id === selectedId} onSelect={setSelectedId} onHover={setHoveredId} onActivate={pasteSelected} />
               ))}
             </>
           )}
         </div>
       </div>
 
-      {/* Right: detail panel */}
-      <div className="flex flex-1 flex-col">
-        {selectedItem ? (
+      {/* Right: detail panel — only visible while hovering an item */}
+      {hoveredItem && (
+        <div className="flex flex-1 flex-col">
           <DetailPanel
-            item={selectedItem}
-            onPin={() => void togglePin(selectedItem)}
-            onDelete={() => void deleteSelected()}
+            item={hoveredItem}
+            onPin={() => void togglePin(hoveredItem)}
+            onDelete={() => { setHoveredId(null); void deleteSelected() }}
           />
-        ) : (
-          <div className="flex h-full items-center justify-center text-xs text-muted-foreground/50">
-            Öğe seçin
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -199,11 +200,12 @@ function SectionHeader({ label }: { label: string }): JSX.Element {
   )
 }
 
-function Row({ item, index, selected, onSelect, onActivate }: {
+function Row({ item, index, selected, onSelect, onHover, onActivate }: {
   item: ClipboardItem
   index: number
   selected: boolean
   onSelect: (id: string) => void
+  onHover: (id: string | null) => void
   onActivate: () => void | Promise<void>
 }): JSX.Element {
   const preview = previewFor(item)
@@ -212,7 +214,7 @@ function Row({ item, index, selected, onSelect, onActivate }: {
   return (
     <div
       data-clip-id={item.id}
-      onMouseEnter={() => onSelect(item.id)}
+      onMouseEnter={() => { onSelect(item.id); onHover(item.id) }}
       onClick={() => void onActivate()}
       className={cn(
         'mx-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
@@ -224,6 +226,8 @@ function Row({ item, index, selected, onSelect, onActivate }: {
           <img src={item.text} alt="" className="h-6 w-6 rounded object-cover" />
         ) : item.contentType === 'rich-text' ? (
           <span className="text-[9px] font-bold">RTF</span>
+        ) : item.contentType === 'file' ? (
+          <FileText className="h-3.5 w-3.5" />
         ) : (
           <span className="text-[9px] font-mono">Aa</span>
         )}
@@ -251,6 +255,9 @@ function DetailPanel({ item, onPin, onDelete }: {
   onDelete: () => void
 }): JSX.Element {
   const isImage = item.contentType === 'image' && item.text.startsWith('data:image/')
+  const isFile = item.contentType === 'file'
+  const fileName = isFile ? (() => { try { return decodeURIComponent(item.text.split('/').pop() ?? '') } catch { return item.text } })() : null
+  const filePath = isFile ? (() => { try { return decodeURIComponent(new URL(item.text).pathname) } catch { return item.text } })() : null
 
   return (
     <div className="flex h-full flex-col">
@@ -262,6 +269,12 @@ function DetailPanel({ item, onPin, onDelete }: {
             alt="Kopyalanan görsel"
             className="max-h-48 max-w-full rounded-lg object-contain"
           />
+        ) : isFile ? (
+          <div className="flex flex-col items-center justify-center gap-3 pt-4 text-center">
+            <FileText className="h-12 w-12 text-muted-foreground/40" />
+            <div className="text-sm font-medium text-foreground/90">{fileName}</div>
+            <div className="max-w-full break-all text-[10px] text-muted-foreground/60">{filePath}</div>
+          </div>
         ) : (
           <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground/90">
             {item.text.slice(0, 2000)}{item.text.length > 2000 ? '\n…' : ''}
@@ -328,6 +341,9 @@ function DetailPanel({ item, onPin, onDelete }: {
 
 function previewFor(item: ClipboardItem): string {
   if (item.contentType === 'image') return 'Görsel'
+  if (item.contentType === 'file') {
+    try { return decodeURIComponent(item.text.split('/').pop() ?? item.text) } catch { return item.text }
+  }
   const firstLine = item.text.split('\n').find((l) => l.trim().length > 0) ?? item.text
   return firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine
 }

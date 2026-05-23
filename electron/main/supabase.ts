@@ -95,6 +95,7 @@ function noteFromRow(row: NoteRow): Note {
   return {
     id: row.id,
     userId: row.created_by ?? row.workspace_id,
+    workspaceId: row.workspace_id,
     title: row.title,
     content: row.content,
     pinned: row.pinned,

@@ -57,6 +57,9 @@ function sanitize(s: AppSettings): AppSettings {
   if (typeof out.autoMirrorClipboard !== 'boolean') {
     out.autoMirrorClipboard = DEFAULT_SETTINGS.autoMirrorClipboard
   }
+  if (typeof out.fileCopyEnabled !== 'boolean') {
+    out.fileCopyEnabled = DEFAULT_SETTINGS.fileCopyEnabled
+  }
   // Migration for v0.7: anonymous heartbeat telemetry. Defaults to ON
   // because the payload is genuinely anonymous (random device UUID,
   // OS+arch, app version — no PII, no IP storage). Users who want to

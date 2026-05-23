@@ -29,6 +29,29 @@ export function Notes(): JSX.Element {
   const dragVisited = useRef<Set<string>>(new Set())
   const listRef = useRef<HTMLDivElement>(null)
 
+  // Resizable sidebar
+  const [sidebarWidth, setSidebarWidth] = useState(288)
+  const resizing = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(0)
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    resizing.current = true
+    startX.current = e.clientX
+    startWidth.current = sidebarWidth
+    const onMove = (ev: MouseEvent) => {
+      if (!resizing.current) return
+      const delta = ev.clientX - startX.current
+      setSidebarWidth(Math.max(200, Math.min(600, startWidth.current + delta)))
+    }
+    const onUp = () => {
+      resizing.current = false
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [sidebarWidth])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return notes
@@ -181,7 +204,7 @@ export function Notes(): JSX.Element {
 
   return (
     <div className="flex h-full">
-      <aside className="flex w-72 shrink-0 flex-col border-r border-border bg-card/30">
+      <aside className="flex shrink-0 flex-col bg-card/30" style={{ width: sidebarWidth }}>
         <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Notlar ({filtered.length})
@@ -264,6 +287,12 @@ export function Notes(): JSX.Element {
           </div>
         )}
       </aside>
+
+      {/* Resize handle */}
+      <div
+        onMouseDown={onResizeStart}
+        className="w-1 shrink-0 cursor-col-resize border-r border-border bg-transparent hover:bg-primary/30 active:bg-primary/50 transition-colors"
+      />
 
       <NoteEditor
         note={active}

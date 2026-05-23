@@ -77,6 +77,7 @@ export interface ClipboardItem {
 export interface Note {
   id: string
   userId: string
+  workspaceId?: string
   /** Optional title (first line if empty). */
   title: string | null
   content: string
@@ -117,6 +118,13 @@ export interface AppSettings {
    */
   autoMirrorClipboard: boolean
   /**
+   * When enabled, files copied in Finder / Explorer (< 5 MB) are captured
+   * in the clipboard history and can be pasted back from the QuickPaste popup.
+   * macOS only for now. Defaults to false because file copies are rare and
+   * the feature requires Accessibility / Automation permissions.
+   */
+  fileCopyEnabled: boolean
+  /**
    * When enabled, the app pings api.snipotter.com/heartbeat once per
    * launch with a fully anonymous payload (random device UUID stored
    * locally, OS+arch, app version). The data is used only to count
@@ -138,6 +146,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   launchAtLogin: false,
   redactSensitive: true,
   autoMirrorClipboard: false,
+  fileCopyEnabled: false,
   telemetryEnabled: true,
 }
 

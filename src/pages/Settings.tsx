@@ -111,6 +111,17 @@ export function Settings(): JSX.Element {
             />
           </Field>
           <Field
+            label="Dosya kopyalamayı yakala (macOS, ≤5 MB)"
+            description="Finder'da bir dosya kopyalandığında geçmişe eklenir ve hızlı yapıştırdan geri yapıştırılabilir. Erişilebilirlik izni gerektirir."
+          >
+            <input
+              type="checkbox"
+              checked={settings.fileCopyEnabled}
+              onChange={(e) => update({ fileCopyEnabled: e.target.checked })}
+              className="h-4 w-4 accent-primary"
+            />
+          </Field>
+          <Field
             label="Anonim kullanım istatistiği"
             description="Snipotter'ın bugün kaç cihazda kullanıldığını saymama yardımcı ol. Sadece anonim cihaz kimliği + işletim sistemi + sürüm gönderilir; e-posta, IP, hesap veya pano içeriği yok. İstediğin zaman kapatabilirsin."
           >

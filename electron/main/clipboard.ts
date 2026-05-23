@@ -8,6 +8,8 @@
 import { clipboard, nativeImage } from 'electron'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
+import { statSync } from 'node:fs'
+import { basename } from 'node:path'
 import type { ClipboardItem, ClipboardContentType } from '@shared/types'
 
 interface MonitorOptions {
@@ -15,6 +17,8 @@ interface MonitorOptions {
   intervalMs?: number
   /** When true, skip entries that look like passwords / API keys. */
   redactSensitive?: boolean
+  /** When true, capture file copies from Finder (macOS) / Explorer (Windows) if < 5 MB. */
+  fileCopyEnabled?: boolean
 }
 
 // Developer-flavoured secrets — keys and tokens we never want to flash on
@@ -78,6 +82,7 @@ export class ClipboardMonitor extends EventEmitter {
       // is negligible (clipboard reads on macOS/Windows are O(1) cached).
       intervalMs: opts.intervalMs ?? 100,
       redactSensitive: opts.redactSensitive ?? true,
+      fileCopyEnabled: opts.fileCopyEnabled ?? false,
     }
   }
 
@@ -99,12 +104,17 @@ export class ClipboardMonitor extends EventEmitter {
     this.opts.redactSensitive = value
   }
 
+  setFileCopyEnabled(value: boolean): void {
+    this.opts.fileCopyEnabled = value
+  }
+
   private snapshotHash(): string | null {
     const text = clipboard.readText()
     const html = clipboard.readHTML()
     const image = clipboard.readImage()
-    if (!text && !html && (image.isEmpty?.() ?? true)) return null
-    return sha1(`${text}\u0001${html}\u0001${image.toDataURL?.() ?? ''}`)
+    const fileUrl = process.platform === 'darwin' ? clipboard.read('public.file-url') : ''
+    if (!text && !html && (image.isEmpty?.() ?? true) && !fileUrl) return null
+    return sha1(`${text}${html}${image.toDataURL?.() ?? ''}${fileUrl}`)
   }
 
   private tick(): void {
@@ -113,9 +123,10 @@ export class ClipboardMonitor extends EventEmitter {
       const html = clipboard.readHTML()
       const image = clipboard.readImage()
       const hasImage = !image.isEmpty?.()
-      if (!text && !html && !hasImage) return
+      const fileUrl = process.platform === 'darwin' ? clipboard.read('public.file-url') : ''
+      if (!text && !html && !hasImage && !fileUrl) return
 
-      const hash = sha1(`${text}\u0001${html}\u0001${hasImage ? image.toDataURL() : ''}`)
+      const hash = sha1(`${text}${html}${hasImage ? image.toDataURL() : ''}${fileUrl}`)
       if (hash === this.lastHash) return
       this.lastHash = hash
 
@@ -123,6 +134,30 @@ export class ClipboardMonitor extends EventEmitter {
       // not a fresh user action. Drop the emit but keep the lastHash update so the
       // NEXT real change still triggers a 'change' event.
       if (Date.now() < this.suppressEmitUntil) return
+
+      // macOS file copy: captured before text/image to avoid double-emitting
+      // (Finder puts the filename as text AND a file URL, so we prefer the file URL).
+      if (fileUrl && fileUrl.startsWith('file://') && this.opts.fileCopyEnabled) {
+        try {
+          const filePath = decodeURIComponent(new URL(fileUrl).pathname)
+          const stat = statSync(filePath, { throwIfNoEntry: false })
+          if (stat && stat.size <= 5 * 1024 * 1024) {
+            const fileDraft: Omit<ClipboardItem, 'id' | 'userId' | 'synced'> = {
+              contentType: 'file',
+              text: fileUrl,
+              hash,
+              html: null,
+              sourceApp: null,
+              pinned: false,
+              ai: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+            this.emit('change', fileDraft, { rawImage: null })
+            return
+          }
+        } catch { /* ignore: stat or URL parse failed */ }
+      }
 
       let contentType: ClipboardContentType = 'text'
       let payload = text
@@ -186,6 +221,17 @@ export class ClipboardMonitor extends EventEmitter {
     // sending device.
     this.suppressEmitUntil = Date.now() + 750
 
+    if (item.contentType === 'file' && item.text.startsWith('file://') && process.platform === 'darwin') {
+      try {
+        const filePath = decodeURIComponent(new URL(item.text).pathname)
+        // Write NSFilenamesPboardType plist for Finder compatibility
+        const escaped = filePath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        const plist = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<array>\n\t<string>${escaped}</string>\n</array>\n</plist>`
+        clipboard.writeBuffer('NSFilenamesPboardType', Buffer.from(plist, 'utf-8'))
+        this.lastHash = this.snapshotHash()
+        return
+      } catch { /* fall through to plain text */ }
+    }
     if (item.contentType === 'image' && item.text.startsWith('data:image/')) {
       const img = nativeImage.createFromDataURL(item.text)
       if (!img.isEmpty()) {

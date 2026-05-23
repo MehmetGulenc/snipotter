@@ -81,6 +81,7 @@ const ai = new AIService({
 
 const monitor = new ClipboardMonitor({
   redactSensitive: settingsStore.get().redactSensitive,
+  fileCopyEnabled: settingsStore.get().fileCopyEnabled,
 })
 
 const updater = new UpdaterService()
@@ -445,6 +446,7 @@ function wireIPC(): void {
   ipcMain.handle(IPC.SETTINGS_UPDATE, async (_e, partial: Partial<AppSettings>) => {
     const next = settingsStore.set(partial)
     monitor.setRedactSensitive(next.redactSensitive)
+    monitor.setFileCopyEnabled(next.fileCopyEnabled)
     if (next.clipboardEnabled) monitor.start()
     else monitor.stop()
     registerHotkeys()

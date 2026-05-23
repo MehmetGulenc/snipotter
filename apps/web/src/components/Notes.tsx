@@ -31,6 +31,8 @@ export function Notes(): JSX.Element {
   const [draft, setDraft] = useState('')
   const [titleDraft, setTitleDraft] = useState('')
   const [savingDraft, setSavingDraft] = useState(false)
+  const dirtyContent = useRef(false)
+  const dirtyTitle = useRef(false)
 
   // multi-select
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -69,19 +71,33 @@ export function Notes(): JSX.Element {
 
   const active = filtered.find((n) => n.id === activeId) ?? null
 
+  // Reset editor on note navigation
   useEffect(() => {
+    dirtyContent.current = false
+    dirtyTitle.current = false
     setDraft(active?.content ?? '')
     setTitleDraft(active?.title ?? '')
   }, [activeId])
 
+  // Adopt remote changes when user isn't actively editing
+  useEffect(() => {
+    if (!dirtyContent.current) setDraft(active?.content ?? '')
+  }, [active?.content])
+
+  useEffect(() => {
+    if (!dirtyTitle.current) setTitleDraft(active?.title ?? '')
+  }, [active?.title])
+
+  // Content save (only when user has typed)
   useEffect(() => {
     if (!active) return
-    if (draft === active.content) return
+    if (!dirtyContent.current) return
     setSavingDraft(true)
     const t = setTimeout(async () => {
       try {
         await updateNote(active.id, { content: draft })
         upsert({ ...active, content: draft })
+        dirtyContent.current = false
       } catch (e) {
         console.warn('note save failed', e)
       } finally {
@@ -91,14 +107,15 @@ export function Notes(): JSX.Element {
     return () => clearTimeout(t)
   }, [draft, active?.id])
 
+  // Title save (only when user has typed)
   useEffect(() => {
     if (!active) return
-    const stored = active.title ?? ''
-    if (titleDraft === stored) return
+    if (!dirtyTitle.current) return
     const t = setTimeout(async () => {
       try {
         await updateNote(active.id, { title: titleDraft.trim() || null })
         upsert({ ...active, title: titleDraft.trim() || null })
+        dirtyTitle.current = false
       } catch (e) {
         console.warn('title save failed', e)
       }
@@ -294,13 +311,13 @@ export function Notes(): JSX.Element {
         </div>
         <input
           value={titleDraft}
-          onChange={(e) => setTitleDraft(e.target.value)}
+          onChange={(e) => { dirtyTitle.current = true; setTitleDraft(e.target.value) }}
           placeholder="Başlık (opsiyonel)"
           className="border-b border-border bg-transparent px-4 py-3 text-base font-semibold outline-none placeholder:text-muted-foreground"
         />
         <Textarea
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => { dirtyContent.current = true; setDraft(e.target.value) }}
           placeholder="Notunu yaz…"
           className="flex-1 resize-none rounded-none border-0 bg-transparent px-4 py-4 text-base focus-visible:ring-0"
         />
