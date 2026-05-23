@@ -68,7 +68,20 @@ export function refreshMenu(monitor: ClipboardMonitor, updater?: UpdaterService)
   const settings = settingsStore.get()
   const status = storedUpdater?.getStatus()
   const isDownloaded = status?.kind === 'downloaded'
+  const isAvailable = status?.kind === 'available'
   const isChecking = status?.kind === 'checking'
+  const isUpToDate = status?.kind === 'not-available'
+
+  const updateItems: Electron.MenuItemConstructorOptions[] = isDownloaded
+    ? [{ label: 'Yeniden Başlat ve Güncelle', click: () => storedUpdater?.installAndRestart() }]
+    : isAvailable
+      ? [{ label: `Güncelleme Mevcut (${status.nextVersion}) — İndir`, click: () => { void storedUpdater?.downloadNow() } }]
+      : isUpToDate
+        ? [
+            { label: '✓ Güncel', enabled: false },
+            { label: 'Tekrar Kontrol Et', click: () => { void storedUpdater?.checkNow() } },
+          ]
+        : [{ label: isChecking ? 'Kontrol Ediliyor…' : 'Güncelleme Denetle', enabled: !isChecking, click: () => { void storedUpdater?.checkNow() } }]
 
   const menu = Menu.buildFromTemplate([
     { label: 'Snipotter', enabled: false },
@@ -91,10 +104,7 @@ export function refreshMenu(monitor: ClipboardMonitor, updater?: UpdaterService)
       },
     },
     { type: 'separator' },
-    ...(isDownloaded
-      ? [{ label: 'Yeniden Başlat ve Güncelle', click: () => storedUpdater?.installAndRestart() }]
-      : [{ label: isChecking ? 'Güncelleme Kontrol Ediliyor…' : 'Güncelleme Denetle', enabled: !isChecking, click: () => { void storedUpdater?.checkNow() } }]
-    ),
+    ...updateItems,
     { type: 'separator' as const },
     { label: 'Snipotter\'ı Kapat', role: 'quit' as const },
   ])

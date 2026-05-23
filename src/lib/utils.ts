@@ -28,6 +28,17 @@ export function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString()
 }
 
+/** Absolute date+time in Turkish locale (e.g., "23 Mayıs 2026 09:39"). */
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('tr-TR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 /** First non-empty line, capped. Used as note title fallback. */
 export function firstLine(s: string, max = 60): string {
   const line = s.split('\n').find((l) => l.trim().length > 0) ?? ''

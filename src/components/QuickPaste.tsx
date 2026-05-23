@@ -1,24 +1,21 @@
 /**
  * Snipotter — Quick paste popup (Maccy-style)
  *
- * Frameless overlay window opened via the `quickPasteHotkey` global shortcut.
- * Shows recent clipboard items grouped as Pinned + Recent, with live search
- * and keyboard-only navigation:
- *
- *   ↑ / ↓        move selection
- *   Enter        copy selected item to system clipboard, hide window
- *   Esc          hide window
- *   ⌘ / Ctrl + 1..9   jump to nth visible item
- *   Type any character → adds to search filter
- *
- * The window is positioned near the cursor (see windows.ts) and auto-hides on
- * blur in production, so users never need to dismiss it manually.
+ * Two-panel layout: item list on the left, detail panel on the right.
+ * Keyboard navigation:
+ *   ↑ / ↓          move selection
+ *   Enter           paste selected item and return to previous app
+ *   Esc             close without pasting
+ *   ⌘P             toggle pin on selected item
+ *   ⌘⌫             delete selected item
+ *   ⌘1..⌘9         jump to nth visible item and paste
+ *   Type any char → adds to search filter
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/store/useStore'
 import type { ClipboardItem } from '@shared/types'
-import { Search, Pin, Image as ImageIcon } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Search, Pin, Image as ImageIcon, Trash2, Monitor, Clock } from 'lucide-react'
+import { cn, formatDateTime, relativeTime } from '@/lib/utils'
 
 const VISIBLE_LIMIT = 50
 
@@ -29,18 +26,12 @@ export function QuickPaste(): JSX.Element {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
-  // Initial load — main process broadcasts CLIP_NEW / CLIP_UPDATED into the
-  // store, so popping a stale list on first open could show empty briefly.
-  // Force a refetch when the popup mounts.
   useEffect(() => {
     void window.snipotter.clipboard.list().then((r) => {
-      if (r.ok) {
-        useStore.getState().setClipboard(r.data)
-      }
+      if (r.ok) useStore.getState().setClipboard(r.data)
     })
   }, [])
 
-  // Re-focus search + reset state when the same window is shown again.
   useEffect(() => {
     const off = window.snipotter.window.onQuickPasteReopened(() => {
       setQuery('')
@@ -48,17 +39,11 @@ export function QuickPaste(): JSX.Element {
       inputRef.current?.focus()
       inputRef.current?.select()
     })
-    return () => {
-      off()
-    }
+    return () => { off() }
   }, [])
 
-  // Auto-focus search on first render.
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+  useEffect(() => { inputRef.current?.focus() }, [])
 
-  // Sectioned + filtered list (pinned first, then recent).
   const sections = useMemo(() => {
     const q = query.trim().toLowerCase()
     const matches = (it: ClipboardItem): boolean => {
@@ -69,37 +54,24 @@ export function QuickPaste(): JSX.Element {
       return false
     }
     const pinned = items.filter((it) => it.pinned && matches(it))
-    const recent = items
-      .filter((it) => !it.pinned && matches(it))
-      .slice(0, VISIBLE_LIMIT)
+    const recent = items.filter((it) => !it.pinned && matches(it)).slice(0, VISIBLE_LIMIT)
     return { pinned, recent }
   }, [items, query])
 
-  // Flattened list for keyboard navigation.
-  const flat = useMemo(
-    () => [...sections.pinned, ...sections.recent],
-    [sections],
-  )
+  const flat = useMemo(() => [...sections.pinned, ...sections.recent], [sections])
 
-  // Reset selection when filter changes; default to first match.
   useEffect(() => {
-    if (flat.length === 0) {
-      setSelectedId(null)
-      return
-    }
-    if (!flat.some((it) => it.id === selectedId)) {
-      setSelectedId(flat[0].id)
-    }
+    if (flat.length === 0) { setSelectedId(null); return }
+    if (!flat.some((it) => it.id === selectedId)) setSelectedId(flat[0].id)
   }, [flat, selectedId])
 
-  // Scroll selected item into view.
   useEffect(() => {
     if (!selectedId) return
-    const el = listRef.current?.querySelector<HTMLElement>(
-      `[data-clip-id="${CSS.escape(selectedId)}"]`,
-    )
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-clip-id="${CSS.escape(selectedId)}"]`)
     el?.scrollIntoView({ block: 'nearest' })
   }, [selectedId])
+
+  const selectedItem = flat.find((it) => it.id === selectedId) ?? null
 
   const moveBy = (delta: number): void => {
     if (flat.length === 0) return
@@ -116,27 +88,32 @@ export function QuickPaste(): JSX.Element {
   }
 
   const togglePin = async (item: ClipboardItem): Promise<void> => {
-    const nextPinned = !item.pinned
-    // Optimistic store update for snappy UI.
-    useStore.getState().upsertClipboard({ ...item, pinned: nextPinned })
-    await window.snipotter.clipboard.pin(item.id, nextPinned)
+    useStore.getState().upsertClipboard({ ...item, pinned: !item.pinned })
+    await window.snipotter.clipboard.pin(item.id, !item.pinned)
+  }
+
+  const deleteSelected = async (): Promise<void> => {
+    if (!selectedItem) return
+    const idx = flat.findIndex((it) => it.id === selectedItem.id)
+    useStore.getState().upsertClipboard({ ...selectedItem, deleted: true })
+    void window.snipotter.clipboard.delete(selectedItem.id)
+    // Move selection to next item
+    const next = flat[idx + 1] ?? flat[idx - 1]
+    setSelectedId(next?.id ?? null)
   }
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown') { e.preventDefault(); moveBy(1) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); moveBy(-1) }
+    else if (e.key === 'Enter') { e.preventDefault(); void pasteSelected() }
+    else if (e.key === 'Escape') { e.preventDefault(); void window.snipotter.window.hideQuickPaste() }
+    else if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
       e.preventDefault()
-      moveBy(1)
-    } else if (e.key === 'ArrowUp') {
+      if (selectedItem) void togglePin(selectedItem)
+    } else if ((e.metaKey || e.ctrlKey) && (e.key === 'Backspace' || e.key === 'Delete')) {
       e.preventDefault()
-      moveBy(-1)
-    } else if (e.key === 'Enter') {
-      e.preventDefault()
-      void pasteSelected()
-    } else if (e.key === 'Escape') {
-      e.preventDefault()
-      void window.snipotter.window.hideQuickPaste()
+      void deleteSelected()
     } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '9') {
-      // ⌘1..⌘9 jump to nth visible row.
       const n = Number(e.key) - 1
       if (flat[n]) {
         e.preventDefault()
@@ -152,63 +129,62 @@ export function QuickPaste(): JSX.Element {
   return (
     <div
       onKeyDown={onKeyDown}
-      className="flex h-screen w-screen flex-col overflow-hidden rounded-xl border border-white/10 bg-background/85 text-foreground shadow-2xl backdrop-blur-xl"
+      className="flex h-screen w-screen overflow-hidden rounded-xl border border-white/10 bg-background/85 text-foreground shadow-2xl backdrop-blur-xl"
     >
-      {/* Search header */}
-      <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
-        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Pano öğelerinde ara…"
-          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          autoFocus
-          spellCheck={false}
-          autoComplete="off"
-        />
-        {flat.length > 0 && (
-          <span className="text-[10px] text-muted-foreground">
-            ↑↓ Enter · ESC kapat
-          </span>
-        )}
+      {/* Left: search + list */}
+      <div className="flex w-[280px] shrink-0 flex-col border-r border-white/10">
+        <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Pano öğelerinde ara…"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            autoFocus
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </div>
+        <div ref={listRef} className="flex-1 overflow-y-auto py-1">
+          {flat.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
+              <ImageIcon className="mb-2 h-6 w-6 opacity-40" />
+              <div className="text-xs font-medium">
+                {query ? 'Sonuç yok' : 'Henüz kopyalanan öğe yok'}
+              </div>
+            </div>
+          ) : (
+            <>
+              {sections.pinned.length > 0 && <SectionHeader label="Sabitlenmiş" />}
+              {sections.pinned.map((it, i) => (
+                <Row key={it.id} item={it} index={i} selected={it.id === selectedId}
+                  onSelect={setSelectedId} onActivate={pasteSelected} />
+              ))}
+              {sections.recent.length > 0 && sections.pinned.length > 0 && (
+                <SectionHeader label="Son kopyalananlar" />
+              )}
+              {sections.recent.map((it, i) => (
+                <Row key={it.id} item={it} index={sections.pinned.length + i}
+                  selected={it.id === selectedId} onSelect={setSelectedId} onActivate={pasteSelected} />
+              ))}
+            </>
+          )}
+        </div>
       </div>
 
-      {/* List */}
-      <div ref={listRef} className="flex-1 overflow-y-auto py-1">
-        {flat.length === 0 ? (
-          <Empty query={query} />
+      {/* Right: detail panel */}
+      <div className="flex flex-1 flex-col">
+        {selectedItem ? (
+          <DetailPanel
+            item={selectedItem}
+            onPin={() => void togglePin(selectedItem)}
+            onDelete={() => void deleteSelected()}
+          />
         ) : (
-          <>
-            {sections.pinned.length > 0 && (
-              <SectionHeader label="Sabitlenmiş" />
-            )}
-            {sections.pinned.map((it, i) => (
-              <Row
-                key={it.id}
-                item={it}
-                index={i}
-                selected={it.id === selectedId}
-                onSelect={setSelectedId}
-                onActivate={pasteSelected}
-                onTogglePin={togglePin}
-              />
-            ))}
-            {sections.recent.length > 0 && sections.pinned.length > 0 && (
-              <SectionHeader label="Son kopyalananlar" />
-            )}
-            {sections.recent.map((it, i) => (
-              <Row
-                key={it.id}
-                item={it}
-                index={sections.pinned.length + i}
-                selected={it.id === selectedId}
-                onSelect={setSelectedId}
-                onActivate={pasteSelected}
-                onTogglePin={togglePin}
-              />
-            ))}
-          </>
+          <div className="flex h-full items-center justify-center text-xs text-muted-foreground/50">
+            Öğe seçin
+          </div>
         )}
       </div>
     </div>
@@ -223,20 +199,12 @@ function SectionHeader({ label }: { label: string }): JSX.Element {
   )
 }
 
-function Row({
-  item,
-  index,
-  selected,
-  onSelect,
-  onActivate,
-  onTogglePin,
-}: {
+function Row({ item, index, selected, onSelect, onActivate }: {
   item: ClipboardItem
   index: number
   selected: boolean
   onSelect: (id: string) => void
   onActivate: () => void | Promise<void>
-  onTogglePin: (item: ClipboardItem) => void | Promise<void>
 }): JSX.Element {
   const preview = previewFor(item)
   const isImage = item.contentType === 'image' && item.text.startsWith('data:image/')
@@ -251,65 +219,109 @@ function Row({
         selected ? 'bg-primary/20 text-foreground' : 'text-muted-foreground hover:bg-accent/40',
       )}
     >
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-white/5 text-muted-foreground">
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-white/5 text-muted-foreground">
+        {isImage ? (
+          <img src={item.text} alt="" className="h-6 w-6 rounded object-cover" />
+        ) : item.contentType === 'rich-text' ? (
+          <span className="text-[9px] font-bold">RTF</span>
+        ) : (
+          <span className="text-[9px] font-mono">Aa</span>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className={cn('truncate text-xs', selected ? 'text-foreground' : 'text-foreground/80')}>
+          {preview}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        {item.pinned && <Pin className="h-3 w-3 text-primary" />}
+        {shortcut && (
+          <span className={cn('rounded bg-white/5 px-1 font-mono text-[10px]', selected ? 'text-foreground' : 'text-muted-foreground/60')}>
+            {shortcut}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DetailPanel({ item, onPin, onDelete }: {
+  item: ClipboardItem
+  onPin: () => void
+  onDelete: () => void
+}): JSX.Element {
+  const isImage = item.contentType === 'image' && item.text.startsWith('data:image/')
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Content preview */}
+      <div className="flex-1 overflow-y-auto p-4">
         {isImage ? (
           <img
             src={item.text}
-            alt=""
-            className="h-7 w-7 rounded object-cover"
+            alt="Kopyalanan görsel"
+            className="max-h-48 max-w-full rounded-lg object-contain"
           />
-        ) : item.contentType === 'rich-text' ? (
-          <span className="text-[10px] font-bold">RTF</span>
         ) : (
-          <span className="text-[10px] font-mono">Aa</span>
+          <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground/90">
+            {item.text.slice(0, 2000)}{item.text.length > 2000 ? '\n…' : ''}
+          </pre>
         )}
       </div>
 
-      <div className="min-w-0 flex-1">
-        <div className={cn('truncate', selected ? 'text-foreground' : 'text-foreground/80')}>
-          {preview}
+      {/* Metadata */}
+      <div className="border-t border-white/10 px-4 py-3 text-xs text-muted-foreground space-y-1.5">
+        {item.sourceApp && (
+          <div className="flex items-center gap-2">
+            <Monitor className="h-3 w-3 shrink-0" />
+            <span>Uygulama: <span className="text-foreground/80">{item.sourceApp}</span></span>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <Clock className="h-3 w-3 shrink-0" />
+          <span>Kopyalanma: <span className="text-foreground/80">{formatDateTime(item.createdAt)}</span></span>
         </div>
+        {item.updatedAt !== item.createdAt && (
+          <div className="flex items-center gap-2">
+            <Clock className="h-3 w-3 shrink-0 opacity-0" />
+            <span>Güncelleme: <span className="text-foreground/80">{relativeTime(item.updatedAt)}</span></span>
+          </div>
+        )}
         {item.ai?.tags?.length ? (
-          <div className="mt-0.5 flex gap-1 overflow-hidden">
-            {item.ai.tags.slice(0, 3).map((t) => (
-              <span
-                key={t}
-                className="rounded bg-primary/15 px-1 py-0.5 text-[9px] text-primary"
-              >
-                {t}
-              </span>
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {item.ai.tags.map((t) => (
+              <span key={t} className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary">{t}</span>
             ))}
           </div>
         ) : null}
       </div>
 
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          void onTogglePin(item)
-        }}
-        title={item.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
-        className={cn(
-          'shrink-0 rounded p-1 transition-colors',
-          item.pinned
-            ? 'text-primary hover:bg-primary/20'
-            : 'text-muted-foreground/60 opacity-0 hover:bg-accent group-hover:opacity-100',
-          selected && 'opacity-100',
-        )}
-      >
-        <Pin className="h-3 w-3" />
-      </button>
-
-      {shortcut && (
-        <span
-          className={cn(
-            'shrink-0 rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px]',
-            selected ? 'text-foreground' : 'text-muted-foreground/60',
-          )}
-        >
-          {shortcut}
-        </span>
-      )}
+      {/* Actions + shortcuts */}
+      <div className="border-t border-white/10 px-4 py-2 text-[11px] text-muted-foreground/70 space-y-1">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={onPin}
+            className="flex items-center gap-1.5 rounded px-2 py-1 hover:bg-white/10 hover:text-foreground transition-colors"
+          >
+            <Pin className="h-3 w-3" />
+            {item.pinned ? 'Sabitlemeyi Kaldır' : 'Sabitle'}
+          </button>
+          <kbd className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">⌘P</kbd>
+        </div>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={onDelete}
+            className="flex items-center gap-1.5 rounded px-2 py-1 hover:bg-destructive/20 hover:text-destructive transition-colors"
+          >
+            <Trash2 className="h-3 w-3" />
+            Sil
+          </button>
+          <kbd className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">⌘⌫</kbd>
+        </div>
+        <div className="pt-1 text-center opacity-50">
+          Enter: yapıştır · ESC: kapat · ↑↓: gezin
+        </div>
+      </div>
     </div>
   )
 }
@@ -317,21 +329,5 @@ function Row({
 function previewFor(item: ClipboardItem): string {
   if (item.contentType === 'image') return 'Görsel'
   const firstLine = item.text.split('\n').find((l) => l.trim().length > 0) ?? item.text
-  return firstLine.length > 120 ? firstLine.slice(0, 120) + '…' : firstLine
-}
-
-function Empty({ query }: { query: string }): JSX.Element {
-  return (
-    <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
-      <ImageIcon className="mb-2 h-6 w-6 opacity-40" />
-      <div className="text-xs font-medium">
-        {query ? 'Sonuç yok' : 'Henüz kopyalanan öğe yok'}
-      </div>
-      <p className="mt-1 text-[11px] leading-relaxed">
-        {query
-          ? 'Farklı bir kelime dene ya da ESC ile kapat.'
-          : 'Kopyaladıkça burada listelenir.'}
-      </p>
-    </div>
-  )
+  return firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine
 }

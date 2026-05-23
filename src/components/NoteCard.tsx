@@ -91,8 +91,6 @@ export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: Edit
   const [title, setTitle] = useState(note?.title ?? '')
   const [content, setContent] = useState(note?.content ?? '')
   const dirty = useRef(false)
-  const prevNoteIdRef = useRef<string | null>(note?.id ?? null)
-  const [pendingRemote, setPendingRemote] = useState<Note | null>(null)
 
   // Reset dirty flag when the user navigates to a different note so the
   // remote-update sync below can re-engage cleanly.
@@ -100,29 +98,17 @@ export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: Edit
     dirty.current = false
   }, [note?.id])
 
-  // Sync editor state from props. Three cases:
-  // - note.id changed: user navigated to a different note → adopt new text, clear pending remote.
-  // - note.id same, dirty=true: user is actively typing → drop remote update silently (local wins at save).
-  // - note.id same, dirty=false: user is idle but viewing the note → hold update in pendingRemote,
-  //   show a banner instead of silently overwriting. User clicks "Yenile" to accept.
+  // Sync editor state from props. Two cases:
+  // - note.id changed: user navigated to a different note → adopt that note's text.
+  // - note.id same but title/content changed: a remote edit arrived. Only adopt if
+  //   the user isn't mid-edit (dirty) — otherwise we'd clobber unsaved local keystrokes.
+  //   After 600ms of inactivity our debounce flushes and dirty resets, so subsequent
+  //   remote updates flow through automatically.
   useEffect(() => {
-    if (prevNoteIdRef.current !== note?.id) {
-      prevNoteIdRef.current = note?.id ?? null
-      setPendingRemote(null)
-      setTitle(note?.title ?? '')
-      setContent(note?.content ?? '')
-      return
-    }
     if (dirty.current) return
-    if (note) setPendingRemote(note)
+    setTitle(note?.title ?? '')
+    setContent(note?.content ?? '')
   }, [note?.id, note?.title, note?.content])
-
-  const applyPendingRemote = () => {
-    if (!pendingRemote) return
-    setTitle(pendingRemote.title ?? '')
-    setContent(pendingRemote.content ?? '')
-    setPendingRemote(null)
-  }
 
   // Debounced auto-save
   useEffect(() => {
@@ -145,24 +131,12 @@ export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: Edit
 
   return (
     <div className="flex h-full flex-1 flex-col">
-      {pendingRemote && (
-        <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
-          <span>Bu not başka bir cihazda güncellendi.</span>
-          <button
-            onClick={applyPendingRemote}
-            className="ml-auto rounded bg-amber-500/20 px-2 py-0.5 font-medium hover:bg-amber-500/30"
-          >
-            Yenile
-          </button>
-        </div>
-      )}
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
         <input
           value={title}
           placeholder="Başlık (opsiyonel)"
           onChange={(e) => {
             dirty.current = true
-            if (pendingRemote) setPendingRemote(null)
             setTitle(e.target.value)
           }}
           className="flex-1 bg-transparent text-base font-semibold outline-none placeholder:text-muted-foreground"
@@ -194,7 +168,6 @@ export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: Edit
         value={content}
         onChange={(e) => {
           dirty.current = true
-          if (pendingRemote) setPendingRemote(null)
           setContent(e.target.value)
         }}
         placeholder="Notunu yaz…"
