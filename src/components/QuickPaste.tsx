@@ -112,7 +112,7 @@ export function QuickPaste(): JSX.Element {
     const target = flat.find((it) => it.id === selectedId) ?? flat[0]
     if (!target) return
     await window.snipotter.clipboard.copy(target)
-    await window.snipotter.window.hideQuickPaste()
+    await window.snipotter.window.pasteAtCursor()
   }
 
   const togglePin = async (item: ClipboardItem): Promise<void> => {
@@ -143,7 +143,7 @@ export function QuickPaste(): JSX.Element {
         setSelectedId(flat[n].id)
         void (async () => {
           await window.snipotter.clipboard.copy(flat[n])
-          await window.snipotter.window.hideQuickPaste()
+          await window.snipotter.window.pasteAtCursor()
         })()
       }
     }

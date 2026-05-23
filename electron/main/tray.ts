@@ -1,14 +1,16 @@
 /**
  * Snipotter — System tray
- * Minimal tray menu: Show window, Toggle quick note, Pause clipboard, Quit.
+ * Minimal tray menu: Show window, Toggle quick note, Pause clipboard, Check for Updates, Quit.
  */
 import { Tray, Menu, nativeImage, app } from 'electron'
 import { join } from 'node:path'
 import { focusOrCreateMainWindow, toggleQuickNoteWindow } from './windows'
 import { settingsStore } from './store'
 import type { ClipboardMonitor } from './clipboard'
+import type { UpdaterService } from './updater'
 
 let tray: Tray | null = null
+let storedUpdater: UpdaterService | null = null
 
 function buildIcon(): Electron.NativeImage {
   // Windows uses ICO for native-quality tray rendering. macOS/Linux use PNG.
@@ -50,8 +52,9 @@ function buildIcon(): Electron.NativeImage {
   return img.resize({ width: 16, height: 16 })
 }
 
-export function createTray(monitor: ClipboardMonitor): Tray {
+export function createTray(monitor: ClipboardMonitor, updater: UpdaterService): Tray {
   if (tray) return tray
+  storedUpdater = updater
   tray = new Tray(buildIcon())
   tray.setToolTip('Snipotter')
   refreshMenu(monitor)
@@ -59,21 +62,26 @@ export function createTray(monitor: ClipboardMonitor): Tray {
   return tray
 }
 
-export function refreshMenu(monitor: ClipboardMonitor): void {
+export function refreshMenu(monitor: ClipboardMonitor, updater?: UpdaterService): void {
   if (!tray) return
+  if (updater) storedUpdater = updater
   const settings = settingsStore.get()
+  const status = storedUpdater?.getStatus()
+  const isDownloaded = status?.kind === 'downloaded'
+  const isChecking = status?.kind === 'checking'
+
   const menu = Menu.buildFromTemplate([
     { label: 'Snipotter', enabled: false },
     { type: 'separator' },
-    { label: 'Open Library', click: () => focusOrCreateMainWindow() },
+    { label: 'Kütüphaneyi Aç', click: () => focusOrCreateMainWindow() },
     {
-      label: 'Quick Note',
+      label: 'Hızlı Not',
       accelerator: settings.quickNoteHotkey,
       click: () => toggleQuickNoteWindow(),
     },
     { type: 'separator' },
     {
-      label: settings.clipboardEnabled ? 'Pause Clipboard Watcher' : 'Resume Clipboard Watcher',
+      label: settings.clipboardEnabled ? 'Pano İzlemeyi Durdur' : 'Pano İzlemeyi Başlat',
       click: () => {
         const next = !settings.clipboardEnabled
         settingsStore.set({ clipboardEnabled: next })
@@ -83,7 +91,12 @@ export function refreshMenu(monitor: ClipboardMonitor): void {
       },
     },
     { type: 'separator' },
-    { label: 'Quit Snipotter', role: 'quit' },
+    ...(isDownloaded
+      ? [{ label: 'Yeniden Başlat ve Güncelle', click: () => storedUpdater?.installAndRestart() }]
+      : [{ label: isChecking ? 'Güncelleme Kontrol Ediliyor…' : 'Güncelleme Denetle', enabled: !isChecking, click: () => { void storedUpdater?.checkNow() } }]
+    ),
+    { type: 'separator' as const },
+    { label: 'Snipotter\'ı Kapat', role: 'quit' as const },
   ])
   tray.setContextMenu(menu)
 }

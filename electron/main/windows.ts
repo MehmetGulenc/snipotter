@@ -9,11 +9,13 @@
 import { BrowserWindow, screen, shell, app } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execFile } from 'node:child_process'
 import { is } from '@electron-toolkit/utils'
 
 let mainWindow: BrowserWindow | null = null
 let quickWindow: BrowserWindow | null = null
 let quickPasteWindow: BrowserWindow | null = null
+let previousFocusedApp: string | null = null
 
 const PRELOAD = join(__dirname, '../preload/index.mjs')
 
@@ -204,18 +206,70 @@ export function createQuickPasteWindow(): BrowserWindow {
   return quickPasteWindow
 }
 
-export function toggleQuickPasteWindow(): void {
+/** Returns the name of the currently frontmost application (macOS only). */
+async function getFrontmostApp(): Promise<string | null> {
+  if (process.platform !== 'darwin') return null
+  return new Promise((resolve) => {
+    execFile(
+      'osascript',
+      ['-e', 'tell application "System Events" to name of first application process whose frontmost is true'],
+      { timeout: 1000 },
+      (err, stdout) => resolve(err ? null : stdout.trim() || null),
+    )
+  })
+}
+
+export async function toggleQuickPasteWindow(): Promise<void> {
   const w = quickPasteWindow
   if (w && !w.isDestroyed() && w.isVisible()) {
     w.hide()
     return
   }
+  // Capture the frontmost app before our window steals focus.
+  previousFocusedApp = await getFrontmostApp()
   createQuickPasteWindow()
 }
 
 export function hideQuickPasteWindow(): void {
   if (quickPasteWindow && !quickPasteWindow.isDestroyed()) {
     quickPasteWindow.hide()
+  }
+}
+
+/**
+ * Hides the QuickPaste window, restores focus to the previously active app,
+ * then simulates a paste keystroke (Cmd+V on macOS, Ctrl+V on Windows).
+ * Called after the user selects a clipboard item from the QuickPaste popup.
+ * Requires Accessibility permission on macOS (com.apple.security.automation.apple-events).
+ */
+export async function pasteAtCursor(): Promise<void> {
+  if (quickPasteWindow && !quickPasteWindow.isDestroyed()) {
+    quickPasteWindow.hide()
+  }
+
+  if (process.platform === 'darwin') {
+    const appName = previousFocusedApp
+    previousFocusedApp = null
+    if (appName) {
+      await new Promise<void>((resolve) => {
+        const escapedName = appName.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        const script = [
+          `tell application "${escapedName}" to activate`,
+          'delay 0.08',
+          'tell application "System Events"',
+          '  keystroke "v" using command down',
+          'end tell',
+        ].join('\n')
+        execFile('osascript', ['-e', script], { timeout: 3000 }, () => resolve())
+      })
+    }
+  } else if (process.platform === 'win32') {
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        const script = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')`
+        execFile('powershell.exe', ['-Command', script], { timeout: 3000 }, () => resolve())
+      }, 80)
+    })
   }
 }
 

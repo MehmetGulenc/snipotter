@@ -167,6 +167,7 @@ export const IPC = {
   CLIP_LIST: 'clip:list',
   CLIP_DELETE: 'clip:delete',
   CLIP_DELETE_MANY: 'clip:delete-many',
+  CLIP_DELETE_ALL: 'clip:delete-all',
   CLIP_PIN: 'clip:pin',
   CLIP_COPY: 'clip:copy',
   CLIP_PROMOTE_TO_NOTE: 'clip:promote-to-note',
@@ -193,6 +194,7 @@ export const IPC = {
   WIN_TOGGLE_QUICK_NOTE: 'win:toggle-quick-note',
   WIN_TOGGLE_QUICK_PASTE: 'win:toggle-quick-paste',
   WIN_HIDE_QUICK_PASTE: 'win:hide-quick-paste',
+  WIN_PASTE_AT_CURSOR: 'win:paste-at-cursor',
 
   // AI
   AI_REENRICH: 'ai:reenrich',

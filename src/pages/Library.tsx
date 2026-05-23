@@ -14,6 +14,7 @@ export function Library(): JSX.Element {
   const upsert = useStore((s) => s.upsertClipboard)
   const removeClipboard = useStore((s) => s.removeClipboard)
   const removeClipboards = useStore((s) => s.removeClipboards)
+  const clearClipboard = useStore((s) => s.clearClipboard)
   const shieldClips = useStore((s) => s.shieldClips)
   const unshieldClips = useStore((s) => s.unshieldClips)
   const upsertNote = useStore((s) => s.upsertNote)
@@ -105,6 +106,17 @@ export function Library(): JSX.Element {
     setPendingDelete(null)
   }
 
+  const clearAll = async () => {
+    if (!window.confirm('Tüm pano geçmişini temizlemek istediğinden emin misin? Sabitlenmiş öğeler korunur.')) return
+    if (pendingDelete) {
+      clearTimeout(pendingDelete.timer)
+      setPendingDelete(null)
+    }
+    setSelectedIds(new Set())
+    clearClipboard()
+    await window.snipotter.clipboard.deleteAll()
+  }
+
   // Drag-to-select
   const handleGridPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!dragActive.current) return
@@ -168,9 +180,21 @@ export function Library(): JSX.Element {
             {allSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
             {allSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}
           </button>
-          {hasSelection && (
-            <span className="text-xs text-muted-foreground">{selectedIds.size} seçili</span>
-          )}
+          <div className="flex items-center gap-3">
+            {hasSelection && (
+              <span className="text-xs text-muted-foreground">{selectedIds.size} seçili</span>
+            )}
+            {!hasSelection && (
+              <button
+                onClick={clearAll}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive"
+                title="Pano geçmişini temizle (sabitlenmiş öğeler korunur)"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Tümünü Temizle
+              </button>
+            )}
+          </div>
         </div>
       )}
 

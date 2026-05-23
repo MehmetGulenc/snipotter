@@ -51,6 +51,7 @@ const api = {
     list: () => invoke<ClipboardItem[]>(IPC.CLIP_LIST),
     delete: (id: string) => invoke<null>(IPC.CLIP_DELETE, id),
     deleteMany: (ids: string[]) => invoke<null>(IPC.CLIP_DELETE_MANY, ids),
+    deleteAll: () => invoke<null>(IPC.CLIP_DELETE_ALL),
     pin: (id: string, pinned: boolean) => invoke<null>(IPC.CLIP_PIN, { id, pinned }),
     copy: (item: ClipboardItem) => invoke<null>(IPC.CLIP_COPY, item),
     promoteToNote: (item: ClipboardItem) => invoke<Note | null>(IPC.CLIP_PROMOTE_TO_NOTE, item),
@@ -95,6 +96,7 @@ const api = {
     toggleQuickNote: () => invoke<null>(IPC.WIN_TOGGLE_QUICK_NOTE),
     toggleQuickPaste: () => invoke<null>(IPC.WIN_TOGGLE_QUICK_PASTE),
     hideQuickPaste: () => invoke<null>(IPC.WIN_HIDE_QUICK_PASTE),
+    pasteAtCursor: () => invoke<null>(IPC.WIN_PASTE_AT_CURSOR),
     /** Renderer-side hook for the "popup re-shown" event so the QuickPaste UI
      *  can refocus the search input and reset selection without remounting. */
     onQuickPasteReopened: (cb: () => void) => {

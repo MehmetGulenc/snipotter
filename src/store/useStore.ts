@@ -33,6 +33,7 @@ interface SnipotterState {
   upsertClipboard: (item: ClipboardItem & { deleted?: boolean }) => void
   removeClipboard: (id: string) => void
   removeClipboards: (ids: string[]) => void
+  clearClipboard: () => void
 
   // Notes actions
   setNotes: (notes: Note[]) => void
@@ -122,6 +123,7 @@ export const useStore = create<SnipotterState>((set) => ({
     const set_ = new Set(ids)
     set((s) => ({ clipboard: s.clipboard.filter((c) => !set_.has(c.id)) }))
   },
+  clearClipboard: () => set((s) => ({ clipboard: s.clipboard.filter((c) => c.pinned) })),
 
   setNotes: (notes) =>
     set((s) => ({

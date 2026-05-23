@@ -371,7 +371,7 @@ export class SupabaseService extends EventEmitter {
     if (error) throw error
   }
 
-  async listClipboard(limit = 200): Promise<ClipboardItem[]> {
+  async listClipboard(limit = 500): Promise<ClipboardItem[]> {
     if (!this.client || !this.workspaceId) return []
     const { data, error } = await this.client
       .from('clipboard_items')
@@ -482,6 +482,16 @@ export class SupabaseService extends EventEmitter {
       .delete()
       .in('id', ids)
     if (error) throw new Error(`[supabase] deleteClipboardMany: ${error.message}`)
+  }
+
+  async deleteAllClipboard(): Promise<void> {
+    if (!this.client || !this.workspaceId) return
+    const { error } = await this.client
+      .from('clipboard_items')
+      .delete()
+      .eq('workspace_id', this.workspaceId)
+      .eq('pinned', false)
+    if (error) throw new Error(`[supabase] deleteAllClipboard: ${error.message}`)
   }
 
   async listNotes(): Promise<Note[]> {

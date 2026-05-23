@@ -15,6 +15,7 @@ import {
   toggleQuickNoteWindow,
   toggleQuickPasteWindow,
   hideQuickPasteWindow,
+  pasteAtCursor,
 } from './windows'
 import { createTray, refreshMenu } from './tray'
 import { registerHotkeys, unregisterAll, setRecordingPaused, validateAccelerator } from './hotkeys'
@@ -317,16 +318,32 @@ function wireIPC(): void {
       return { ok: false, error: (err as Error).message }
     }
   })
+  ipcMain.handle(IPC.CLIP_DELETE_ALL, async () => {
+    try {
+      await supabase.deleteAllClipboard()
+      return { ok: true, data: null }
+    } catch (err) {
+      console.error('[ipc] CLIP_DELETE_ALL failed:', (err as Error).message)
+      return { ok: false, error: (err as Error).message }
+    }
+  })
   ipcMain.handle(IPC.CLIP_PIN, async (_e, { id, pinned }: { id: string; pinned: boolean }) => {
     await supabase.setClipboardPinned(id, pinned)
     // After DB update, broadcast the new state so other devices see pin toggle instantly.
-    const list = await supabase.listClipboard(200).catch(() => [])
+    const list = await supabase.listClipboard(500).catch(() => [])
     const updated = list.find((c) => c.id === id)
     if (updated) supabase.broadcastClipUpsert(updated)
     return { ok: true, data: null }
   })
   ipcMain.handle(IPC.CLIP_COPY, async (_e, item: ClipboardItem) => {
     monitor.copy(item)
+    // Touch the item so it rises to the top of created_at desc ordering.
+    // Mirrors the dedup logic in handleClipboardChange for OS-level re-copies.
+    const refreshed = await supabase.touchClipboard(item.id).catch(() => null)
+    const updated = refreshed ?? { ...item, createdAt: new Date().toISOString() }
+    broadcast(IPC.CLIP_UPDATED, updated)
+    trackLocalInsert(item.id)
+    supabase.broadcastClipUpsert(updated)
     return { ok: true, data: null }
   })
   ipcMain.handle(
@@ -431,7 +448,7 @@ function wireIPC(): void {
     if (next.clipboardEnabled) monitor.start()
     else monitor.stop()
     registerHotkeys()
-    refreshMenu(monitor)
+    refreshMenu(monitor, updater)
     broadcast(IPC.SETTINGS_CHANGED, next)
     return { ok: true, data: next }
   })
@@ -447,6 +464,10 @@ function wireIPC(): void {
   })
   ipcMain.handle(IPC.WIN_HIDE_QUICK_PASTE, async () => {
     hideQuickPasteWindow()
+    return { ok: true, data: null }
+  })
+  ipcMain.handle(IPC.WIN_PASTE_AT_CURSOR, async () => {
+    await pasteAtCursor()
     return { ok: true, data: null }
   })
   ipcMain.handle(IPC.WIN_MINIMIZE, async () => {
@@ -514,7 +535,10 @@ function wireIPC(): void {
   ipcMain.handle(IPC.UPDATER_IS_MANUAL_ONLY, async () => {
     return { ok: true, data: updater.isManualInstallOnly() }
   })
-  updater.on('changed', (status: UpdaterStatus) => broadcast(IPC.UPDATER_STATUS_CHANGED, status))
+  updater.on('changed', (status: UpdaterStatus) => {
+    broadcast(IPC.UPDATER_STATUS_CHANGED, status)
+    refreshMenu(monitor, updater)
+  })
 
   // ===== Diagnostics =====
   ipcMain.handle(IPC.DIAG_GET_STATE, async (): Promise<IpcResult<DiagnosticsState>> => {
@@ -597,7 +621,7 @@ app.whenReady().then(async () => {
   await bootstrapAuth()
 
   createMainWindow()
-  createTray(monitor)
+  createTray(monitor, updater)
   registerHotkeys()
   updater.start()
 
