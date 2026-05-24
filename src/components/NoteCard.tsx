@@ -1,8 +1,9 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import type { Note } from '@shared/types'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
-import { firstLine, relativeTime } from '@/lib/utils'
+import { relativeTime } from '@/lib/utils'
+import { TiptapEditor, extractText } from './TiptapEditor'
 import { Pin, PinOff, Sparkles, Trash2, Check } from 'lucide-react'
 
 interface Props {
@@ -69,7 +70,7 @@ export const NoteCard = memo(function NoteCard({
         {note.pinned && <Badge variant="default">pinned</Badge>}
       </div>
       <span className="line-clamp-2 text-xs text-muted-foreground">
-        {note.content || 'Boş not'}
+        {extractText(note.content) || 'Boş not'}
       </span>
       <div className="flex w-full items-center justify-between text-[10px] text-muted-foreground">
         <span>{relativeTime(note.updatedAt)}</span>
@@ -89,37 +90,35 @@ interface EditorProps {
 
 export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: EditorProps): JSX.Element {
   const [title, setTitle] = useState(note?.title ?? '')
-  const [content, setContent] = useState(note?.content ?? '')
-  const dirty = useRef(false)
+  const titleDirty = useRef(false)
 
-  // Reset dirty flag when the user navigates to a different note so the
-  // remote-update sync below can re-engage cleanly.
   useEffect(() => {
-    dirty.current = false
+    titleDirty.current = false
+    setTitle(note?.title ?? '')
   }, [note?.id])
 
-  // Sync editor state from props. Two cases:
-  // - note.id changed: user navigated to a different note → adopt that note's text.
-  // - note.id same but title/content changed: a remote edit arrived. Only adopt if
-  //   the user isn't mid-edit (dirty) — otherwise we'd clobber unsaved local keystrokes.
-  //   After 600ms of inactivity our debounce flushes and dirty resets, so subsequent
-  //   remote updates flow through automatically.
   useEffect(() => {
-    if (dirty.current) return
+    if (titleDirty.current) return
     setTitle(note?.title ?? '')
-    setContent(note?.content ?? '')
-  }, [note?.id, note?.updatedAt])
+  }, [note?.updatedAt])
 
-  // Debounced auto-save
+  // Debounced title save
   useEffect(() => {
-    if (!note) return
-    if (!dirty.current) return
+    if (!note || !titleDirty.current) return
     const t = setTimeout(() => {
-      onUpdate(note.id, { title: title || null, content })
-      dirty.current = false
+      onUpdate(note.id, { title: title || null })
+      titleDirty.current = false
     }, 600)
     return () => clearTimeout(t)
-  }, [title, content, note?.id, onUpdate])
+  }, [title, note?.id, onUpdate])
+
+  const handleContentUpdate = useCallback(
+    (jsonContent: string) => {
+      if (!note) return
+      onUpdate(note.id, { content: jsonContent })
+    },
+    [note?.id, onUpdate],
+  )
 
   if (!note) {
     return (
@@ -130,13 +129,14 @@ export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: Edit
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
+    <div className="flex h-full flex-1 flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2">
         <input
           value={title}
           placeholder="Başlık (opsiyonel)"
           onChange={(e) => {
-            dirty.current = true
+            titleDirty.current = true
             setTitle(e.target.value)
           }}
           className="flex-1 bg-transparent text-base font-semibold outline-none placeholder:text-muted-foreground"
@@ -152,30 +152,30 @@ export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: Edit
         </Button>
       </div>
 
+      {/* AI summary strip */}
       {note.ai && (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-card/30 px-4 py-2 text-xs">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-card/30 px-4 py-2 text-xs">
           <Sparkles className="h-3.5 w-3.5 text-primary" />
           <span className="text-muted-foreground">{note.ai.summary}</span>
           {note.ai.tags?.map((t) => (
-            <Badge key={t} variant="secondary">
-              {t}
-            </Badge>
+            <Badge key={t} variant="secondary">{t}</Badge>
           ))}
         </div>
       )}
 
-      <textarea
-        value={content}
-        onChange={(e) => {
-          dirty.current = true
-          setContent(e.target.value)
-        }}
-        placeholder="Notunu yaz…"
-        className="flex-1 resize-none bg-transparent p-4 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
-      />
+      {/* Tiptap rich-text editor */}
+      <div className="flex-1 overflow-hidden">
+        <TiptapEditor
+          content={note.content}
+          noteId={note.id}
+          noteUpdatedAt={note.updatedAt}
+          onUpdate={handleContentUpdate}
+        />
+      </div>
 
-      <div className="border-t border-border px-4 py-1.5 text-[10px] text-muted-foreground">
-        Son güncelleme: {relativeTime(note.updatedAt)} · {content.length} karakter
+      {/* Footer */}
+      <div className="shrink-0 border-t border-border px-4 py-1.5 text-[10px] text-muted-foreground">
+        Son güncelleme: {relativeTime(note.updatedAt)}
         {!note.synced && ' · senkron bekliyor'}
       </div>
     </div>

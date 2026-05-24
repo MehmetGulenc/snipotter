@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/store/useStore'
 import { NoteCard, NoteEditor } from '@/components/NoteCard'
 import { Button } from '@/components/ui/Button'
+import { extractText } from '@/components/TiptapEditor'
 import type { Note } from '@shared/types'
 import { Plus, Trash2, CheckSquare, Square, Undo2 } from 'lucide-react'
 
@@ -99,7 +100,7 @@ export function Notes(): JSX.Element {
     }
   }
   const onReenrich = async (note: Note) => {
-    const r = await window.snipotter.ai.reenrich('note', note.id, note.content)
+    const r = await window.snipotter.ai.reenrich('note', note.id, extractText(note.content))
     if (r.ok) upsert({ ...note, ai: r.data })
   }
 

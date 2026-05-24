@@ -98,3 +98,89 @@
     -webkit-backdrop-filter: saturate(160%) blur(20px);
   }
 }
+
+/* ── Tiptap editor prose styles ── */
+.tiptap-content {
+  @apply px-4 py-3 text-sm leading-relaxed;
+  min-height: 100%;
+}
+
+.tiptap-content p {
+  @apply my-1;
+}
+
+.tiptap-content h1 {
+  @apply mb-2 mt-4 text-2xl font-bold;
+}
+.tiptap-content h2 {
+  @apply mb-2 mt-3 text-xl font-semibold;
+}
+.tiptap-content h3 {
+  @apply mb-1 mt-3 text-base font-semibold;
+}
+
+.tiptap-content ul {
+  @apply my-1 ml-5 list-disc space-y-0.5;
+}
+.tiptap-content ol {
+  @apply my-1 ml-5 list-decimal space-y-0.5;
+}
+
+/* Task list (checkboxes) */
+.tiptap-content ul[data-type='taskList'] {
+  @apply ml-1 list-none space-y-0.5;
+}
+.tiptap-content ul[data-type='taskList'] li {
+  @apply flex items-start gap-2;
+}
+.tiptap-content ul[data-type='taskList'] li > label {
+  @apply mt-0.5 shrink-0;
+}
+.tiptap-content ul[data-type='taskList'] li > label input[type='checkbox'] {
+  @apply h-3.5 w-3.5 cursor-pointer accent-[hsl(var(--primary))];
+}
+.tiptap-content ul[data-type='taskList'] li > div {
+  @apply flex-1;
+}
+.tiptap-content ul[data-type='taskList'] li[data-checked='true'] > div {
+  @apply text-muted-foreground line-through;
+}
+
+.tiptap-content blockquote {
+  @apply my-2 border-l-2 border-primary/50 pl-3 text-muted-foreground italic;
+}
+
+.tiptap-content code {
+  @apply rounded bg-muted px-1 py-0.5 font-mono text-xs text-primary;
+}
+
+.tiptap-content pre {
+  @apply my-2 overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs leading-5;
+}
+.tiptap-content pre code {
+  @apply bg-transparent p-0 text-foreground;
+}
+
+.tiptap-content hr {
+  @apply my-3 border-border;
+}
+
+.tiptap-content a {
+  @apply text-primary underline underline-offset-2;
+}
+
+.tiptap-content strong {
+  @apply font-semibold;
+}
+.tiptap-content em {
+  @apply italic;
+}
+.tiptap-content s {
+  @apply line-through text-muted-foreground;
+}
+
+/* Placeholder */
+.tiptap-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  @apply pointer-events-none float-left h-0 text-muted-foreground;
+}
