@@ -238,7 +238,7 @@ export function TiptapEditor({ content, noteId, noteUpdatedAt, onUpdate }: Props
   useEffect(() => {
     if (!editor) return
     dirty.current = false
-    editor.commands.setContent(toTiptapContent(content), false)
+    editor.commands.setContent(toTiptapContent(content), { emitUpdate: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId])
 
@@ -247,7 +247,7 @@ export function TiptapEditor({ content, noteId, noteUpdatedAt, onUpdate }: Props
     if (!editor || dirty.current) return
     const incoming = JSON.stringify(toTiptapContent(content))
     if (JSON.stringify(editor.getJSON()) === incoming) return
-    editor.commands.setContent(toTiptapContent(content), false)
+    editor.commands.setContent(toTiptapContent(content), { emitUpdate: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteUpdatedAt])
 

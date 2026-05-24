@@ -65,7 +65,7 @@ export const NoteCard = memo(function NoteCard({
       )}
       <div className={`flex w-full items-center justify-between gap-2 ${onToggleSelect ? 'pl-7' : ''}`}>
         <span className="truncate text-sm font-medium">
-          {note.title?.trim() || firstLine(note.content) || 'Yeni not'}
+          {note.title?.trim() || extractText(note.content).split('\n')[0] || 'Yeni not'}
         </span>
         {note.pinned && <Badge variant="default">pinned</Badge>}
       </div>
