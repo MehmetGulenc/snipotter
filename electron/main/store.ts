@@ -57,7 +57,11 @@ function sanitize(s: AppSettings): AppSettings {
   if (typeof out.autoMirrorClipboard !== 'boolean') {
     out.autoMirrorClipboard = DEFAULT_SETTINGS.autoMirrorClipboard
   }
-  if (typeof out.fileCopyEnabled !== 'boolean') {
+  // macOS'ta dosya kopyalama her zaman açık — eski kurulumlar false sakladığı için
+  // typeof kontrolü geçiyordu, bu yüzden platform bazlı zorunlu migration eklendi.
+  if (process.platform === 'darwin') {
+    out.fileCopyEnabled = true
+  } else if (typeof out.fileCopyEnabled !== 'boolean') {
     out.fileCopyEnabled = DEFAULT_SETTINGS.fileCopyEnabled
   }
   // Migration for v0.7: anonymous heartbeat telemetry. Defaults to ON

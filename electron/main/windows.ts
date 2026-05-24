@@ -163,7 +163,7 @@ export function createQuickPasteWindow(): BrowserWindow {
   }
 
   quickPasteWindow = new BrowserWindow({
-    width: 460,
+    width: 380,
     height: 480,
     show: false,
     frame: false,

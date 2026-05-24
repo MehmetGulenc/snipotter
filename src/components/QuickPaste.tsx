@@ -178,9 +178,11 @@ export function QuickPaste(): JSX.Element {
     <div
       onKeyDown={onKeyDown}
       className="relative flex h-screen w-screen overflow-hidden rounded-xl border border-white/10 bg-background/85 text-foreground shadow-2xl backdrop-blur-xl"
+      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       {/* Sol: arama + liste — her zaman tam genişlik, detay paneli bunu daraltmaz */}
       <div className="flex w-full flex-col">
+        {/* Arama çubuğu — sürüklenebilir (input hariç) */}
         <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
@@ -189,12 +191,13 @@ export function QuickPaste(): JSX.Element {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Pano öğelerinde ara…"
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             autoFocus
             spellCheck={false}
             autoComplete="off"
           />
         </div>
-        <div ref={listRef} className="flex-1 overflow-y-auto py-1" onMouseLeave={() => handleHover(null)}>
+        <div ref={listRef} className="flex-1 overflow-y-auto py-1" onMouseLeave={() => handleHover(null)} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {flat.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
               <ImageIcon className="mb-2 h-6 w-6 opacity-40" />
