@@ -481,7 +481,7 @@ function wireIPC(): void {
   strong { font-weight: 600; } em { font-style: italic; } s { text-decoration: line-through; color: #888; }
 </style></head><body>${html}</body></html>`
       await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`)
-      const pdfBuffer = await pdfWin.webContents.printToPDF({ marginsType: 0, printBackground: true })
+      const pdfBuffer = await pdfWin.webContents.printToPDF({ printBackground: true })
       pdfWin.destroy()
       await writeFile(filePath, pdfBuffer)
       shell.showItemInFolder(filePath)
