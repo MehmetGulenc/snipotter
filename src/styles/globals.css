@@ -184,3 +184,26 @@
   content: attr(data-placeholder);
   @apply pointer-events-none float-left h-0 text-muted-foreground;
 }
+
+/* Images */
+.tiptap-content img {
+  @apply my-2 max-w-full rounded-md;
+}
+
+/* Tables */
+.tiptap-content table {
+  @apply my-3 w-full border-collapse text-sm;
+}
+.tiptap-content th,
+.tiptap-content td {
+  @apply border border-border px-3 py-1.5 text-left;
+}
+.tiptap-content th {
+  @apply bg-muted font-semibold;
+}
+.tiptap-content tr:nth-child(even) td {
+  @apply bg-card/40;
+}
+.tiptap-content .selectedCell {
+  @apply bg-primary/10;
+}

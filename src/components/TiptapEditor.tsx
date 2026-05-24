@@ -1,4 +1,4 @@
-import { useEditor, EditorContent } from '@tiptap/react'
+import { useEditor, EditorContent, Extension, InputRule } from '@tiptap/react'
 import type { Editor, JSONContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import TaskList from '@tiptap/extension-task-list'
@@ -7,13 +7,56 @@ import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import Link from '@tiptap/extension-link'
 import Typography from '@tiptap/extension-typography'
+import Image from '@tiptap/extension-image'
+import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import { useEffect, useRef, useState } from 'react'
 import {
   Bold, Italic, Code, Strikethrough,
   Heading1, Heading2, Heading3,
   List, ListOrdered, ListChecks,
-  Quote, Code2, Minus,
+  Quote, Code2, Minus, Table2, Image as ImageIcon,
 } from 'lucide-react'
+
+// ── Math auto-complete extension ──────────────────────────────────────────────
+
+function evalMath(expr: string): number | null {
+  const clean = expr.trim()
+  // Only allow digits, operators, parens, spaces, dot, ^
+  if (!/^[\d\s+\-*/().,^]+$/.test(clean)) return null
+  try {
+    const js = clean.replace(/\^/g, '**').replace(/,/g, '.')
+    // eslint-disable-next-line no-new-func
+    const result = new Function(`'use strict'; return (${js})`)() as unknown
+    if (typeof result !== 'number' || !isFinite(result)) return null
+    // Round floating-point noise: 4 significant decimals
+    return Math.round(result * 1e10) / 1e10
+  } catch {
+    return null
+  }
+}
+
+function fmtNumber(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(n)
+}
+
+// Input rule: "100 * 4 = " → "100 * 4 = 400 "
+const MathExtension = Extension.create({
+  name: 'mathAutoComplete',
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /([\d][\d\s+\-*/().,^]*)\s*=\s$/,
+        handler: ({ state, range, match }) => {
+          const result = evalMath(match[1])
+          if (result === null) return null
+          const { tr } = state
+          tr.insertText(`${match[1]} = ${fmtNumber(result)} `, range.from, range.to)
+          return tr
+        },
+      }),
+    ]
+  },
+})
 
 // ── Markdown converter ────────────────────────────────────────────────────────
 
@@ -214,15 +257,19 @@ export function TiptapEditor({ content, noteId, noteUpdatedAt, onUpdate }: Props
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-      }),
+      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
       TaskList,
       TaskItem.configure({ nested: true }),
-      Placeholder.configure({ placeholder: 'Notunu yaz…' }),
+      Placeholder.configure({ placeholder: 'Notunu yaz… (= ile matematik otomatik tamamlar)' }),
       CharacterCount,
       Link.configure({ openOnClick: true, autolink: true }),
       Typography,
+      Image.configure({ allowBase64: true }),
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableCell,
+      TableHeader,
+      MathExtension,
     ],
     content: toTiptapContent(content),
     onUpdate: ({ editor: ed }) => {
@@ -231,6 +278,29 @@ export function TiptapEditor({ content, noteId, noteUpdatedAt, onUpdate }: Props
     },
     editorProps: {
       attributes: { class: 'tiptap-content focus:outline-none' },
+      handlePaste(view, event) {
+        const items = event.clipboardData?.items
+        if (!items) return false
+        for (const item of Array.from(items)) {
+          if (item.type.startsWith('image/')) {
+            const file = item.getAsFile()
+            if (!file) continue
+            const reader = new FileReader()
+            reader.onload = (e) => {
+              const src = e.target?.result as string
+              view.dispatch(
+                view.state.tr.replaceSelectionWith(
+                  view.state.schema.nodes.image.create({ src }),
+                ),
+              )
+            }
+            reader.readAsDataURL(file)
+            event.preventDefault()
+            return true
+          }
+        }
+        return false
+      },
     },
   })
 
@@ -326,6 +396,28 @@ export function TiptapEditor({ content, noteId, noteUpdatedAt, onUpdate }: Props
           title="Yatay çizgi"
         >
           <Minus className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+
+        <Separator />
+
+        <ToolbarBtn
+          onClick={() =>
+            editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+          }
+          active={editor.isActive('table')}
+          title="Tablo ekle"
+        >
+          <Table2 className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => {
+            const url = window.prompt('Resim URL\'si (ya da panoya kopyaladığın resmi yapıştır)')
+            if (url) editor.chain().focus().setImage({ src: url }).run()
+          }}
+          active={false}
+          title="Resim ekle (URL) — ya da Cmd+V ile panodan yapıştır"
+        >
+          <ImageIcon className="h-3.5 w-3.5" />
         </ToolbarBtn>
       </div>
 
