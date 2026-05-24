@@ -13,7 +13,7 @@
     "android:run": "next build && cap sync android && cap run android",
     "android:bundle": "next build && cap sync android && cd android && ./gradlew bundleRelease",
     "android:assets": "capacitor-assets generate --android",
-    "postinstall": "patch-package",
+    "postinstall": "patch-package 2>/dev/null || true",
     "ios:sync": "next build && cap sync ios",
     "ios:open": "next build && cap sync ios && cap open ios",
     "ios:bundle": "next build && cap sync ios"
