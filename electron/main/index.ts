@@ -203,19 +203,17 @@ function wireSupabaseEvents(): void {
       recordMirror({ timestamp: Date.now(), itemId: item.id, result: 'skipped-local-insert', contentSnippet: snippet })
       return
     }
-    try {
-      console.log(`[mirror] writing to OS clipboard: type=${item.contentType} len=${item.text.length}`)
-      monitor.copy({
-        contentType: item.contentType,
-        text: item.text,
-        html: item.html ?? null,
-      })
+    void monitor.copy({
+      contentType: item.contentType,
+      text: item.text,
+      html: item.html ?? null,
+    }).then(() => {
       console.log('[mirror] OS clipboard updated successfully')
       recordMirror({ timestamp: Date.now(), itemId: item.id, result: 'mirrored', contentSnippet: snippet })
-    } catch (err) {
+    }).catch((err: unknown) => {
       console.warn('[mirror] failed to write to OS clipboard', err)
       recordMirror({ timestamp: Date.now(), itemId: item.id, result: 'error', contentSnippet: snippet, error: (err as Error).message })
-    }
+    })
   })
   supabase.on('clip:deleted', (id: string) => {
     broadcast(IPC.CLIP_UPDATED, { id, deleted: true })
@@ -337,7 +335,7 @@ function wireIPC(): void {
     return { ok: true, data: null }
   })
   ipcMain.handle(IPC.CLIP_COPY, async (_e, item: ClipboardItem) => {
-    monitor.copy(item)
+    await monitor.copy(item)
     // Touch the item so it rises to the top of created_at desc ordering.
     // Mirrors the dedup logic in handleClipboardChange for OS-level re-copies.
     const refreshed = await supabase.touchClipboard(item.id).catch(() => null)

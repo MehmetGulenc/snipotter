@@ -146,7 +146,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   launchAtLogin: false,
   redactSensitive: true,
   autoMirrorClipboard: false,
-  fileCopyEnabled: false,
+  fileCopyEnabled: true,
   telemetryEnabled: true,
 }
 

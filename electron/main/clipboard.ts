@@ -8,9 +8,13 @@
 import { clipboard, nativeImage } from 'electron'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { statSync } from 'node:fs'
 import { basename } from 'node:path'
 import type { ClipboardItem, ClipboardContentType } from '@shared/types'
+
+const execFileAsync = promisify(execFile)
 
 interface MonitorOptions {
   /** Polling interval in ms (default 700). */
@@ -212,7 +216,7 @@ export class ClipboardMonitor extends EventEmitter {
   }
 
   /** Programmatic copy (used by "copy again" UI and remote auto-mirror). */
-  copy(item: Pick<ClipboardItem, 'contentType' | 'text' | 'html'>): void {
+  async copy(item: Pick<ClipboardItem, 'contentType' | 'text' | 'html'>): Promise<void> {
     // Open a 750ms quiet window so subsequent polling ticks don't treat our
     // own write as a fresh user copy. macOS reads can lag clipboard.writeText
     // by tens of ms, so the post-write snapshotHash() may still see the OLD
@@ -224,10 +228,11 @@ export class ClipboardMonitor extends EventEmitter {
     if (item.contentType === 'file' && item.text.startsWith('file://') && process.platform === 'darwin') {
       try {
         const filePath = decodeURIComponent(new URL(item.text).pathname)
-        // Write NSFilenamesPboardType plist for Finder compatibility
-        const escaped = filePath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        const plist = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<array>\n\t<string>${escaped}</string>\n</array>\n</plist>`
-        clipboard.writeBuffer('NSFilenamesPboardType', Buffer.from(plist, 'utf-8'))
+        // AppleScript sets public.file-url + NSFilenamesPboardType + utf8-plain-text
+        // aynı anda — clipboard.writeBuffer tek tip yazdığı için yetersiz kalıyordu.
+        const escapedPath = filePath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        await execFileAsync('/usr/bin/osascript', ['-e', `set the clipboard to POSIX file "${escapedPath}"`])
+        this.suppressEmitUntil = Date.now() + 750
         this.lastHash = this.snapshotHash()
         return
       } catch { /* fall through to plain text */ }
