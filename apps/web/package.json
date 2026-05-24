@@ -1,6 +1,6 @@
 {
   "name": "snipotter-web",
-  "version": "0.5.1",
+  "version": "0.5.3",
   "private": true,
   "description": "Snipotter web companion — view clipboard + manage notes from any device",
   "scripts": {
@@ -12,7 +12,11 @@
     "android:open": "next build && cap sync android && cap open android",
     "android:run": "next build && cap sync android && cap run android",
     "android:bundle": "next build && cap sync android && cd android && ./gradlew bundleRelease",
-    "android:assets": "capacitor-assets generate --android"
+    "android:assets": "capacitor-assets generate --android",
+    "postinstall": "patch-package",
+    "ios:sync": "next build && cap sync ios",
+    "ios:open": "next build && cap sync ios && cap open ios",
+    "ios:bundle": "next build && cap sync ios"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.1",
@@ -21,6 +25,7 @@
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.3.1",
     "@capacitor/device": "^8.0.2",
+    "@capacitor/ios": "^8.3.3",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.1",
