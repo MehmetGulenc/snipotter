@@ -8,14 +8,16 @@ import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
 import { QuickNote } from './components/QuickNote'
 import { QuickPaste } from './components/QuickPaste'
+import { ClipDetail } from './components/ClipDetail'
 import { UpdateBanner } from './components/UpdateBanner'
 
-type Route = 'library' | 'notes' | 'settings' | 'quick-note' | 'quick-paste'
+type Route = 'library' | 'notes' | 'settings' | 'quick-note' | 'quick-paste' | 'clip-detail'
 
 function getRoute(): Route {
   const hash = window.location.hash.replace('#/', '').replace('#', '')
   if (hash === 'quick-note') return 'quick-note'
   if (hash === 'quick-paste') return 'quick-paste'
+  if (hash === 'clip-detail') return 'clip-detail'
   if (hash === 'notes') return 'notes'
   if (hash === 'settings') return 'settings'
   return 'library'
@@ -135,6 +137,7 @@ export default function App(): JSX.Element {
   // ==== Overlay windows have their own minimal routes ====
   if (route === 'quick-note') return <QuickNote />
   if (route === 'quick-paste') return <QuickPaste />
+  if (route === 'clip-detail') return <ClipDetail />
 
   if (authLoading) {
     return (

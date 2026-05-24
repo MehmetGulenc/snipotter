@@ -20,8 +20,7 @@ import { Search, Pin, Image as ImageIcon, Trash2, Monitor, Clock, FileText } fro
 import { cn, formatDateTime, relativeTime } from '@/lib/utils'
 
 const VISIBLE_LIMIT = 50
-// Maccy gibi: fare üzerinde bu kadar beklendikten sonra detay paneli açılır
-const HOVER_DELAY_MS = 1500
+const HOVER_DELAY_MS = 500
 
 export function QuickPaste(): JSX.Element {
   const items = useStore((s) => s.clipboard)
@@ -45,6 +44,7 @@ export function QuickPaste(): JSX.Element {
       setSelectedId(null)
       setHoveredId(null)
       setVisibleDetailId(null)
+      void window.snipotter.window.hideClipDetail()
       inputRef.current?.focus()
       inputRef.current?.select()
     })
@@ -95,7 +95,7 @@ export function QuickPaste(): JSX.Element {
   const selectedItem = flat.find((it) => it.id === selectedId) ?? null
   const visibleDetailItem = flat.find((it) => it.id === visibleDetailId) ?? null
 
-  // Hover delay yönetimi: anında değil, HOVER_DELAY_MS bekledikten sonra detay panelini göster
+  // Hover delay: HOVER_DELAY_MS sonra ayrı detail penceresi aç
   const handleHover = useCallback((id: string | null) => {
     setHoveredId(id)
     if (hoverTimerRef.current) {
@@ -104,10 +104,13 @@ export function QuickPaste(): JSX.Element {
     }
     if (!id) {
       setVisibleDetailId(null)
+      void window.snipotter.window.hideClipDetail()
       return
     }
     hoverTimerRef.current = setTimeout(() => {
       setVisibleDetailId(id)
+      const item = useStore.getState().clipboard.find((it) => it.id === id)
+      if (item) void window.snipotter.window.showClipDetail(item)
     }, HOVER_DELAY_MS)
   }, [])
 
@@ -227,16 +230,7 @@ export function QuickPaste(): JSX.Element {
         </div>
       </div>
 
-      {/* Sağ: detay overlay — liste genişliğini değiştirmez, üstüne gelir */}
-      {visibleDetailItem && (
-        <div className="absolute right-0 top-0 z-10 h-full w-[300px] border-l border-white/10 bg-background/95 shadow-2xl backdrop-blur-xl">
-          <DetailPanel
-            item={visibleDetailItem}
-            onPin={() => void togglePin(visibleDetailItem)}
-            onDelete={() => void deleteItem(visibleDetailItem)}
-          />
-        </div>
-      )}
+      {/* Detay ayrı Electron penceresinde açılır — buraya overlay yok */}
     </div>
   )
 }

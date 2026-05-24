@@ -16,6 +16,9 @@ import {
   toggleQuickPasteWindow,
   hideQuickPasteWindow,
   pasteAtCursor,
+  createClipDetailWindow,
+  showClipDetail,
+  hideClipDetail,
 } from './windows'
 import { createTray, refreshMenu } from './tray'
 import { registerHotkeys, unregisterAll, setRecordingPaused, validateAccelerator } from './hotkeys'
@@ -470,6 +473,14 @@ function wireIPC(): void {
     await pasteAtCursor()
     return { ok: true, data: null }
   })
+  ipcMain.handle(IPC.WIN_CLIP_DETAIL_SHOW, (_e, item: ClipboardItem) => {
+    showClipDetail(item)
+    return { ok: true, data: null }
+  })
+  ipcMain.handle(IPC.WIN_CLIP_DETAIL_HIDE, () => {
+    hideClipDetail()
+    return { ok: true, data: null }
+  })
   ipcMain.handle(IPC.WIN_MINIMIZE, async () => {
     getMainWindow()?.minimize()
     return { ok: true, data: null }
@@ -621,6 +632,7 @@ app.whenReady().then(async () => {
   await bootstrapAuth()
 
   createMainWindow()
+  createClipDetailWindow()
   createTray(monitor, updater)
   registerHotkeys()
   updater.start()

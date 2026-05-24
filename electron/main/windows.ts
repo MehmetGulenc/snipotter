@@ -15,6 +15,7 @@ import { is } from '@electron-toolkit/utils'
 let mainWindow: BrowserWindow | null = null
 let quickWindow: BrowserWindow | null = null
 let quickPasteWindow: BrowserWindow | null = null
+let clipDetailWindow: BrowserWindow | null = null
 let previousFocusedApp: string | null = null
 
 const PRELOAD = join(__dirname, '../preload/index.mjs')
@@ -275,6 +276,57 @@ export async function pasteAtCursor(): Promise<void> {
 
 export function getQuickPasteWindow(): BrowserWindow | null {
   return quickPasteWindow
+}
+
+/** QuickPaste'in sağında açılan hover detay penceresi. */
+export function createClipDetailWindow(): void {
+  if (clipDetailWindow && !clipDetailWindow.isDestroyed()) return
+  clipDetailWindow = new BrowserWindow({
+    width: 360,
+    height: 480,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    focusable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    fullscreenable: false,
+    backgroundColor: '#00000000',
+    vibrancy: process.platform === 'darwin' ? 'sidebar' : undefined,
+    visualEffectState: 'active',
+    webPreferences: {
+      preload: PRELOAD,
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  clipDetailWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  clipDetailWindow.on('closed', () => { clipDetailWindow = null })
+  void clipDetailWindow.loadURL(rendererURL('#/clip-detail'))
+}
+
+import type { ClipboardItem } from '@shared/types'
+
+export function showClipDetail(item: ClipboardItem): void {
+  if (!clipDetailWindow || clipDetailWindow.isDestroyed()) createClipDetailWindow()
+  if (!clipDetailWindow || quickPasteWindow?.isDestroyed()) return
+  const qpBounds = quickPasteWindow!.getBounds()
+  const display = screen.getDisplayNearestPoint({ x: qpBounds.x, y: qpBounds.y })
+  const wa = display.workArea
+  const detailW = 360
+  let x = qpBounds.x + qpBounds.width + 6
+  // Ekranın sağına taşarsa solda aç
+  if (x + detailW > wa.x + wa.width) x = qpBounds.x - detailW - 6
+  clipDetailWindow!.setBounds({ x, y: qpBounds.y, width: detailW, height: qpBounds.height })
+  clipDetailWindow!.webContents.send('clip:detail-item', item)
+  clipDetailWindow!.showInactive()
+}
+
+export function hideClipDetail(): void {
+  if (clipDetailWindow && !clipDetailWindow.isDestroyed()) clipDetailWindow.hide()
 }
 
 /**

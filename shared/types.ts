@@ -204,6 +204,9 @@ export const IPC = {
   WIN_TOGGLE_QUICK_PASTE: 'win:toggle-quick-paste',
   WIN_HIDE_QUICK_PASTE: 'win:hide-quick-paste',
   WIN_PASTE_AT_CURSOR: 'win:paste-at-cursor',
+  WIN_CLIP_DETAIL_SHOW: 'win:clip-detail-show',
+  WIN_CLIP_DETAIL_HIDE: 'win:clip-detail-hide',
+  CLIP_DETAIL_ITEM: 'clip:detail-item',
 
   // AI
   AI_REENRICH: 'ai:reenrich',

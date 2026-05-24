@@ -97,12 +97,20 @@ const api = {
     toggleQuickPaste: () => invoke<null>(IPC.WIN_TOGGLE_QUICK_PASTE),
     hideQuickPaste: () => invoke<null>(IPC.WIN_HIDE_QUICK_PASTE),
     pasteAtCursor: () => invoke<null>(IPC.WIN_PASTE_AT_CURSOR),
+    showClipDetail: (item: ClipboardItem) => invoke<null>(IPC.WIN_CLIP_DETAIL_SHOW, item),
+    hideClipDetail: () => invoke<null>(IPC.WIN_CLIP_DETAIL_HIDE),
     /** Renderer-side hook for the "popup re-shown" event so the QuickPaste UI
      *  can refocus the search input and reset selection without remounting. */
     onQuickPasteReopened: (cb: () => void) => {
       const fn = () => cb()
       ipcRenderer.on('quickpaste:opened', fn)
       return () => ipcRenderer.off('quickpaste:opened', fn)
+    },
+    /** Detail penceresinde öğe değişince tetiklenir. */
+    onDetailItem: (cb: (item: ClipboardItem) => void) => {
+      const fn = (_: unknown, item: ClipboardItem) => cb(item)
+      ipcRenderer.on(IPC.CLIP_DETAIL_ITEM, fn)
+      return () => ipcRenderer.off(IPC.CLIP_DETAIL_ITEM, fn)
     },
   },
   ai: {
