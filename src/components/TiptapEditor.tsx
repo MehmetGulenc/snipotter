@@ -46,12 +46,13 @@ const MathExtension = Extension.create({
     return [
       new InputRule({
         find: /([\d][\d\s+\-*/().,^]*)\s*=\s$/,
-        handler: ({ state, range, match }) => {
+        handler: ({ state, range, match, chain }) => {
           const result = evalMath(match[1])
           if (result === null) return null
-          const { tr } = state
-          tr.insertText(`${match[1]} = ${fmtNumber(result)} `, range.from, range.to)
-          return tr
+          chain()
+            .deleteRange(range)
+            .insertContent(`${match[1]} = ${fmtNumber(result)} `)
+            .run()
         },
       }),
     ]
