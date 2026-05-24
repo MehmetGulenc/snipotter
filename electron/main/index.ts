@@ -2,7 +2,8 @@
  * Snipotter — Main process entry
  * Wires the clipboard monitor, AI service, Supabase service, IPC, hotkeys, tray, and windows.
  */
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { writeFile } from 'node:fs/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { ClipboardMonitor } from './clipboard'
 import { AIService } from './ai'
@@ -439,6 +440,54 @@ function wireIPC(): void {
     if (note) supabase.broadcastNoteUpsert(note)
     return { ok: true, data: note }
   })
+
+  // ===== Export =====
+  ipcMain.handle(
+    IPC.NOTE_EXPORT_MD,
+    async (_e, { filename, content }: { filename: string; content: string }) => {
+      const win = getMainWindow()
+      const { canceled, filePath } = await dialog.showSaveDialog(win!, {
+        defaultPath: filename,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      })
+      if (canceled || !filePath) return { ok: true, data: null }
+      await writeFile(filePath, content, 'utf-8')
+      shell.showItemInFolder(filePath)
+      return { ok: true, data: filePath }
+    },
+  )
+
+  ipcMain.handle(
+    IPC.NOTE_EXPORT_PDF,
+    async (_e, { filename, html }: { filename: string; html: string }) => {
+      const win = getMainWindow()
+      const { canceled, filePath } = await dialog.showSaveDialog(win!, {
+        defaultPath: filename,
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      })
+      if (canceled || !filePath) return { ok: true, data: null }
+
+      const pdfWin = new BrowserWindow({ show: false, width: 800, height: 1000 })
+      const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.7; color: #1a1a1a; padding: 48px 64px; max-width: 800px; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; } h2 { font-size: 22px; font-weight: 600; margin: 24px 0 6px; } h3 { font-size: 18px; font-weight: 600; margin: 20px 0 4px; }
+  p { margin: 0 0 10px; } ul, ol { padding-left: 24px; margin: 0 0 10px; } li { margin: 4px 0; }
+  input[type=checkbox] { margin-right: 6px; }
+  blockquote { border-left: 3px solid #7c3aed; padding-left: 16px; color: #555; margin: 12px 0; font-style: italic; }
+  code { background: #f0f0f0; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+  pre { background: #f0f0f0; padding: 16px; border-radius: 6px; overflow-x: auto; } pre code { background: none; padding: 0; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
+  strong { font-weight: 600; } em { font-style: italic; } s { text-decoration: line-through; color: #888; }
+</style></head><body>${html}</body></html>`
+      await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`)
+      const pdfBuffer = await pdfWin.webContents.printToPDF({ marginsType: 0, printBackground: true })
+      pdfWin.destroy()
+      await writeFile(filePath, pdfBuffer)
+      shell.showItemInFolder(filePath)
+      return { ok: true, data: filePath }
+    },
+  )
 
   // ===== Settings =====
   ipcMain.handle(IPC.SETTINGS_GET, async () => {

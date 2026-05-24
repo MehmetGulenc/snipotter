@@ -3,8 +3,8 @@ import type { Note } from '@shared/types'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { relativeTime } from '@/lib/utils'
-import { TiptapEditor, extractText } from './TiptapEditor'
-import { Pin, PinOff, Sparkles, Trash2, Check } from 'lucide-react'
+import { TiptapEditor, extractText, tiptapToMarkdown, tiptapToHtml } from './TiptapEditor'
+import { Pin, PinOff, Sparkles, Trash2, Check, FileDown, FileText } from 'lucide-react'
 
 interface Props {
   note: Note
@@ -143,6 +143,30 @@ export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: Edit
         />
         <Button variant="ghost" size="icon" title="AI ile yeniden işle" onClick={() => onReenrich(note)}>
           <Sparkles className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          title="Markdown olarak dışa aktar"
+          onClick={() => {
+            const slug = (note.title?.trim() || 'not').replace(/[^a-z0-9ğüşıöçA-ZĞÜŞİÖÇ\s]/gi, '').trim().replace(/\s+/g, '-') || 'not'
+            const md = tiptapToMarkdown(note.title, note.content)
+            void window.snipotter.notes.exportMd(`${slug}.md`, md)
+          }}
+        >
+          <FileText className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          title="PDF olarak dışa aktar"
+          onClick={() => {
+            const slug = (note.title?.trim() || 'not').replace(/[^a-z0-9ğüşıöçA-ZĞÜŞİÖÇ\s]/gi, '').trim().replace(/\s+/g, '-') || 'not'
+            const html = tiptapToHtml(note.title, note.content)
+            void window.snipotter.notes.exportPdf(`${slug}.pdf`, html)
+          }}
+        >
+          <FileDown className="h-4 w-4" />
         </Button>
         <Button variant="ghost" size="icon" title={note.pinned ? 'Sabitten kaldır' : 'Sabitle'} onClick={() => onPin(note)}>
           {note.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}

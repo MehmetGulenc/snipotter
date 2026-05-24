@@ -74,6 +74,10 @@ const api = {
     pin: (id: string, pinned: boolean) => invoke<Note | null>(IPC.NOTE_PIN, { id, pinned }),
     delete: (id: string) => invoke<null>(IPC.NOTE_DELETE, id),
     deleteMany: (ids: string[]) => invoke<null>(IPC.NOTE_DELETE_MANY, ids),
+    exportMd: (filename: string, content: string) =>
+      invoke<string | null>(IPC.NOTE_EXPORT_MD, { filename, content }),
+    exportPdf: (filename: string, html: string) =>
+      invoke<string | null>(IPC.NOTE_EXPORT_PDF, { filename, html }),
     onUpdated: (cb: (note: Note & { deleted?: boolean }) => void) => {
       const fn = (_: unknown, note: Note & { deleted?: boolean }) => cb(note)
       ipcRenderer.on(IPC.NOTE_UPDATED, fn)

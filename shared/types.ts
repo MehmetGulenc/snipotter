@@ -191,6 +191,8 @@ export const IPC = {
   NOTE_DELETE_MANY: 'note:delete-many',
   NOTE_PIN: 'note:pin',
   NOTE_UPDATED: 'note:updated', // pushed from main
+  NOTE_EXPORT_MD: 'note:export-md',
+  NOTE_EXPORT_PDF: 'note:export-pdf',
 
   // Settings
   SETTINGS_GET: 'settings:get',

@@ -15,6 +15,159 @@ import {
   Quote, Code2, Minus,
 } from 'lucide-react'
 
+// ── Markdown converter ────────────────────────────────────────────────────────
+
+export function tiptapToMarkdown(title: string | null | undefined, jsonStr: string): string {
+  const lines: string[] = []
+  if (title?.trim()) lines.push(`# ${title.trim()}\n`)
+
+  let doc: JSONContent
+  try {
+    const parsed = JSON.parse(jsonStr)
+    if (parsed?.type !== 'doc') throw new Error()
+    doc = parsed
+  } catch {
+    // Legacy plain text
+    if (title?.trim()) lines.push('')
+    lines.push(jsonStr)
+    return lines.join('\n')
+  }
+
+  for (const node of doc.content ?? []) lines.push(blockToMd(node))
+  return lines.join('\n')
+}
+
+function blockToMd(node: JSONContent): string {
+  switch (node.type) {
+    case 'heading': {
+      const level = (node.attrs?.level as number) ?? 1
+      return `${'#'.repeat(level)} ${inlineToMd(node.content ?? [])}\n`
+    }
+    case 'paragraph': {
+      const text = inlineToMd(node.content ?? [])
+      return text ? `${text}\n` : '\n'
+    }
+    case 'bulletList':
+      return (node.content ?? []).map((li) => `- ${listItemText(li)}`).join('\n') + '\n'
+    case 'orderedList':
+      return (node.content ?? []).map((li, i) => `${i + 1}. ${listItemText(li)}`).join('\n') + '\n'
+    case 'taskList':
+      return (node.content ?? []).map((li) => {
+        const checked = li.attrs?.checked ? 'x' : ' '
+        return `- [${checked}] ${listItemText(li)}`
+      }).join('\n') + '\n'
+    case 'blockquote':
+      return (node.content ?? []).map((n) => `> ${blockToMd(n)}`).join('')
+    case 'codeBlock': {
+      const lang = (node.attrs?.language as string) ?? ''
+      const code = (node.content ?? []).map((n) => n.text ?? '').join('')
+      return `\`\`\`${lang}\n${code}\n\`\`\`\n`
+    }
+    case 'horizontalRule':
+      return '---\n'
+    default:
+      return inlineToMd(node.content ?? []) + '\n'
+  }
+}
+
+function listItemText(li: JSONContent): string {
+  return (li.content ?? []).map((n) => inlineToMd(n.content ?? [])).join(' ')
+}
+
+function inlineToMd(nodes: JSONContent[]): string {
+  return nodes
+    .map((n) => {
+      if (n.type !== 'text') return ''
+      let text = n.text ?? ''
+      for (const mark of n.marks ?? []) {
+        if (mark.type === 'bold') text = `**${text}**`
+        else if (mark.type === 'italic') text = `_${text}_`
+        else if (mark.type === 'code') text = `\`${text}\``
+        else if (mark.type === 'strike') text = `~~${text}~~`
+        else if (mark.type === 'link') text = `[${text}](${(mark.attrs?.href as string) ?? ''})`
+      }
+      return text
+    })
+    .join('')
+}
+
+// ── HTML converter (for PDF export) ──────────────────────────────────────────
+
+export function tiptapToHtml(title: string | null | undefined, jsonStr: string): string {
+  const parts: string[] = []
+  if (title?.trim()) parts.push(`<h1>${esc(title.trim())}</h1>`)
+
+  let doc: JSONContent
+  try {
+    const parsed = JSON.parse(jsonStr)
+    if (parsed?.type !== 'doc') throw new Error()
+    doc = parsed
+  } catch {
+    parts.push(`<p>${esc(jsonStr).replace(/\n/g, '<br>')}</p>`)
+    return parts.join('\n')
+  }
+
+  for (const node of doc.content ?? []) parts.push(blockToHtml(node))
+  return parts.join('\n')
+}
+
+function blockToHtml(node: JSONContent): string {
+  switch (node.type) {
+    case 'heading': {
+      const level = (node.attrs?.level as number) ?? 1
+      return `<h${level}>${inlineToHtml(node.content ?? [])}</h${level}>`
+    }
+    case 'paragraph': {
+      const inner = inlineToHtml(node.content ?? [])
+      return `<p>${inner || '&nbsp;'}</p>`
+    }
+    case 'bulletList':
+      return `<ul>${(node.content ?? []).map((li) => `<li>${listItemHtml(li)}</li>`).join('')}</ul>`
+    case 'orderedList':
+      return `<ol>${(node.content ?? []).map((li) => `<li>${listItemHtml(li)}</li>`).join('')}</ol>`
+    case 'taskList':
+      return `<ul style="list-style:none;padding-left:0">${(node.content ?? []).map((li) => {
+        const checked = li.attrs?.checked ? 'checked' : ''
+        return `<li><input type="checkbox" disabled ${checked}> ${listItemHtml(li)}</li>`
+      }).join('')}</ul>`
+    case 'blockquote':
+      return `<blockquote>${(node.content ?? []).map(blockToHtml).join('')}</blockquote>`
+    case 'codeBlock': {
+      const code = (node.content ?? []).map((n) => esc(n.text ?? '')).join('')
+      return `<pre><code>${code}</code></pre>`
+    }
+    case 'horizontalRule':
+      return '<hr>'
+    default:
+      return `<p>${inlineToHtml(node.content ?? [])}</p>`
+  }
+}
+
+function listItemHtml(li: JSONContent): string {
+  return (li.content ?? []).map((n) => inlineToHtml(n.content ?? [])).join(' ')
+}
+
+function inlineToHtml(nodes: JSONContent[]): string {
+  return nodes
+    .map((n) => {
+      if (n.type !== 'text') return ''
+      let text = esc(n.text ?? '')
+      for (const mark of n.marks ?? []) {
+        if (mark.type === 'bold') text = `<strong>${text}</strong>`
+        else if (mark.type === 'italic') text = `<em>${text}</em>`
+        else if (mark.type === 'code') text = `<code>${text}</code>`
+        else if (mark.type === 'strike') text = `<s>${text}</s>`
+        else if (mark.type === 'link') text = `<a href="${esc((mark.attrs?.href as string) ?? '')}">${text}</a>`
+      }
+      return text
+    })
+    .join('')
+}
+
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 // Convert stored content (Tiptap JSON string or legacy plain text) to Tiptap JSONContent.
 export function toTiptapContent(raw: string): JSONContent | string {
   if (!raw?.trim()) return ''
