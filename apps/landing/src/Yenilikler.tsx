@@ -18,9 +18,139 @@ interface Release {
 
 const releases: Release[] = [
   {
-    version: '0.4.4',
+    version: '0.5.9',
     date: 'Mayıs 2026',
     badge: 'Güncel',
+    headline: 'QuickPaste İyileştirmeleri',
+    features: [
+      {
+        emoji: '🖱️',
+        title: 'Pencere Sürükleme',
+        desc: 'QuickPaste penceresi artık istenilen yere sürüklenebiliyor. Pencere genişliği 380px olarak optimize edildi ve dosya taşıma sistemi iyileştirildi.',
+      },
+    ],
+  },
+  {
+    version: '0.5.8',
+    date: 'Mayıs 2026',
+    headline: 'Gelişmiş Dosya Yapıştırma',
+    features: [
+      {
+        emoji: '📁',
+        title: 'AppleScript ile Doğrudan Dosya Yapıştırma',
+        desc: 'Dosya kopyalama varsayılan olarak açıldı. macOS üzerinde dosyalar AppleScript yardımıyla çok daha güvenilir ve hızlı bir şekilde istenilen yere yapıştırılıyor.',
+      },
+    ],
+  },
+  {
+    version: '0.5.7',
+    date: 'Mayıs 2026',
+    headline: 'Not Senkronizasyonu & Overlay Paneli',
+    features: [
+      {
+        emoji: '⚡',
+        title: 'Daha Hızlı Not Senkronu',
+        desc: 'Not içerik senkronizasyonu artık çok daha anlık tetikleniyor. Ayrıca QuickPaste detay paneli daha yumuşak bir deneyim için 1.5s gecikmeli overlay olarak gösteriliyor.',
+      },
+    ],
+  },
+  {
+    version: '0.5.6',
+    date: 'Mayıs 2026',
+    headline: 'QuickPaste Detay Paneli & Tepsi Bildirimleri',
+    features: [
+      {
+        emoji: '🔎',
+        title: 'Detaylı İnceleme Paneli',
+        desc: 'QuickPaste üzerinden kopyalanan içeriklerin detaylarına anında göz atabileceğiniz yeni bir panel eklendi.',
+      },
+      {
+        emoji: '🛎️',
+        title: 'Tepsi (Tray) Bildirimleri',
+        desc: 'Güncellemeler hakkında sistem tepsisinde daha net bildirimler (feedback) sağlanıyor.',
+      },
+    ],
+  },
+  {
+    version: '0.5.5',
+    date: 'Mayıs 2026',
+    headline: 'Pano Sıralaması & Toplu Temizleme',
+    features: [
+      {
+        emoji: '🧹',
+        title: 'Tümünü Temizle (Clear-all)',
+        desc: 'Panodaki tüm içerikleri tek bir butonla temizleme seçeneği eklendi.',
+      },
+      {
+        emoji: '🔝',
+        title: 'Akıllı Pano Sıralaması',
+        desc: 'Pano artık (top-sort) her zaman en güncel olanı önde tutacak şekilde düzenleniyor.',
+      },
+      {
+        emoji: '📍',
+        title: 'Yerinde Yapıştırma (Paste-in-place)',
+        desc: 'QuickPaste üzerinden içerikler artık bulunduğunuz imleç konumuna tam olarak yapıştırılıyor.',
+      },
+    ],
+  },
+  {
+    version: '0.5.4',
+    date: 'Mayıs 2026',
+    headline: 'Hareketli Logo ve Marka Güncellemesi',
+    features: [
+      {
+        emoji: '✨',
+        title: 'Hareketli SnipOtter Logosu',
+        desc: 'Açılış sayfasına ve uygulamaya hareketli marka kelimesi (wordmark) ve logoya parlayan (glow) animasyon eklendi.',
+      },
+    ],
+  },
+  {
+    version: '0.5.2',
+    date: 'Mayıs 2026',
+    headline: 'Silme İşlemi Güvenliği',
+    features: [
+      {
+        emoji: '🛡️',
+        title: 'Güvenli Veri Silme',
+        desc: 'Silinmesi beklenen (pending-delete) içeriklerin sunucu senkronizasyonu sırasında yanlışlıkla geri gelmesini önleyen güvenlik önlemleri alındı.',
+      },
+    ],
+  },
+  {
+    version: '0.5.1',
+    date: 'Mayıs 2026',
+    headline: 'Gelişmiş Toplu Silme',
+    features: [
+      {
+        emoji: '🗑️',
+        title: 'Toplu Silme Revizyonu',
+        desc: 'Artık içerikleri sürükleyerek (drag-to-select) çoklu seçebilir ve tek tıkla silebilirsiniz. Yanlışlıkla silmelere karşı anında "Geri Al (Undo)" butonu eklendi.',
+      },
+    ],
+  },
+  {
+    version: '0.5.0',
+    date: 'Mayıs 2026',
+    badge: 'Yeni UI',
+    headline: 'Tam Kapsamlı Modernizasyon (UI Refactoring)',
+    features: [
+      {
+        emoji: '✨',
+        title: 'Modern SaaS Tasarımı',
+        desc: 'Açılış sayfası (landing page) tamamen 2026 SaaS standartlarına (Linear/Raycast stili) uygun olarak yeniden tasarlandı. Özellik gruplandırmaları iyileştirildi ve görsel hiyerarşi baştan yaratıldı.',
+      },
+      {
+        emoji: '🛡️',
+        title: 'Bağımsız & Güvenilir Vurgusu',
+        desc: 'Veri gizliliği, hesap gerektirmeyen altyapı ve şeffaf açık kaynak felsefesi daha net bir şekilde sayfalara işlendi.',
+      },
+    ],
+  },
+  {
+    version: '0.4.4',
+    date: 'Mayıs 2026',
+    badge: 'Önceki Sürüm',
     headline: 'Güncellemeyi sen başlatıyorsun',
     features: [
       {

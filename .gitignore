@@ -28,3 +28,6 @@ yarn-error.log*
 .prettiercache
 coverage
 *.tsbuildinfo
+
+# local developer guide (not for public repo)
+DEVELOPER_GUIDE.md
