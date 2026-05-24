@@ -50,7 +50,32 @@
       "Bash(scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no /tmp/fix-tpl.py root@80.245.47.41:/tmp/fix-tpl.py)",
       "Bash(curl -sI -X OPTIONS https://db.snipotter.com/auth/v1/verify -H 'Origin: https://snipotter.com' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: apikey,content-type,authorization')",
       "Bash(curl -sS -X POST https://db.snipotter.com/auth/v1/verify -H 'Origin: https://snipotter.com' -H 'apikey: __TRACKED_VAR__' -H 'Content-Type: application/json' -d '{\"type\":\"email\",\"email\":\"mehmetgulenc5@gmail.com\",\"token\":\"000000\"}' -w '\\\\nHTTP %{http_code}\\\\n' -i)",
-      "Bash(scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no /tmp/pcheck.sh root@80.245.47.41:/tmp/pcheck.sh)"
+      "Bash(scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no /tmp/pcheck.sh root@80.245.47.41:/tmp/pcheck.sh)",
+      "WebSearch",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); deps={**d.get\\('dependencies',{}\\), **d.get\\('devDependencies',{}\\)}; [print\\(k,v\\) for k,v in deps.items\\(\\)]\")",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k,v\\) for k,v in d.get\\('dependencies',{}\\).items\\(\\) if 'tiptap' in k]\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('workspaces:', d.get\\('workspaces'\\)\\); print\\('name:', d.get\\('name'\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('version:', d['version']\\); print\\('exports keys:', list\\(d.get\\('exports', {'.': {}}\\).get\\('.', {}\\).keys\\(\\)\\)[:5]\\)\")",
+      "Bash(node *)",
+      "Bash(curl -s http://localhost:5174/)",
+      "Bash(pkill -f \"electron-vite dev\")",
+      "Bash(pkill -f \"vite.*5174\")",
+      "Bash(open /Users/mehmetgulenc/snipotter/dist/mac-arm64/Snipotter.app)",
+      "Bash(screencapture -x /tmp/snipotter_notes_1.png)",
+      "Bash(screencapture /tmp/snipotter_notes_1.png)",
+      "Bash(osascript)",
+      "Bash(screencapture /tmp/snipotter_2.png)",
+      "Bash(osascript -e 'tell application \"Snipotter\" to activate')",
+      "Bash(screencapture /tmp/snipotter_3.png)",
+      "Bash(osascript -e ' *)",
+      "Bash(cliclick c:869,200)",
+      "Bash(screencapture /tmp/snipotter_4.png)",
+      "Bash(screencapture /tmp/snipotter_5.png)",
+      "Bash(pkill -f asar)",
+      "Bash(rm -rf /tmp/snipotter_asar)",
+      "Bash(xargs ls)"
     ]
   }
 }
