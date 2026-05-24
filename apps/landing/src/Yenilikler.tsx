@@ -18,10 +18,28 @@ interface Release {
 
 const releases: Release[] = [
   {
-    version: '0.5.9',
+    version: '0.6.0',
     date: 'Mayıs 2026',
     badge: 'Güncel',
+    headline: 'Notlar Artık Gerçek Bir Editör',
+    features: [
+      {
+        emoji: '✍️',
+        title: 'Zengin Metin Editörü (Tiptap)',
+        desc: 'Notlar artık düz metin kutusundan çok daha fazlası. Başlık (H1/H2/H3), madde listesi, numaralı liste, görev listesi (checkbox), kod bloğu, alıntı ve yatay çizgi — hepsi tek tıkla. Metin seçince bold, italic, üstü çizili ve satır içi kod için kayan menü çıkıyor.',
+      },
+      {
+        emoji: '📤',
+        title: 'Markdown ve PDF Export',
+        desc: 'Notunu tek tıkla dışa aktar. Markdown (.md) olarak kaydet — tam biçimlendirme korumalı, heading\'ler, listeler, kod blokları hepsi geliyor. PDF için aynı buton: temiz, baskıya hazır görünüm, Finder\'da otomatik açılıyor.',
+      },
+    ],
+  },
+  {
+    version: '0.5.9',
+    date: 'Mayıs 2026',
     headline: 'QuickPaste İyileştirmeleri',
+
     features: [
       {
         emoji: '🖱️',
