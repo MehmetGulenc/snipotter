@@ -1,31 +1,37 @@
 /**
  * Snipotter — Quick paste popup (Maccy-style)
  *
- * Two-panel layout: item list on the left, detail panel on the right.
- * Keyboard navigation:
- *   ↑ / ↓          move selection
- *   Enter           paste selected item and return to previous app
- *   Esc             close without pasting
- *   ⌘P             toggle pin on selected item
- *   ⌘⌫             delete selected item
- *   ⌘1..⌘9         jump to nth visible item and paste
- *   Type any char → adds to search filter
+ * İki panel düzeni: sol tarafta öğe listesi, sağda detay overlay (Maccy gibi
+ * bekledikten sonra açılır).
+ *
+ * Klavye navigasyonu:
+ *   ↑ / ↓          seçimi hareket ettir
+ *   Enter           seçili öğeyi yapıştır ve önceki uygulamaya dön
+ *   Esc             yapıştırmadan kapat
+ *   ⌘P             seçili öğeyi sabitle/kaldır
+ *   ⌘⌫             seçili öğeyi sil
+ *   ⌘1..⌘9         n. öğeye atla ve yapıştır
+ *   Herhangi karakter → arama filtresine ekler
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/store/useStore'
 import type { ClipboardItem } from '@shared/types'
 import { Search, Pin, Image as ImageIcon, Trash2, Monitor, Clock, FileText } from 'lucide-react'
 import { cn, formatDateTime, relativeTime } from '@/lib/utils'
 
 const VISIBLE_LIMIT = 50
+// Maccy gibi: fare üzerinde bu kadar beklendikten sonra detay paneli açılır
+const HOVER_DELAY_MS = 1500
 
 export function QuickPaste(): JSX.Element {
   const items = useStore((s) => s.clipboard)
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [visibleDetailId, setVisibleDetailId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     void window.snipotter.clipboard.list().then((r) => {
@@ -37,6 +43,8 @@ export function QuickPaste(): JSX.Element {
     const off = window.snipotter.window.onQuickPasteReopened(() => {
       setQuery('')
       setSelectedId(null)
+      setHoveredId(null)
+      setVisibleDetailId(null)
       inputRef.current?.focus()
       inputRef.current?.select()
     })
@@ -44,6 +52,11 @@ export function QuickPaste(): JSX.Element {
   }, [])
 
   useEffect(() => { inputRef.current?.focus() }, [])
+
+  // Timer cleanup
+  useEffect(() => {
+    return () => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current) }
+  }, [])
 
   const sections = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -72,8 +85,31 @@ export function QuickPaste(): JSX.Element {
     el?.scrollIntoView({ block: 'nearest' })
   }, [selectedId])
 
+  // Detay paneli görünür öğeyi takip eden state — flat güncellenince geçersiz öğeyi temizle
+  useEffect(() => {
+    if (visibleDetailId && !flat.some((it) => it.id === visibleDetailId)) {
+      setVisibleDetailId(null)
+    }
+  }, [flat, visibleDetailId])
+
   const selectedItem = flat.find((it) => it.id === selectedId) ?? null
-  const hoveredItem = flat.find((it) => it.id === hoveredId) ?? null
+  const visibleDetailItem = flat.find((it) => it.id === visibleDetailId) ?? null
+
+  // Hover delay yönetimi: anında değil, HOVER_DELAY_MS bekledikten sonra detay panelini göster
+  const handleHover = useCallback((id: string | null) => {
+    setHoveredId(id)
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = null
+    }
+    if (!id) {
+      setVisibleDetailId(null)
+      return
+    }
+    hoverTimerRef.current = setTimeout(() => {
+      setVisibleDetailId(id)
+    }, HOVER_DELAY_MS)
+  }, [])
 
   const moveBy = (delta: number): void => {
     if (flat.length === 0) return
@@ -99,9 +135,19 @@ export function QuickPaste(): JSX.Element {
     const idx = flat.findIndex((it) => it.id === selectedItem.id)
     useStore.getState().upsertClipboard({ ...selectedItem, deleted: true })
     void window.snipotter.clipboard.delete(selectedItem.id)
-    // Move selection to next item
     const next = flat[idx + 1] ?? flat[idx - 1]
     setSelectedId(next?.id ?? null)
+  }
+
+  // Detay panelindeki silme — paneli da kapat
+  const deleteItem = async (item: ClipboardItem): Promise<void> => {
+    const idx = flat.findIndex((it) => it.id === item.id)
+    useStore.getState().upsertClipboard({ ...item, deleted: true })
+    void window.snipotter.clipboard.delete(item.id)
+    const next = flat[idx + 1] ?? flat[idx - 1]
+    setSelectedId(next?.id ?? null)
+    setVisibleDetailId(null)
+    setHoveredId(null)
   }
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
@@ -131,13 +177,10 @@ export function QuickPaste(): JSX.Element {
   return (
     <div
       onKeyDown={onKeyDown}
-      className="flex h-screen w-screen overflow-hidden rounded-xl border border-white/10 bg-background/85 text-foreground shadow-2xl backdrop-blur-xl"
+      className="relative flex h-screen w-screen overflow-hidden rounded-xl border border-white/10 bg-background/85 text-foreground shadow-2xl backdrop-blur-xl"
     >
-      {/* Left: search + list */}
-      <div className={cn(
-        "flex shrink-0 flex-col transition-all duration-150",
-        hoveredItem ? "w-[280px] border-r border-white/10" : "w-full"
-      )}>
+      {/* Sol: arama + liste — her zaman tam genişlik, detay paneli bunu daraltmaz */}
+      <div className="flex w-full flex-col">
         <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
@@ -151,7 +194,7 @@ export function QuickPaste(): JSX.Element {
             autoComplete="off"
           />
         </div>
-        <div ref={listRef} className="flex-1 overflow-y-auto py-1" onMouseLeave={() => setHoveredId(null)}>
+        <div ref={listRef} className="flex-1 overflow-y-auto py-1" onMouseLeave={() => handleHover(null)}>
           {flat.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
               <ImageIcon className="mb-2 h-6 w-6 opacity-40" />
@@ -164,27 +207,30 @@ export function QuickPaste(): JSX.Element {
               {sections.pinned.length > 0 && <SectionHeader label="Sabitlenmiş" />}
               {sections.pinned.map((it, i) => (
                 <Row key={it.id} item={it} index={i} selected={it.id === selectedId}
-                  onSelect={setSelectedId} onHover={setHoveredId} onActivate={pasteSelected} />
+                  hovered={it.id === hoveredId}
+                  onSelect={setSelectedId} onHover={handleHover} onActivate={pasteSelected} />
               ))}
               {sections.recent.length > 0 && sections.pinned.length > 0 && (
                 <SectionHeader label="Son kopyalananlar" />
               )}
               {sections.recent.map((it, i) => (
                 <Row key={it.id} item={it} index={sections.pinned.length + i}
-                  selected={it.id === selectedId} onSelect={setSelectedId} onHover={setHoveredId} onActivate={pasteSelected} />
+                  selected={it.id === selectedId}
+                  hovered={it.id === hoveredId}
+                  onSelect={setSelectedId} onHover={handleHover} onActivate={pasteSelected} />
               ))}
             </>
           )}
         </div>
       </div>
 
-      {/* Right: detail panel — only visible while hovering an item */}
-      {hoveredItem && (
-        <div className="flex flex-1 flex-col">
+      {/* Sağ: detay overlay — liste genişliğini değiştirmez, üstüne gelir */}
+      {visibleDetailItem && (
+        <div className="absolute right-0 top-0 z-10 h-full w-[300px] border-l border-white/10 bg-background/95 shadow-2xl backdrop-blur-xl">
           <DetailPanel
-            item={hoveredItem}
-            onPin={() => void togglePin(hoveredItem)}
-            onDelete={() => { setHoveredId(null); void deleteSelected() }}
+            item={visibleDetailItem}
+            onPin={() => void togglePin(visibleDetailItem)}
+            onDelete={() => void deleteItem(visibleDetailItem)}
           />
         </div>
       )}
@@ -200,10 +246,11 @@ function SectionHeader({ label }: { label: string }): JSX.Element {
   )
 }
 
-function Row({ item, index, selected, onSelect, onHover, onActivate }: {
+function Row({ item, index, selected, hovered, onSelect, onHover, onActivate }: {
   item: ClipboardItem
   index: number
   selected: boolean
+  hovered: boolean
   onSelect: (id: string) => void
   onHover: (id: string | null) => void
   onActivate: () => void | Promise<void>
@@ -219,6 +266,7 @@ function Row({ item, index, selected, onSelect, onHover, onActivate }: {
       className={cn(
         'mx-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
         selected ? 'bg-primary/20 text-foreground' : 'text-muted-foreground hover:bg-accent/40',
+        hovered && !selected && 'bg-accent/25',
       )}
     >
       <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-white/5 text-muted-foreground">
@@ -261,7 +309,7 @@ function DetailPanel({ item, onPin, onDelete }: {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Content preview */}
+      {/* İçerik önizleme */}
       <div className="flex-1 overflow-y-auto p-4">
         {isImage ? (
           <img
@@ -309,7 +357,7 @@ function DetailPanel({ item, onPin, onDelete }: {
         ) : null}
       </div>
 
-      {/* Actions + shortcuts */}
+      {/* Aksiyonlar + kısayollar */}
       <div className="border-t border-white/10 px-4 py-2 text-[11px] text-muted-foreground/70 space-y-1">
         <div className="flex items-center justify-between">
           <button

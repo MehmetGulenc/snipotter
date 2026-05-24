@@ -108,7 +108,7 @@ export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: Edit
     if (dirty.current) return
     setTitle(note?.title ?? '')
     setContent(note?.content ?? '')
-  }, [note?.id, note?.title, note?.content])
+  }, [note?.id, note?.updatedAt])
 
   // Debounced auto-save
   useEffect(() => {

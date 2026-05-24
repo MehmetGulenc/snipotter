@@ -79,14 +79,14 @@ export function Notes(): JSX.Element {
     setTitleDraft(active?.title ?? '')
   }, [activeId])
 
-  // Adopt remote changes when user isn't actively editing
+  // Adopt remote changes when user isn't actively editing.
+  // Keyed on updatedAt so ANY remote write (title OR content) triggers
+  // adoption — even when the changed field's value happens to be equal
+  // to what was last saved locally.
   useEffect(() => {
     if (!dirtyContent.current) setDraft(active?.content ?? '')
-  }, [active?.content])
-
-  useEffect(() => {
     if (!dirtyTitle.current) setTitleDraft(active?.title ?? '')
-  }, [active?.title])
+  }, [active?.id, active?.updatedAt])
 
   // Content save (only when user has typed)
   useEffect(() => {
