@@ -4,8 +4,8 @@ import { Plus, Pin, PinOff, Trash2, Loader2, ArrowLeft, Check, CheckSquare, Squa
 import { useStore } from '@/lib/store'
 import { listNotes, createNote, updateNote, deleteNote, deleteNoteMany } from '@/lib/api'
 import { cn, relativeTime, firstLine } from '@/lib/utils'
-import { Textarea } from './ui/Input'
 import { Button } from './ui/Button'
+import { TiptapEditor, extractText } from './TiptapEditor'
 import type { Note } from '@/lib/types'
 
 interface PendingDelete {
@@ -28,11 +28,9 @@ export function Notes(): JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [draft, setDraft] = useState('')
   const [titleDraft, setTitleDraft] = useState('')
-  const [savingDraft, setSavingDraft] = useState(false)
-  const dirtyContent = useRef(false)
   const dirtyTitle = useRef(false)
+  const contentSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // multi-select
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -71,41 +69,16 @@ export function Notes(): JSX.Element {
 
   const active = filtered.find((n) => n.id === activeId) ?? null
 
-  // Reset editor on note navigation
+  // Reset title on note navigation
   useEffect(() => {
-    dirtyContent.current = false
     dirtyTitle.current = false
-    setDraft(active?.content ?? '')
     setTitleDraft(active?.title ?? '')
   }, [activeId])
 
-  // Adopt remote changes when user isn't actively editing.
-  // Keyed on updatedAt so ANY remote write (title OR content) triggers
-  // adoption — even when the changed field's value happens to be equal
-  // to what was last saved locally.
+  // Adopt remote title changes when user isn't mid-edit
   useEffect(() => {
-    if (!dirtyContent.current) setDraft(active?.content ?? '')
     if (!dirtyTitle.current) setTitleDraft(active?.title ?? '')
   }, [active?.id, active?.updatedAt])
-
-  // Content save (only when user has typed)
-  useEffect(() => {
-    if (!active) return
-    if (!dirtyContent.current) return
-    setSavingDraft(true)
-    const t = setTimeout(async () => {
-      try {
-        await updateNote(active.id, { content: draft })
-        upsert({ ...active, content: draft })
-        dirtyContent.current = false
-      } catch (e) {
-        console.warn('note save failed', e)
-      } finally {
-        setSavingDraft(false)
-      }
-    }, 400)
-    return () => clearTimeout(t)
-  }, [draft, active?.id])
 
   // Title save (only when user has typed)
   useEffect(() => {
@@ -314,16 +287,23 @@ export function Notes(): JSX.Element {
           onChange={(e) => { dirtyTitle.current = true; setTitleDraft(e.target.value) }}
           placeholder="Başlık (opsiyonel)"
           className="border-b border-border bg-transparent px-4 py-3 text-base font-semibold outline-none placeholder:text-muted-foreground"
+          style={{ fontSize: 16 }}
         />
-        <Textarea
-          value={draft}
-          onChange={(e) => { dirtyContent.current = true; setDraft(e.target.value) }}
-          placeholder="Notunu yaz…"
-          className="flex-1 resize-none rounded-none border-0 bg-transparent px-4 py-4 text-base focus-visible:ring-0"
-        />
-        {savingDraft && (
-          <div className="px-4 pb-1 text-[11px] text-muted-foreground">Kaydediliyor…</div>
-        )}
+        <div className="flex-1 overflow-hidden">
+          <TiptapEditor
+            content={active.content}
+            noteId={active.id}
+            noteUpdatedAt={active.updatedAt}
+            onUpdate={(jsonContent) => {
+              upsert({ ...active, content: jsonContent })
+              if (contentSaveTimer.current) clearTimeout(contentSaveTimer.current)
+              contentSaveTimer.current = setTimeout(async () => {
+                try { await updateNote(active.id, { content: jsonContent }) }
+                catch (e) { console.warn('note save failed', e) }
+              }, 600)
+            }}
+          />
+        </div>
         {active.ai?.tags?.length ? (
           <div className="border-t border-border px-4 py-2">
             <div className="flex flex-wrap gap-1.5">
@@ -448,13 +428,13 @@ export function Notes(): JSX.Element {
                 }}
               >
                 <div className="line-clamp-2 text-sm font-medium">
-                  {n.title?.trim() || firstLine(n.content, 80) || (
+                  {n.title?.trim() || firstLine(extractText(n.content), 80) || (
                     <span className="italic text-muted-foreground">Boş not</span>
                   )}
                 </div>
-                {n.content.length > 80 && (
+                {extractText(n.content).length > 80 && (
                   <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                    {n.content.slice(80, 240)}
+                    {extractText(n.content).slice(80, 240)}
                   </div>
                 )}
                 <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
