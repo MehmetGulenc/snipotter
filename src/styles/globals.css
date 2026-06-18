@@ -185,8 +185,8 @@
   @apply pointer-events-none float-left h-0 text-muted-foreground;
 }
 
-/* Images */
-.tiptap-content img {
+/* Images — NodeView görseller kendi stillerini yönetir (data-node-view-image) */
+.tiptap-content img:not([data-node-view-image]) {
   @apply my-2 max-w-full rounded-md;
 }
 

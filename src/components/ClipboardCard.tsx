@@ -3,7 +3,34 @@ import type { ClipboardItem } from '@shared/types'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { relativeTime, truncate } from '@/lib/utils'
-import { Copy, Pin, PinOff, StickyNote, Trash2, Eye, EyeOff, Sparkles, Check, Square } from 'lucide-react'
+import { Copy, Pin, PinOff, StickyNote, Trash2, Eye, EyeOff, Sparkles, Check, FileText, Download } from 'lucide-react'
+
+interface FileInfo {
+  fileName: string
+  sizeLabel: string | null
+  isStored: boolean
+  downloadUrl: string | null
+}
+
+function parseFileText(text: string): FileInfo {
+  if (text.startsWith('data:')) {
+    const match = text.match(/^data:([^;]+);name=([^;,]+)(?:;base64)?,/)
+    const fileName = match ? decodeURIComponent(match[2]) : 'dosya'
+    const base64 = match ? text.slice(match[0].length) : ''
+    const bytes = Math.round(base64.length * 0.75)
+    const sizeLabel = bytes > 1024 * 1024
+      ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+      : `${Math.round(bytes / 1024)} KB`
+    return { fileName, sizeLabel, isStored: true, downloadUrl: text }
+  }
+  try {
+    const pathname = decodeURIComponent(new URL(text).pathname)
+    const fileName = pathname.split('/').pop() ?? text
+    return { fileName, sizeLabel: null, isStored: false, downloadUrl: null }
+  } catch {
+    return { fileName: text, sizeLabel: null, isStored: false, downloadUrl: null }
+  }
+}
 
 interface Props {
   item: ClipboardItem
@@ -26,6 +53,9 @@ export const ClipboardCard = memo(function ClipboardCard({ item, selected, onSel
   const sensitive =
     item.ai?.tags?.includes('sensitive') === true || item.text === LEGACY_REDACTED
   const isImage = item.contentType === 'image' && item.text.startsWith('data:image/')
+  const isFile = item.contentType === 'file'
+  // data:mime;name=filename;base64,... → saklanan içerik  |  file:// → yerel referans
+  const fileInfo = isFile ? parseFileText(item.text) : null
   const display =
     sensitive && !revealed
       ? '••• gizli içerik •••'
@@ -74,6 +104,16 @@ export const ClipboardCard = memo(function ClipboardCard({ item, selected, onSel
               className="max-h-48 w-auto rounded-md border border-border object-contain"
               draggable={false}
             />
+          ) : isFile && fileInfo ? (
+            <div className="flex items-center gap-2 py-1">
+              <FileText className="h-8 w-8 shrink-0 text-muted-foreground/50" />
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-foreground/90">{fileInfo.fileName}</div>
+                <div className="text-[10px] text-muted-foreground">
+                  {fileInfo.isStored ? `içerik kaydedildi · ${fileInfo.sizeLabel}` : 'yerel dosya referansı'}
+                </div>
+              </div>
+            </div>
           ) : (
             // line-clamp-4 alone breaks down with whitespace-pre-wrap on very
             // long single-word/URL payloads (the -webkit-box display ignores
@@ -115,7 +155,11 @@ export const ClipboardCard = memo(function ClipboardCard({ item, selected, onSel
         <span className="text-[10px]">
           {isImage
             ? `görsel · ${Math.round((item.text.length * 3) / 4 / 1024)} KB`
-            : `${item.contentType} · ${item.text.length} karakter`}
+            : isFile && fileInfo
+              ? fileInfo.isStored
+                ? `dosya · ${fileInfo.sizeLabel}`
+                : `dosya · yerel`
+              : `${item.contentType} · ${item.text.length} karakter`}
         </span>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           {sensitive && (
@@ -123,15 +167,22 @@ export const ClipboardCard = memo(function ClipboardCard({ item, selected, onSel
               {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </Button>
           )}
+          {isFile && fileInfo?.isStored && fileInfo.downloadUrl && (
+            <a href={fileInfo.downloadUrl} download={fileInfo.fileName}>
+              <Button variant="ghost" size="icon" title="İndir">
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            </a>
+          )}
           <Button variant="ghost" size="icon" title="Kopyala" onClick={() => onCopy(item)}>
             <Copy className="h-3.5 w-3.5" />
           </Button>
-          {!isImage && (
+          {!isImage && !isFile && (
             <Button variant="ghost" size="icon" title="Nota dönüştür" onClick={() => onPromote(item)}>
               <StickyNote className="h-3.5 w-3.5" />
             </Button>
           )}
-          {!isImage && (
+          {!isImage && !isFile && (
             <Button
               variant="ghost"
               size="icon"

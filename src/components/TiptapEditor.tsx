@@ -1,5 +1,5 @@
-import { useEditor, EditorContent, Extension, InputRule } from '@tiptap/react'
-import type { Editor, JSONContent } from '@tiptap/react'
+import { useEditor, EditorContent, Extension, InputRule, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
+import type { Editor, JSONContent, NodeViewProps } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
@@ -16,6 +16,89 @@ import {
   List, ListOrdered, ListChecks,
   Quote, Code2, Minus, Table2, Image as ImageIcon,
 } from 'lucide-react'
+
+// ── Resizable image node ──────────────────────────────────────────────────────
+
+function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps) {
+  const src = node.attrs.src as string
+  const alt = (node.attrs.alt as string) ?? ''
+  const width = node.attrs.width as number | null
+  const imgRef = useRef<HTMLImageElement>(null)
+
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startW = imgRef.current?.offsetWidth ?? (width ?? 400)
+    const onMove = (ev: MouseEvent) => {
+      updateAttributes({ width: Math.max(60, startW + (ev.clientX - startX)) })
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
+  return (
+    <NodeViewWrapper
+      as="span"
+      style={{ display: 'inline-block', position: 'relative', lineHeight: 0, maxWidth: '100%' }}
+    >
+      <img
+        ref={imgRef}
+        src={src}
+        alt={alt}
+        draggable={false}
+        data-node-view-image
+        className="rounded-md my-2"
+        style={{
+          display: 'block',
+          width: width != null ? `${width}px` : 'auto',
+          maxWidth: '100%',
+        }}
+      />
+      {selected && (
+        <span
+          onMouseDown={handleResizeMouseDown}
+          title="Sürükle: yeniden boyutlandır"
+          style={{
+            position: 'absolute',
+            bottom: 8,
+            right: 0,
+            width: 14,
+            height: 14,
+            cursor: 'se-resize',
+            backgroundColor: 'hsl(var(--primary))',
+            borderRadius: '2px 0 2px 0',
+            opacity: 0.85,
+          }}
+        />
+      )}
+    </NodeViewWrapper>
+  )
+}
+
+const ResizableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (el) => {
+          const w = (el as HTMLElement).style.width
+          return w ? parseInt(w) : null
+        },
+        renderHTML: (attrs) =>
+          attrs.width != null ? { style: `width: ${attrs.width}px` } : {},
+      },
+    }
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(ResizableImageView)
+  },
+})
 
 // ── Math auto-complete extension ──────────────────────────────────────────────
 
@@ -265,7 +348,7 @@ export function TiptapEditor({ content, noteId, noteUpdatedAt, onUpdate }: Props
       CharacterCount,
       Link.configure({ openOnClick: true, autolink: true }),
       Typography,
-      Image.configure({ allowBase64: true }),
+      ResizableImage.configure({ allowBase64: true }),
       Table.configure({ resizable: false }),
       TableRow,
       TableCell,
@@ -289,9 +372,10 @@ export function TiptapEditor({ content, noteId, noteUpdatedAt, onUpdate }: Props
             const reader = new FileReader()
             reader.onload = (e) => {
               const src = e.target?.result as string
+              // width: null → orijinal boyutunda göster
               view.dispatch(
                 view.state.tr.replaceSelectionWith(
-                  view.state.schema.nodes.image.create({ src }),
+                  view.state.schema.nodes.image.create({ src, width: null }),
                 ),
               )
             }
@@ -301,6 +385,29 @@ export function TiptapEditor({ content, noteId, noteUpdatedAt, onUpdate }: Props
           }
         }
         return false
+      },
+      handleDrop(view, event) {
+        const files = event.dataTransfer?.files
+        if (!files?.length) return false
+        let handled = false
+        for (const file of Array.from(files)) {
+          if (!file.type.startsWith('image/')) continue
+          const reader = new FileReader()
+          reader.onload = (e) => {
+            const src = e.target?.result as string
+            const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
+            if (!coords) return
+            const tr = view.state.tr.insert(
+              coords.pos,
+              view.state.schema.nodes.image.create({ src, width: null }),
+            )
+            view.dispatch(tr)
+          }
+          reader.readAsDataURL(file)
+          handled = true
+        }
+        if (handled) event.preventDefault()
+        return handled
       },
     },
   })

@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react'
 import type { ClipboardItem } from '@shared/types'
-import { Monitor, Clock, Pin, PinOff, Trash2, FileText } from 'lucide-react'
+import { Monitor, Clock, Pin, PinOff, Trash2, FileText, Download } from 'lucide-react'
 import { formatDateTime, relativeTime } from '@/lib/utils'
 
 export function ClipDetail(): JSX.Element {
@@ -26,12 +26,26 @@ export function ClipDetail(): JSX.Element {
 
   const isImage = item.contentType === 'image' && item.text.startsWith('data:image/')
   const isFile = item.contentType === 'file'
-  const fileName = isFile
-    ? (() => { try { return decodeURIComponent(item.text.split('/').pop() ?? '') } catch { return item.text } })()
-    : null
-  const filePath = isFile
-    ? (() => { try { return decodeURIComponent(new URL(item.text).pathname) } catch { return item.text } })()
-    : null
+
+  const fileInfo = isFile ? (() => {
+    if (item.text.startsWith('data:')) {
+      const match = item.text.match(/^data:([^;]+);name=([^;,]+)/)
+      const name = match ? decodeURIComponent(match[2]) : 'dosya'
+      const base64 = match ? item.text.slice(match[0].length + 1) : ''
+      const bytes = Math.round(base64.length * 0.75)
+      const size = bytes > 1024 * 1024
+        ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+        : `${Math.round(bytes / 1024)} KB`
+      return { name, path: null, size, isStored: true, downloadUrl: item.text }
+    }
+    try {
+      const pathname = decodeURIComponent(new URL(item.text).pathname)
+      const name = pathname.split('/').pop() ?? item.text
+      return { name, path: pathname, size: null, isStored: false, downloadUrl: null }
+    } catch {
+      return { name: item.text, path: null, size: null, isStored: false, downloadUrl: null }
+    }
+  })() : null
 
   const handlePin = (): void => {
     void window.snipotter.clipboard.pin(item.id, !item.pinned)
@@ -57,11 +71,29 @@ export function ClipDetail(): JSX.Element {
             alt="Kopyalanan görsel"
             className="w-full rounded-lg object-contain"
           />
-        ) : isFile ? (
+        ) : isFile && fileInfo ? (
           <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
             <FileText className="h-16 w-16 text-muted-foreground/40" />
-            <div className="text-sm font-semibold text-foreground/90">{fileName}</div>
-            <div className="max-w-full break-all text-[10px] text-muted-foreground/60">{filePath}</div>
+            <div className="text-sm font-semibold text-foreground/90">{fileInfo.name}</div>
+            {fileInfo.isStored ? (
+              <div className="flex flex-col items-center gap-2">
+                <span className="rounded bg-primary/15 px-2 py-0.5 text-[10px] text-primary">
+                  içerik kaydedildi · {fileInfo.size}
+                </span>
+                <a
+                  href={fileInfo.downloadUrl!}
+                  download={fileInfo.name}
+                  className="flex items-center gap-1.5 rounded px-3 py-1.5 text-xs text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
+                >
+                  <Download className="h-3 w-3" />
+                  İndir
+                </a>
+              </div>
+            ) : (
+              <div className="max-w-full break-all text-[10px] text-muted-foreground/60">
+                {fileInfo.path ?? item.text}
+              </div>
+            )}
           </div>
         ) : (
           <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground/90">

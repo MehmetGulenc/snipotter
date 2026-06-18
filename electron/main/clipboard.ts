@@ -10,11 +10,72 @@ import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { statSync } from 'node:fs'
-import { basename } from 'node:path'
+import { statSync, writeFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
+import { tmpdir } from 'node:os'
 import type { ClipboardItem, ClipboardContentType } from '@shared/types'
 
 const execFileAsync = promisify(execFile)
+
+// Dosya içeriği saklamak için üst limit (2 MB → DB'de ~2.67 MB base64)
+const MAX_FILE_CONTENT_BYTES = 2 * 1024 * 1024
+
+const MIME_MAP: Record<string, string> = {
+  pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown',
+  csv: 'text/csv', json: 'application/json', xml: 'application/xml',
+  html: 'text/html', htm: 'text/html', svg: 'image/svg+xml',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp',
+  zip: 'application/zip', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  js: 'text/javascript', ts: 'text/typescript', py: 'text/x-python',
+  rb: 'text/x-ruby', sh: 'text/x-sh', yaml: 'text/yaml', yml: 'text/yaml',
+}
+
+function getMimeType(filePath: string): string {
+  const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
+  return MIME_MAP[ext] ?? 'application/octet-stream'
+}
+
+function buildFileDataUrl(filePath: string, content: Buffer): string {
+  const mime = getMimeType(filePath)
+  const name = encodeURIComponent(basename(filePath))
+  return `data:${mime};name=${name};base64,${content.toString('base64')}`
+}
+
+// Windows: CF_HDROP buffer'ından dosya yollarını okur (sync, hızlı)
+function readWindowsFilePaths(): string[] {
+  if (process.platform !== 'win32') return []
+  try {
+    const buf = clipboard.readBuffer('CF_HDROP')
+    if (!buf || buf.length < 20) return []
+    const pFiles = buf.readUInt32LE(0)
+    const fWide = buf.readUInt32LE(16) !== 0
+    const data = buf.slice(pFiles)
+    const paths: string[] = []
+    let pos = 0
+    while (pos < data.length) {
+      if (fWide) {
+        let end = pos
+        while (end + 1 < data.length && (data[end] !== 0 || data[end + 1] !== 0)) end += 2
+        if (end === pos) break
+        paths.push(data.slice(pos, end).toString('utf16le'))
+        pos = end + 2
+      } else {
+        let end = pos
+        while (end < data.length && data[end] !== 0) end++
+        if (end === pos) break
+        paths.push(data.slice(pos, end).toString('latin1'))
+        pos = end + 1
+      }
+    }
+    return paths.filter(Boolean)
+  } catch {
+    return []
+  }
+}
 
 interface MonitorOptions {
   /** Polling interval in ms (default 700). */
@@ -68,6 +129,7 @@ function sha1(input: string): string {
 export class ClipboardMonitor extends EventEmitter {
   private timer: NodeJS.Timeout | null = null
   private lastHash: string | null = null
+  private tickInFlight = false
   // After we write to the OS clipboard ourselves (mirror from another device, or
   // a user-triggered "copy again"), the next polling tick may see content that
   // differs from `lastHash` because macOS NSPasteboard observes writes asynchronously
@@ -117,59 +179,51 @@ export class ClipboardMonitor extends EventEmitter {
     const html = clipboard.readHTML()
     const image = clipboard.readImage()
     const fileUrl = process.platform === 'darwin' ? clipboard.read('public.file-url') : ''
-    if (!text && !html && (image.isEmpty?.() ?? true) && !fileUrl) return null
-    return sha1(`${text}${html}${image.toDataURL?.() ?? ''}${fileUrl}`)
+    const winFiles = readWindowsFilePaths().join('|')
+    if (!text && !html && (image.isEmpty?.() ?? true) && !fileUrl && !winFiles) return null
+    return sha1(`${text}${html}${image.toDataURL?.() ?? ''}${fileUrl}${winFiles}`)
   }
 
-  private tick(): void {
+  private async tick(): Promise<void> {
+    if (this.tickInFlight) return
+    this.tickInFlight = true
     try {
       const text = clipboard.readText()
       const html = clipboard.readHTML()
       const image = clipboard.readImage()
       const hasImage = !image.isEmpty?.()
       const fileUrl = process.platform === 'darwin' ? clipboard.read('public.file-url') : ''
-      if (!text && !html && !hasImage && !fileUrl) return
+      const winFiles = readWindowsFilePaths()
+      if (!text && !html && !hasImage && !fileUrl && winFiles.length === 0) return
 
-      const hash = sha1(`${text}${html}${hasImage ? image.toDataURL() : ''}${fileUrl}`)
+      const hash = sha1(`${text}${html}${hasImage ? image.toDataURL() : ''}${fileUrl}${winFiles.join('|')}`)
       if (hash === this.lastHash) return
       this.lastHash = hash
 
-      // We just wrote to the clipboard ourselves; the diff is from our own write,
-      // not a fresh user action. Drop the emit but keep the lastHash update so the
-      // NEXT real change still triggers a 'change' event.
       if (Date.now() < this.suppressEmitUntil) return
 
-      // macOS file copy: captured before text/image to avoid double-emitting
-      // (Finder puts the filename as text AND a file URL, so we prefer the file URL).
+      // ── macOS: Finder dosya kopyası ───────────────────────────────────────
       if (fileUrl && fileUrl.startsWith('file://') && this.opts.fileCopyEnabled) {
-        try {
-          const filePath = decodeURIComponent(new URL(fileUrl).pathname)
-          const stat = statSync(filePath, { throwIfNoEntry: false })
-          if (stat && stat.size <= 5 * 1024 * 1024) {
-            const fileDraft: Omit<ClipboardItem, 'id' | 'userId' | 'synced'> = {
-              contentType: 'file',
-              text: fileUrl,
-              hash,
-              html: null,
-              sourceApp: null,
-              pinned: false,
-              ai: null,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            }
-            this.emit('change', fileDraft, { rawImage: null })
-            return
-          }
-        } catch { /* ignore: stat or URL parse failed */ }
+        const emitted = await this.emitFileDraft(
+          decodeURIComponent(new URL(fileUrl).pathname),
+          fileUrl,
+          hash,
+        )
+        if (emitted) return
+      }
+
+      // ── Windows: Explorer dosya kopyası ───────────────────────────────────
+      if (winFiles.length > 0 && this.opts.fileCopyEnabled) {
+        const winPath = winFiles[0]
+        const winFileUrl = `file:///${winPath.replace(/\\/g, '/')}`
+        const emitted = await this.emitFileDraft(winPath, winFileUrl, hash)
+        if (emitted) return
       }
 
       let contentType: ClipboardContentType = 'text'
       let payload = text
       if (hasImage && !text) {
         contentType = 'image'
-        // Persist a downsized PNG data URL so the renderer can show a real
-        // preview and we have something to copy back later. We cap at 1024px
-        // on the longest edge to avoid bloating Postgres rows.
         const { width, height } = image.getSize()
         const longest = Math.max(width, height)
         const ratio = longest > 1024 ? 1024 / longest : 1
@@ -186,11 +240,6 @@ export class ClipboardMonitor extends EventEmitter {
         contentType = 'rich-text'
       }
 
-      // Local redaction now preserves the original text and only tags the
-      // entry as sensitive. The renderer hides it behind a reveal toggle by
-      // checking ai.tags. Previously we replaced payload with a literal
-      // "••• redacted •••" string, which meant 'reveal' had nothing to show
-      // and the original clipboard content was lost forever.
       const sensitive =
         this.opts.redactSensitive &&
         contentType !== 'image' &&
@@ -210,31 +259,81 @@ export class ClipboardMonitor extends EventEmitter {
 
       this.emit('change', draft, { rawImage: hasImage ? image : null })
     } catch (err) {
-      // Don't crash the loop; emit for telemetry/log.
       this.emit('error', err)
+    } finally {
+      this.tickInFlight = false
+    }
+  }
+
+  // Dosyayı okuyup emit eder. İçerik küçükse data URL, büyükse file:// URL saklar.
+  // Başarılı olursa true döner.
+  private async emitFileDraft(filePath: string, fallbackUrl: string, hash: string): Promise<boolean> {
+    try {
+      const stat = statSync(filePath, { throwIfNoEntry: false })
+      if (!stat) return false
+
+      let fileText: string
+      if (stat.size <= MAX_FILE_CONTENT_BYTES) {
+        // İçeriği oku → data URL olarak sakla (cross-device erişim sağlar)
+        const content = await readFile(filePath)
+        fileText = buildFileDataUrl(filePath, content)
+      } else {
+        // Dosya çok büyük → sadece referans sakla (aynı cihazda çalışır)
+        fileText = fallbackUrl
+      }
+
+      const fileDraft: Omit<ClipboardItem, 'id' | 'userId' | 'synced'> = {
+        contentType: 'file',
+        text: fileText,
+        hash,
+        html: null,
+        sourceApp: null,
+        pinned: false,
+        ai: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      this.emit('change', fileDraft, { rawImage: null })
+      return true
+    } catch {
+      return false
     }
   }
 
   /** Programmatic copy (used by "copy again" UI and remote auto-mirror). */
   async copy(item: Pick<ClipboardItem, 'contentType' | 'text' | 'html'>): Promise<void> {
-    // Open a 750ms quiet window so subsequent polling ticks don't treat our
-    // own write as a fresh user copy. macOS reads can lag clipboard.writeText
-    // by tens of ms, so the post-write snapshotHash() may still see the OLD
-    // content; without this guard the next tick would emit 'change' for the
-    // remote payload we JUST mirrored, creating a feedback loop with the
-    // sending device.
     this.suppressEmitUntil = Date.now() + 750
 
-    if (item.contentType === 'file' && item.text.startsWith('file://') && process.platform === 'darwin') {
+    if (item.contentType === 'file') {
       try {
-        const filePath = decodeURIComponent(new URL(item.text).pathname)
-        // AppleScript sets public.file-url + NSFilenamesPboardType + utf8-plain-text
-        // aynı anda — clipboard.writeBuffer tek tip yazdığı için yetersiz kalıyordu.
-        const escapedPath = filePath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-        await execFileAsync('/usr/bin/osascript', ['-e', `set the clipboard to POSIX file "${escapedPath}"`])
-        this.suppressEmitUntil = Date.now() + 750
-        this.lastHash = this.snapshotHash()
-        return
+        let filePath: string | null = null
+
+        if (item.text.startsWith('data:')) {
+          // Saklanan içerik → geçici dosyaya yaz, oradan kopyala
+          const match = item.text.match(/^data:[^;]+;name=([^;,]+)/)
+          const fileName = match ? decodeURIComponent(match[1]) : 'dosya'
+          const base64Data = item.text.slice(item.text.indexOf(',') + 1)
+          const tmpPath = join(tmpdir(), fileName)
+          writeFileSync(tmpPath, Buffer.from(base64Data, 'base64'))
+          filePath = tmpPath
+        } else if (item.text.startsWith('file://')) {
+          // Yerel referans
+          const pathname = decodeURIComponent(new URL(item.text).pathname)
+          filePath = process.platform === 'win32' ? pathname.replace(/^\//, '') : pathname
+        }
+
+        if (filePath) {
+          if (process.platform === 'darwin') {
+            const escaped = filePath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+            await execFileAsync('/usr/bin/osascript', ['-e', `set the clipboard to POSIX file "${escaped}"`])
+          } else if (process.platform === 'win32') {
+            const escaped = filePath.replace(/'/g, "''")
+            await execFileAsync('powershell', ['-command', `Set-Clipboard -Path '${escaped}'`])
+          }
+          this.suppressEmitUntil = Date.now() + 750
+          this.lastHash = this.snapshotHash()
+          return
+        }
       } catch { /* fall through to plain text */ }
     }
     if (item.contentType === 'image' && item.text.startsWith('data:image/')) {
