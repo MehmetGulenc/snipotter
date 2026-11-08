@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Logo } from './Logo'
+import { isMas } from '@/lib/runtime'
 
 export function QuickNote(): JSX.Element {
   const [text, setText] = useState('')
@@ -24,7 +25,7 @@ export function QuickNote(): JSX.Element {
       const res = await window.snipotter.notes.create({ content: t })
       if (res.ok) {
         setText('')
-        setHint('Kaydedildi ✓ AI etiketliyor…')
+        setHint(isMas() ? 'Kaydedildi ✓' : 'Kaydedildi ✓ AI etiketliyor…')
         setTimeout(close, 350)
       } else {
         setHint(res.error)

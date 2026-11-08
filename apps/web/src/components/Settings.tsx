@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { Copy, Check, Loader2, LogOut, Smartphone, KeyRound, Trash2 } from 'lucide-react'
 import { Button } from './ui/Button'
 import { useStore } from '@/lib/store'
-import { listMembers, createPairCode, leaveWorkspace, signOut, removeWorkspaceMember } from '@/lib/api'
+import { listMembers, createPairCode, leaveWorkspace, signOut, removeWorkspaceMember, deleteOwnAccount } from '@/lib/api'
+import { isNative, saveClipboardFromUserAction } from '@/lib/mobile'
 import { relativeTime } from '@/lib/utils'
 import type { WorkspaceMember } from '@/lib/types'
 
@@ -70,6 +71,35 @@ export function Settings(): JSX.Element {
     setUser(null)
     setWorkspace(null)
     location.reload()
+  }
+
+  const [deletingAccount, setDeletingAccount] = useState(false)
+  const [savingClipboard, setSavingClipboard] = useState(false)
+
+  const onDeleteAccount = async () => {
+    if (!confirm('Hesabın, oluşturduğun pano kayıtları ve notlar kalıcı olarak silinecek. Paylaşılan alanlardaki diğer kişilerin verileri korunur. Devam edilsin mi?')) return
+    setDeletingAccount(true)
+    try {
+      await deleteOwnAccount()
+      useStore.setState({ user: null, workspace: null, clipboard: [], notes: [] })
+      location.reload()
+    } catch (e) {
+      alert('Hesap silinemedi: ' + (e instanceof Error ? e.message : String(e)))
+      setDeletingAccount(false)
+    }
+  }
+
+  const onSaveClipboard = async () => {
+    if (!workspace || !user) return
+    setSavingClipboard(true)
+    try {
+      await saveClipboardFromUserAction(workspace.id, user.id)
+      alert('Panodaki metin kaydedildi.')
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSavingClipboard(false)
+    }
   }
 
   return (
@@ -171,6 +201,16 @@ export function Settings(): JSX.Element {
         </ul>
       </section>
 
+      {isNative() && (
+        <section className="space-y-3">
+          <Button onClick={onSaveClipboard} disabled={savingClipboard || !workspace} variant="outline">
+            <Copy className="h-4 w-4" />
+            {savingClipboard ? 'Kaydediliyor…' : 'Panodan kaydet'}
+          </Button>
+          <p className="text-xs text-muted-foreground">Pano yalnızca bu düğmeye dokunduğunda okunur.</p>
+        </section>
+      )}
+
       <section className="space-y-3 border-t border-border pt-6">
         <Button onClick={onLeave} variant="ghost" className="text-destructive hover:bg-destructive/10">
           <LogOut className="h-4 w-4" />
@@ -184,12 +224,20 @@ export function Settings(): JSX.Element {
         </button>
       </section>
 
+      <section className="space-y-3 border-t border-border pt-6">
+        <Button onClick={onDeleteAccount} disabled={deletingAccount} variant="ghost" className="text-destructive hover:bg-destructive/10">
+          <Trash2 className="h-4 w-4" />
+          {deletingAccount ? 'Siliniyor…' : 'Hesabımı ve verilerimi sil'}
+        </Button>
+        <p className="text-xs text-muted-foreground">Bu işlem geri alınamaz. Bu hesaba ait pano kayıtları, notlar ve cihaz eşleştirmeleri silinir.</p>
+      </section>
+
       <footer className="pt-8 text-center text-[10px] text-muted-foreground">
         {/* Keep this in sync with apps/web/package.json's `version` field on
             every notable release. Imports from package.json work at runtime
             but Next.js' tsc include scope makes the type sloppy, so we
             mirror the string here intentionally. */}
-        Snipotter Web · v0.5.1
+        Snipotter Web · v0.5.3
       </footer>
     </div>
   )

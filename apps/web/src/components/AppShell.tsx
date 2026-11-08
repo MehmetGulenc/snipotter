@@ -37,7 +37,7 @@ export function AppShell(): JSX.Element {
     return unsub
   }, [workspace?.id])
 
-  // Native (Android) bridge — share target, resume clipboard read, tile
+  // Native (Android) bridge — share target, explicit clipboard save, tile
   // relaunch. No-op on web. Runs once after the workspace is ready because
   // every capture path needs a workspace_id to insert into.
   useEffect(() => {

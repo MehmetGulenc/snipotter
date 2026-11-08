@@ -8,6 +8,7 @@ import { focusOrCreateMainWindow, toggleQuickNoteWindow } from './windows'
 import { settingsStore } from './store'
 import type { ClipboardMonitor } from './clipboard'
 import type { UpdaterService } from './updater'
+import { IS_MAS } from './platform'
 
 let tray: Tray | null = null
 let storedUpdater: UpdaterService | null = null
@@ -72,7 +73,10 @@ export function refreshMenu(monitor: ClipboardMonitor, updater?: UpdaterService)
   const isChecking = status?.kind === 'checking'
   const isUpToDate = status?.kind === 'not-available'
 
-  const updateItems: Electron.MenuItemConstructorOptions[] = isDownloaded
+  // Mac App Store build: updates come from the App Store, so no in-app update items.
+  const updateItems: Electron.MenuItemConstructorOptions[] = IS_MAS
+    ? []
+    : isDownloaded
     ? [{ label: 'Yeniden Başlat ve Güncelle', click: () => storedUpdater?.installAndRestart() }]
     : isAvailable
       ? [{ label: `Güncelleme Mevcut (${status.nextVersion}) — İndir`, click: () => { void storedUpdater?.downloadNow() } }]
@@ -105,7 +109,7 @@ export function refreshMenu(monitor: ClipboardMonitor, updater?: UpdaterService)
     },
     { type: 'separator' },
     ...updateItems,
-    { type: 'separator' as const },
+    ...(updateItems.length > 0 ? [{ type: 'separator' as const }] : []),
     { label: 'Snipotter\'ı Kapat', role: 'quit' as const },
   ])
   tray.setContextMenu(menu)

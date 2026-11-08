@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { is } from '@electron-toolkit/utils'
+import { IS_MAS } from './platform'
 
 let mainWindow: BrowserWindow | null = null
 let quickWindow: BrowserWindow | null = null
@@ -209,7 +210,8 @@ export function createQuickPasteWindow(): BrowserWindow {
 
 /** Returns the name of the currently frontmost application (macOS only). */
 async function getFrontmostApp(): Promise<string | null> {
-  if (process.platform !== 'darwin') return null
+  // MAS sandbox: AppleEvents to System Events are not permitted.
+  if (process.platform !== 'darwin' || IS_MAS) return null
   return new Promise((resolve) => {
     execFile(
       'osascript',
@@ -242,13 +244,21 @@ export function hideQuickPasteWindow(): void {
  * then simulates a paste keystroke (Cmd+V on macOS, Ctrl+V on Windows).
  * Called after the user selects a clipboard item from the QuickPaste popup.
  * Requires Accessibility permission on macOS (com.apple.security.automation.apple-events).
+ * Mac App Store build: only hides the app (no keystroke) — see IS_MAS branch.
  */
 export async function pasteAtCursor(): Promise<void> {
   if (quickPasteWindow && !quickPasteWindow.isDestroyed()) {
     quickPasteWindow.hide()
   }
 
-  if (process.platform === 'darwin') {
+  if (IS_MAS) {
+    // The App Sandbox forbids synthesising keystrokes (Accessibility) and
+    // AppleEvents, so we cannot paste on the user's behalf. The item is
+    // already on the clipboard; hiding Snipotter hands focus back to the
+    // previous app so a single ⌘V pastes it. QuickPaste shows this hint.
+    previousFocusedApp = null
+    app.hide()
+  } else if (process.platform === 'darwin') {
     const appName = previousFocusedApp
     previousFocusedApp = null
     if (appName) {

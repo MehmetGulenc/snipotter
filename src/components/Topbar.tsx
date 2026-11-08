@@ -1,72 +1,49 @@
+import { useEffect, useRef } from 'react'
 import { useStore } from '@/store/useStore'
-import { Search, Wifi, WifiOff } from 'lucide-react'
+import { Search, Sparkles, X } from 'lucide-react'
 import { Input } from './ui/Input'
 import { Logo } from './Logo'
+import { isMas } from '@/lib/runtime'
 
-export function Topbar(): JSX.Element {
+export function Topbar({ route }: { route: 'library' | 'notes' | 'settings' }): JSX.Element {
   const query = useStore((s) => s.query)
   const setQuery = useStore((s) => s.setQuery)
   const aiStatus = useStore((s) => s.aiStatus)
-  const user = useStore((s) => s.user)
+  const input = useRef<HTMLInputElement>(null)
+  const searchable = route !== 'settings'
+  const label = route === 'notes' ? 'Notlarında ara…' : 'Pano geçmişinde ara…'
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && searchable) {
+        e.preventDefault()
+        input.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [searchable])
 
   return (
-    <header className="drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card/40 px-4">
-      <div className="flex items-center gap-2.5 pl-16">
-        {/* Logo with soft glow behind it */}
-        <div className="relative flex items-center justify-center">
-          <div className="absolute h-7 w-7 animate-logo-glow rounded-full bg-fuchsia-500/40 blur-md" />
-          <Logo size={20} className="relative" />
+    <header className="drag-region flex h-[72px] shrink-0 items-center gap-6 border-b border-border bg-card px-6">
+      <div className="flex w-[198px] shrink-0 items-center gap-2.5 pl-16">
+        <Logo size={25} />
+        <span className="text-base font-semibold tracking-tight">Snipotter<span className="text-primary">.</span></span>
+      </div>
+      {searchable ? (
+        <div className="no-drag relative max-w-2xl flex-1">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input ref={input} value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder={label} aria-label={label} onKeyDown={(e) => { if (e.key === 'Escape') setQuery('') }}
+            className="h-11 rounded-xl border-transparent bg-secondary/60 pl-10 pr-24 focus-visible:bg-background" />
+          {query ? <button onClick={() => { setQuery(''); input.current?.focus() }} aria-label="Aramayı temizle" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-muted-foreground hover:bg-accent"><X className="h-4 w-4" /></button>
+            : <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">⌘ / Ctrl K</kbd>}
         </div>
-        <BrandWordmark />
-      </div>
-      <div className="no-drag relative ml-4 flex-1 max-w-xl">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Pano ve notlarda ara…"
-          className="pl-8"
-        />
-      </div>
-      <div className="no-drag flex items-center gap-3 text-xs text-muted-foreground">
-        {aiStatus?.enabled ? (
-          <span className="inline-flex items-center gap-1 text-primary">
-            <Wifi className="h-3 w-3" /> AI aktif ({aiStatus.primary})
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1">
-            <WifiOff className="h-3 w-3" /> AI yok
-          </span>
-        )}
-        {user?.email && <span className="hidden md:inline">{user.email}</span>}
-      </div>
+      ) : <span className="flex-1 text-sm text-muted-foreground">Çalışma alanı / Ayarlar</span>}
+      {!isMas() && (
+        <span className="hidden shrink-0 items-center gap-2 rounded-full bg-secondary px-3 py-1.5 text-xs text-muted-foreground lg:inline-flex">
+          <Sparkles className="h-3.5 w-3.5" />{aiStatus?.enabled ? 'AI yardımcısı açık' : 'AI yardımcısı kapalı'}
+        </span>
+      )}
     </header>
-  )
-}
-
-function BrandWordmark(): JSX.Element {
-  const snip = 'Snip'.split('')
-  const otter = 'Otter'.split('')
-  return (
-    <span className="group inline-flex select-none items-baseline text-sm font-bold tracking-tight">
-      {snip.map((l, i) => (
-        <span
-          key={i}
-          className="inline-block animate-brand-reveal text-fuchsia-400 group-hover:animate-letter-wave"
-          style={{ animationDelay: `${i * 40}ms` }}
-        >
-          {l}
-        </span>
-      ))}
-      {otter.map((l, i) => (
-        <span
-          key={i}
-          className={`inline-block animate-brand-reveal text-violet-300 group-hover:animate-letter-wave${i === 0 ? ' animate-otter-breathe' : ''}`}
-          style={{ animationDelay: `${(i + 4) * 40}ms` }}
-        >
-          {l}
-        </span>
-      ))}
-    </span>
   )
 }

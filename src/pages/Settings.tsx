@@ -17,6 +17,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { AppSettings, WorkspaceMember, UpdaterStatus, DiagnosticsState } from '@shared/types'
+import { isMas } from '@/lib/runtime'
 
 function Field({
   label,
@@ -110,8 +111,9 @@ export function Settings(): JSX.Element {
               className="h-4 w-4 accent-primary"
             />
           </Field>
+          {!isMas() && (
           <Field
-            label="Dosya kopyalamayı yakala (macOS, ≤5 MB)"
+            label="Dosya kopyalamayı yakala (macOS/Windows, ≤2 MB)"
             description="Finder'da bir dosya kopyalandığında geçmişe eklenir ve hızlı yapıştırdan geri yapıştırılabilir. Erişilebilirlik izni gerektirir."
           >
             <input
@@ -121,6 +123,7 @@ export function Settings(): JSX.Element {
               className="h-4 w-4 accent-primary"
             />
           </Field>
+          )}
           <Field
             label="Anonim kullanım istatistiği"
             description="Snipotter'ın bugün kaç cihazda kullanıldığını saymama yardımcı ol. Sadece anonim cihaz kimliği + işletim sistemi + sürüm gönderilir; e-posta, IP, hesap veya pano içeriği yok. İstediğin zaman kapatabilirsin."
@@ -134,6 +137,7 @@ export function Settings(): JSX.Element {
           </Field>
         </section>
 
+        {!isMas() && (
         <section className="pt-6">
           <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             AI
@@ -169,6 +173,7 @@ export function Settings(): JSX.Element {
             </select>
           </Field>
         </section>
+        )}
 
         <section className="pt-6">
           <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -394,6 +399,44 @@ function UpdateSection({ onSecretClick }: { onSecretClick: () => void }): JSX.El
 
   const cur = status?.currentVersion ?? '—'
   const isBusy = status?.kind === 'checking' || status?.kind === 'downloading'
+
+  if (isMas()) {
+    return (
+      <section className="pt-6">
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Güncellemeler
+        </h3>
+        <div className="rounded-lg border border-border bg-card/30 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Snipotter{' '}
+                <span
+                  onClick={onSecretClick}
+                  className="cursor-default select-none font-mono text-xs text-muted-foreground"
+                  title=""
+                >
+                  v{cur}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Güncellemeler Mac App Store üzerinden otomatik olarak yüklenir.
+              </p>
+            </div>
+            <Button
+              onClick={() => void window.snipotter.updater.openReleasePage()}
+              variant="outline"
+              className="shrink-0"
+            >
+              <RefreshCcw className="mr-2 h-4 w-4" />
+              App Store&apos;da denetle
+            </Button>
+          </div>
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section className="pt-6">

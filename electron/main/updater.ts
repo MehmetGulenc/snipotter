@@ -21,8 +21,19 @@ import type { UpdateCheckResult, UpdateInfo, ProgressInfo } from 'electron-updat
 import { EventEmitter } from 'node:events'
 import { execFile } from 'node:child_process'
 import path from 'node:path'
+import { IS_MAS } from './platform'
 
-const { autoUpdater } = electronUpdater
+/**
+ * Lazily resolve electron-updater's singleton. Reading `electronUpdater.autoUpdater`
+ * constructs a MacUpdater bound to Squirrel.Mac, which must never happen in the
+ * Mac App Store build (updates are delivered by the App Store there), so every
+ * call site goes through this function and every MAS path returns before it.
+ */
+function getAutoUpdater(): typeof electronUpdater.autoUpdater {
+  return electronUpdater.autoUpdater
+}
+
+const MAS_UPDATES_URL = 'macappstore://showUpdatesPage'
 
 export type UpdaterStatus =
   | { kind: 'idle'; currentVersion: string }
@@ -60,6 +71,9 @@ export class UpdaterService extends EventEmitter {
   constructor() {
     super()
     this.status = { kind: 'idle', currentVersion: app.getVersion() }
+    // Mac App Store build: the App Store owns updates; do not wire electron-updater.
+    if (IS_MAS) return
+    const autoUpdater = getAutoUpdater()
 
     // Surface updater logs in dev too so we can debug release flow locally.
     autoUpdater.logger = {
@@ -147,6 +161,10 @@ export class UpdaterService extends EventEmitter {
 
   /** Schedule the first check after launch + a recurring 1-hour timer. */
   start(): void {
+    if (IS_MAS) {
+      console.info('[updater] Mac App Store build — updates are delivered by the App Store')
+      return
+    }
     if (!app.isPackaged) {
       console.info('[updater] dev mode — auto-update disabled')
       return
@@ -159,7 +177,7 @@ export class UpdaterService extends EventEmitter {
    *  releases between the hourly periodic checks without hammering GitHub. */
   private lastCheckedAt = 0
   checkOnFocus(): void {
-    if (!app.isPackaged) return
+    if (IS_MAS || !app.isPackaged) return
     if (this.status.kind === 'downloading' || this.status.kind === 'downloaded') return
     if (Date.now() - this.lastCheckedAt < FOCUS_CHECK_THROTTLE_MS) return
     this.lastCheckedAt = Date.now()
@@ -175,10 +193,10 @@ export class UpdaterService extends EventEmitter {
 
   /** Silent background check — won't surface errors as user-visible state. */
   private async checkSilent(): Promise<void> {
-    if (!app.isPackaged) return
+    if (IS_MAS || !app.isPackaged) return
     this.lastCheckedAt = Date.now()
     try {
-      await autoUpdater.checkForUpdates()
+      await getAutoUpdater().checkForUpdates()
     } catch (err) {
       console.warn('[updater] silent check failed:', (err as Error).message)
     }
@@ -187,10 +205,10 @@ export class UpdaterService extends EventEmitter {
   /** User-initiated download — kicks off the actual fetch only after the user
    *  has acknowledged the available banner with "İndir". */
   async downloadNow(): Promise<UpdaterStatus> {
-    if (!app.isPackaged) return this.status
+    if (IS_MAS || !app.isPackaged) return this.status
     if (this.status.kind !== 'available') return this.status
     try {
-      const files = await autoUpdater.downloadUpdate()
+      const files = await getAutoUpdater().downloadUpdate()
       this.downloadedFiles = files
     } catch (err) {
       this.emitError(err as Error)
@@ -200,6 +218,11 @@ export class UpdaterService extends EventEmitter {
 
   /** Manual check triggered from Settings UI; surfaces errors. */
   async checkNow(): Promise<UpdaterStatus> {
+    if (IS_MAS) {
+      // Hand the user over to the App Store's Updates page instead.
+      this.openReleasePage()
+      return this.status
+    }
     if (!app.isPackaged) {
       const status: UpdaterStatus = {
         kind: 'error',
@@ -211,7 +234,7 @@ export class UpdaterService extends EventEmitter {
     }
     try {
       this.setStatus({ kind: 'checking', currentVersion: app.getVersion() })
-      const result: UpdateCheckResult | null = await autoUpdater.checkForUpdates()
+      const result: UpdateCheckResult | null = await getAutoUpdater().checkForUpdates()
       if (!result || !result.updateInfo) {
         this.setStatus({
           kind: 'not-available',
@@ -227,7 +250,7 @@ export class UpdaterService extends EventEmitter {
 
   /** Quit & relaunch into the freshly downloaded version. */
   installAndRestart(): void {
-    if (this.status.kind !== 'downloaded') {
+    if (IS_MAS || this.status.kind !== 'downloaded') {
       throw new Error('No downloaded update ready to install')
     }
     BrowserWindow.getAllWindows().forEach((w) => {
@@ -237,7 +260,7 @@ export class UpdaterService extends EventEmitter {
       void this.installMacUpdate()
       return
     }
-    autoUpdater.quitAndInstall(false, true)
+    getAutoUpdater().quitAndInstall(false, true)
   }
 
   /**
@@ -293,7 +316,7 @@ export class UpdaterService extends EventEmitter {
   }
 
   openReleasePage(): void {
-    void shell.openExternal(this.latestMacDmgUrl ?? RELEASES_PAGE)
+    void shell.openExternal(IS_MAS ? MAS_UPDATES_URL : (this.latestMacDmgUrl ?? RELEASES_PAGE))
   }
 
   isManualInstallOnly(): boolean {

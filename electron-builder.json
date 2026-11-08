@@ -31,6 +31,21 @@
       "LSUIElement": true
     }
   },
+  "mas": {
+    "type": "distribution",
+    "identity": "",
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false,
+    "entitlements": "build/entitlements.mas.plist",
+    "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+    "extendInfo": {
+      "ElectronTeamID": "3PDY9R5UKT",
+      "ITSAppUsesNonExemptEncryption": false
+    }
+  },
+  "masDev": {
+    "type": "development"
+  },
   "win": {
     "target": [
       { "target": "nsis", "arch": ["x64", "arm64"] },

@@ -422,12 +422,16 @@ export function TiptapEditor({ content, noteId, noteUpdatedAt, onUpdate }: Props
 
   // Remote update arrived → only sync if the user isn't mid-edit and content differs.
   useEffect(() => {
-    if (!editor || dirty.current) return
+    if (!editor) return
     const incoming = JSON.stringify(toTiptapContent(content))
-    if (JSON.stringify(editor.getJSON()) === incoming) return
+    if (JSON.stringify(editor.getJSON()) === incoming) {
+      dirty.current = false
+      return
+    }
+    if (dirty.current) return
     editor.commands.setContent(toTiptapContent(content), { emitUpdate: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noteUpdatedAt])
+  }, [noteUpdatedAt, content])
 
   if (!editor) return null
 

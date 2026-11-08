@@ -16,15 +16,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/store/useStore'
 import type { ClipboardItem } from '@shared/types'
-import { Search, Pin, Image as ImageIcon, Trash2, Monitor, Clock, FileText } from 'lucide-react'
-import { cn, formatDateTime, relativeTime } from '@/lib/utils'
+import { Search, Pin, Image as ImageIcon, FileText } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { isMas } from '@/lib/runtime'
 
 const VISIBLE_LIMIT = 50
 const HOVER_DELAY_MS = 500
 
+export async function copyAndPasteItem(item: ClipboardItem): Promise<void> {
+  const result = await window.snipotter.clipboard.copy(item)
+  if (!result.ok) throw new Error(result.error || 'Öğe kopyalanamadı.')
+  await window.snipotter.window.pasteAtCursor()
+}
+
 export function QuickPaste(): JSX.Element {
   const items = useStore((s) => s.clipboard)
   const [query, setQuery] = useState('')
+  const [pasteError, setPasteError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [visibleDetailId, setVisibleDetailId] = useState<string | null>(null)
@@ -40,6 +48,7 @@ export function QuickPaste(): JSX.Element {
 
   useEffect(() => {
     const off = window.snipotter.window.onQuickPasteReopened(() => {
+      setPasteError(null)
       setQuery('')
       setSelectedId(null)
       setHoveredId(null)
@@ -121,11 +130,19 @@ export function QuickPaste(): JSX.Element {
     setSelectedId(flat[next].id)
   }
 
+  const pasteItem = async (item: ClipboardItem): Promise<void> => {
+    setPasteError(null)
+    try {
+      await copyAndPasteItem(item)
+    } catch (err) {
+      setPasteError((err as Error).message || 'Yapıştırılamadı. Tekrar deneyin.')
+    }
+  }
+
   const pasteSelected = async (): Promise<void> => {
     const target = flat.find((it) => it.id === selectedId) ?? flat[0]
     if (!target) return
-    await window.snipotter.clipboard.copy(target)
-    await window.snipotter.window.pasteAtCursor()
+    await pasteItem(target)
   }
 
   const togglePin = async (item: ClipboardItem): Promise<void> => {
@@ -169,10 +186,7 @@ export function QuickPaste(): JSX.Element {
       if (flat[n]) {
         e.preventDefault()
         setSelectedId(flat[n].id)
-        void (async () => {
-          await window.snipotter.clipboard.copy(flat[n])
-          await window.snipotter.window.pasteAtCursor()
-        })()
+        void pasteItem(flat[n])
       }
     }
   }
@@ -185,6 +199,7 @@ export function QuickPaste(): JSX.Element {
     >
       {/* Sol: arama + liste — her zaman tam genişlik, detay paneli bunu daraltmaz */}
       <div className="flex w-full flex-col">
+        {pasteError && <p role="alert" className="border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{pasteError}</p>}
         {/* Arama çubuğu — sürüklenebilir (input hariç) */}
         <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -228,6 +243,7 @@ export function QuickPaste(): JSX.Element {
             </>
           )}
         </div>
+        <ShortcutHints count={flat.length} />
       </div>
 
       {/* Detay ayrı Electron penceresinde açılır — buraya overlay yok */}
@@ -294,91 +310,23 @@ function Row({ item, index, selected, hovered, onSelect, onHover, onActivate }: 
   )
 }
 
-function DetailPanel({ item, onPin, onDelete }: {
-  item: ClipboardItem
-  onPin: () => void
-  onDelete: () => void
-}): JSX.Element {
-  const isImage = item.contentType === 'image' && item.text.startsWith('data:image/')
-  const isFile = item.contentType === 'file'
-  const fileName = isFile ? (() => { try { return decodeURIComponent(item.text.split('/').pop() ?? '') } catch { return item.text } })() : null
-  const filePath = isFile ? (() => { try { return decodeURIComponent(new URL(item.text).pathname) } catch { return item.text } })() : null
+// MAS sandbox cannot synthesise ⌘V: Enter copies, hides Snipotter, and the user pastes with ⌘V.
+const hints = (): [string, string][] => [['↵', isMas() ? 'kopyala, sonra ⌘V' : 'yapıştır'], ['⌘P', 'sabitle'], ['⌘⌫', 'sil'], ['esc', 'kapat']]
 
+export function ShortcutHints({ count }: { count: number }): JSX.Element {
   return (
-    <div className="flex h-full flex-col">
-      {/* İçerik önizleme */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {isImage ? (
-          <img
-            src={item.text}
-            alt="Kopyalanan görsel"
-            className="max-h-48 max-w-full rounded-lg object-contain"
-          />
-        ) : isFile ? (
-          <div className="flex flex-col items-center justify-center gap-3 pt-4 text-center">
-            <FileText className="h-12 w-12 text-muted-foreground/40" />
-            <div className="text-sm font-medium text-foreground/90">{fileName}</div>
-            <div className="max-w-full break-all text-[10px] text-muted-foreground/60">{filePath}</div>
-          </div>
-        ) : (
-          <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground/90">
-            {item.text.slice(0, 2000)}{item.text.length > 2000 ? '\n…' : ''}
-          </pre>
-        )}
-      </div>
-
-      {/* Metadata */}
-      <div className="border-t border-white/10 px-4 py-3 text-xs text-muted-foreground space-y-1.5">
-        {item.sourceApp && (
-          <div className="flex items-center gap-2">
-            <Monitor className="h-3 w-3 shrink-0" />
-            <span>Uygulama: <span className="text-foreground/80">{item.sourceApp}</span></span>
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          <Clock className="h-3 w-3 shrink-0" />
-          <span>Kopyalanma: <span className="text-foreground/80">{formatDateTime(item.createdAt)}</span></span>
-        </div>
-        {item.updatedAt !== item.createdAt && (
-          <div className="flex items-center gap-2">
-            <Clock className="h-3 w-3 shrink-0 opacity-0" />
-            <span>Güncelleme: <span className="text-foreground/80">{relativeTime(item.updatedAt)}</span></span>
-          </div>
-        )}
-        {item.ai?.tags?.length ? (
-          <div className="flex flex-wrap gap-1 pt-0.5">
-            {item.ai.tags.map((t) => (
-              <span key={t} className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary">{t}</span>
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      {/* Aksiyonlar + kısayollar */}
-      <div className="border-t border-white/10 px-4 py-2 text-[11px] text-muted-foreground/70 space-y-1">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={onPin}
-            className="flex items-center gap-1.5 rounded px-2 py-1 hover:bg-white/10 hover:text-foreground transition-colors"
-          >
-            <Pin className="h-3 w-3" />
-            {item.pinned ? 'Sabitlemeyi Kaldır' : 'Sabitle'}
-          </button>
-          <kbd className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">⌘P</kbd>
-        </div>
-        <div className="flex items-center justify-between">
-          <button
-            onClick={onDelete}
-            className="flex items-center gap-1.5 rounded px-2 py-1 hover:bg-destructive/20 hover:text-destructive transition-colors"
-          >
-            <Trash2 className="h-3 w-3" />
-            Sil
-          </button>
-          <kbd className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">⌘⌫</kbd>
-        </div>
-        <div className="pt-1 text-center opacity-50">
-          Enter: yapıştır · ESC: kapat · ↑↓: gezin
-        </div>
+    <div
+      aria-label="Klavye kısayolları"
+      className="flex shrink-0 items-center justify-between gap-2 border-t border-white/10 px-3 py-1.5 text-[10px] text-muted-foreground"
+    >
+      <span className="tabular-nums">{count} öğe</span>
+      <div className="flex items-center gap-2.5">
+        {hints().map(([key, label]) => (
+          <span key={key} className="inline-flex items-center gap-1">
+            <kbd className="rounded bg-white/5 px-1 font-mono">{key}</kbd>
+            {label}
+          </span>
+        ))}
       </div>
     </div>
   )

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Mac App Store: zorunlu App Sandbox. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Supabase senkronu, realtime websocket ve anonim heartbeat için giden ağ. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Not dışa aktarma (Markdown/PDF) için NSSavePanel ile kullanıcının seçtiği dosyaya yazma. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- Electron sandbox içinde süreçler arası Mach IPC için Team ID önekli App Group ister.
+	     Info.plist'teki ElectronTeamID ile aynı olmalı. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>3PDY9R5UKT.com.snipotter.app</string>
+	</array>
+</dict>
+</plist>

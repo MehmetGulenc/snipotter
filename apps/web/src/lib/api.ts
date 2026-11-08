@@ -86,6 +86,16 @@ export async function signOut(): Promise<void> {
   await getSupabase().auth.signOut()
 }
 
+/** No target ID is accepted: the server derives the account from auth.uid(). */
+export async function deleteOwnAccount(): Promise<void> {
+  const sb = getSupabase()
+  const { error } = await sb.rpc('delete_own_account')
+  if (error) throw error
+  // Remove the now-invalid local session, even when remote logout is unavailable.
+  await sb.auth.signOut({ scope: 'local' })
+  window.localStorage.removeItem('snipotter.web.session')
+}
+
 // ---------- Workspace / pairing ----------
 
 export async function getCurrentWorkspace(userId: string): Promise<Workspace | null> {

@@ -6,9 +6,7 @@
  * web app doesn't have:
  *
  *   1. Share Target — user selects text in any app, taps "Share → Snipotter".
- *   2. Resume read   — when the app comes to the foreground we read the
- *                      OS clipboard once (Android 10+ blocks this in the
- *                      background, but a fresh resume counts as foreground).
+ *   2. Explicit paste — Settings offers a user-initiated clipboard save.
  *   3. Quick Settings Tile — the native Kotlin TileService relaunches us
  *                      with `?clip=…` and the same handler picks it up.
  *
@@ -99,27 +97,6 @@ export async function initMobileBridge({ workspaceId, userId }: InitArgs): Promi
     void handleShareIntent()
   })
 
-  // 2) Resume — read the OS clipboard once when the app becomes active.
-  //    User intent is implicit ("they opened us right after copying"). We
-  //    skip empty / non-text payloads and let the Supabase hash dedupe
-  //    avoid double-saves when the same text is shared AND on the clipboard.
-  const readClipboardIfText = async (): Promise<void> => {
-    try {
-      const { value, type } = await Clipboard.read()
-      if (type?.startsWith('text/') && value?.trim()) {
-        await saveClip(value, 'android-clipboard')
-      }
-    } catch {
-      /* permission denied or empty clipboard — silently skip */
-    }
-  }
-  // Cold-start read happens after the splash so we don't race the auth
-  // bootstrap. We rely on the resume listener for warm starts.
-  await readClipboardIfText()
-  App.addListener('appStateChange', ({ isActive }) => {
-    if (isActive) void readClipboardIfText()
-  })
-
   // 3) Tile relaunch — the native TileService starts MainActivity with
   //    intent extra "snipotter.clip". Capacitor surfaces extras via the
   //    `appUrlOpen` event when the action matches. We additionally accept
@@ -197,4 +174,13 @@ async function sendLaunchHeartbeat(): Promise<void> {
   } catch {
     /* offline / cf worker down / aborted — never surface to the user */
   }
+}
+
+/** Call only from an explicit tap; never from startup or lifecycle listeners. */
+export async function saveClipboardFromUserAction(workspaceId: string, userId: string): Promise<void> {
+  const { value, type } = await Clipboard.read()
+  if (!type?.startsWith('text/') || !value?.trim()) {
+    throw new Error('Panoda kaydedilecek metin yok.')
+  }
+  await createClipFromText(workspaceId, userId, value, `${Capacitor.getPlatform()}-clipboard`)
 }

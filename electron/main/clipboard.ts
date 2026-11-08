@@ -8,13 +8,16 @@
 import { clipboard, nativeImage } from 'electron'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { promisify } from 'node:util'
-import { statSync, writeFileSync } from 'node:fs'
+import { statSync, writeFileSync, mkdtempSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { pathToFileURL } from 'node:url'
 import type { ClipboardItem, ClipboardContentType } from '@shared/types'
+import { createMacFileReader, resolveMacFileUrl } from '@shared/macFileClipboard'
+import { IS_MAS } from './platform'
 
 const execFileAsync = promisify(execFile)
 
@@ -38,6 +41,17 @@ function getMimeType(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
   return MIME_MAP[ext] ?? 'application/octet-stream'
 }
+
+// On macOS 10.14+ / Sequoia, Finder may use "promised file" APIs so
+// clipboard.read('public.file-url') returns an empty string. Fall back to
+// NSFilenamesPboardType (XML plist containing an array of paths) which Finder
+// still writes for compatibility.
+const readMacOsFileUrl = createMacFileReader(clipboard, (data) =>
+  JSON.parse(execFileSync('/usr/bin/plutil', ['-convert', 'json', '-o', '-', '-'], {
+    input: data, encoding: 'utf8', timeout: 1000, maxBuffer: 1024 * 1024,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })),
+)
 
 function buildFileDataUrl(filePath: string, content: Buffer): string {
   const mime = getMimeType(filePath)
@@ -148,7 +162,9 @@ export class ClipboardMonitor extends EventEmitter {
       // is negligible (clipboard reads on macOS/Windows are O(1) cached).
       intervalMs: opts.intervalMs ?? 100,
       redactSensitive: opts.redactSensitive ?? true,
-      fileCopyEnabled: opts.fileCopyEnabled ?? false,
+      // MAS sandbox: Finder file references point outside the container and
+      // cannot be read without a user-selected grant, so file capture is off.
+      fileCopyEnabled: !IS_MAS && (opts.fileCopyEnabled ?? false),
     }
   }
 
@@ -156,6 +172,12 @@ export class ClipboardMonitor extends EventEmitter {
     if (this.timer) return
     // Seed with current value so we don't emit historical content as new.
     this.lastHash = this.snapshotHash()
+    // A file reference is unchanged when Finder copies the same file again.
+    // Do not seed it as processed: this may be the file the user is retrying.
+    if (this.opts.fileCopyEnabled && (
+      (process.platform === 'darwin' && readMacOsFileUrl()) || readWindowsFilePaths().length
+    )) this.lastHash = null
+    console.info('[clip] monitor started', { fileCopyEnabled: this.opts.fileCopyEnabled })
     this.timer = setInterval(() => this.tick(), this.opts.intervalMs)
   }
 
@@ -171,6 +193,8 @@ export class ClipboardMonitor extends EventEmitter {
   }
 
   setFileCopyEnabled(value: boolean): void {
+    if (IS_MAS) value = false
+    if (value && !this.opts.fileCopyEnabled) this.lastHash = null
     this.opts.fileCopyEnabled = value
   }
 
@@ -178,7 +202,7 @@ export class ClipboardMonitor extends EventEmitter {
     const text = clipboard.readText()
     const html = clipboard.readHTML()
     const image = clipboard.readImage()
-    const fileUrl = process.platform === 'darwin' ? clipboard.read('public.file-url') : ''
+    const fileUrl = process.platform === 'darwin' ? readMacOsFileUrl() : ''
     const winFiles = readWindowsFilePaths().join('|')
     if (!text && !html && (image.isEmpty?.() ?? true) && !fileUrl && !winFiles) return null
     return sha1(`${text}${html}${image.toDataURL?.() ?? ''}${fileUrl}${winFiles}`)
@@ -192,7 +216,8 @@ export class ClipboardMonitor extends EventEmitter {
       const html = clipboard.readHTML()
       const image = clipboard.readImage()
       const hasImage = !image.isEmpty?.()
-      const fileUrl = process.platform === 'darwin' ? clipboard.read('public.file-url') : ''
+      // MAS: file capture is unavailable, so skip the plist decode (spawns /usr/bin/plutil).
+      const fileUrl = process.platform === 'darwin' && !IS_MAS ? readMacOsFileUrl() : ''
       const winFiles = readWindowsFilePaths()
       if (!text && !html && !hasImage && !fileUrl && winFiles.length === 0) return
 
@@ -204,12 +229,14 @@ export class ClipboardMonitor extends EventEmitter {
 
       // ── macOS: Finder dosya kopyası ───────────────────────────────────────
       if (fileUrl && fileUrl.startsWith('file://') && this.opts.fileCopyEnabled) {
-        const emitted = await this.emitFileDraft(
-          decodeURIComponent(new URL(fileUrl).pathname),
-          fileUrl,
-          hash,
-        )
-        if (emitted) return
+        console.info('[clip-file] detected', { reference: new URL(fileUrl).pathname.startsWith('/.file/id=') })
+        try {
+          const resolved = await resolveMacFileUrl(fileUrl)
+          const emitted = await this.emitFileDraft(resolved.path, resolved.url, hash)
+          if (emitted) return
+        } catch (err) {
+          console.warn('[clip-file] resolve failed', err)
+        }
       }
 
       // ── Windows: Explorer dosya kopyası ───────────────────────────────────
@@ -270,7 +297,10 @@ export class ClipboardMonitor extends EventEmitter {
   private async emitFileDraft(filePath: string, fallbackUrl: string, hash: string): Promise<boolean> {
     try {
       const stat = statSync(filePath, { throwIfNoEntry: false })
-      if (!stat) return false
+      if (!stat) {
+        console.warn('[clip-file] stat returned null for path:', filePath)
+        return false
+      }
 
       let fileText: string
       if (stat.size <= MAX_FILE_CONTENT_BYTES) {
@@ -294,8 +324,10 @@ export class ClipboardMonitor extends EventEmitter {
         updatedAt: new Date().toISOString(),
       }
       this.emit('change', fileDraft, { rawImage: null })
+      console.info('[clip-file] captured', { bytes: stat.size, storedContent: stat.size <= MAX_FILE_CONTENT_BYTES })
       return true
-    } catch {
+    } catch (err) {
+      console.warn('[clip-file] emitFileDraft error:', err)
       return false
     }
   }
@@ -311,9 +343,11 @@ export class ClipboardMonitor extends EventEmitter {
         if (item.text.startsWith('data:')) {
           // Saklanan içerik → geçici dosyaya yaz, oradan kopyala
           const match = item.text.match(/^data:[^;]+;name=([^;,]+)/)
-          const fileName = match ? decodeURIComponent(match[1]) : 'dosya'
+          const decoded = match ? decodeURIComponent(match[1]) : 'dosya'
+          const safeName = basename(decoded.replace(/\\/g, '/'))
+          const fileName = !safeName || safeName === '.' || safeName === '..' ? 'dosya' : safeName
           const base64Data = item.text.slice(item.text.indexOf(',') + 1)
-          const tmpPath = join(tmpdir(), fileName)
+          const tmpPath = join(mkdtempSync(join(tmpdir(), 'snipotter-')), fileName)
           writeFileSync(tmpPath, Buffer.from(base64Data, 'base64'))
           filePath = tmpPath
         } else if (item.text.startsWith('file://')) {
@@ -323,9 +357,17 @@ export class ClipboardMonitor extends EventEmitter {
         }
 
         if (filePath) {
-          if (process.platform === 'darwin') {
-            const escaped = filePath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-            await execFileAsync('/usr/bin/osascript', ['-e', `set the clipboard to POSIX file "${escaped}"`])
+          if (IS_MAS) {
+            // Sandboxed: no osascript. Write the file URL straight onto the
+            // general pasteboard; Finder and other apps paste it as a file.
+            clipboard.writeBuffer('public.file-url', Buffer.from(pathToFileURL(filePath).href, 'utf8'))
+            if (!readMacOsFileUrl()) throw new Error('Dosya pano biçimi doğrulanamadı.')
+          } else if (process.platform === 'darwin') {
+            await execFileAsync('/usr/bin/osascript', ['-l', 'JavaScript', '-e',
+              'ObjC.import("AppKit"); function run(args) { const pb = $.NSPasteboard.generalPasteboard; pb.clearContents; if (!pb.writeObjects($.NSArray.arrayWithObject($.NSURL.fileURLWithPath(args[0])))) throw new Error("Dosya panoya yazılamadı"); }',
+              filePath,
+            ], { timeout: 5000 })
+            if (!readMacOsFileUrl()) throw new Error('Dosya pano biçimi doğrulanamadı.')
           } else if (process.platform === 'win32') {
             const escaped = filePath.replace(/'/g, "''")
             await execFileAsync('powershell', ['-command', `Set-Clipboard -Path '${escaped}'`])
@@ -334,7 +376,10 @@ export class ClipboardMonitor extends EventEmitter {
           this.lastHash = this.snapshotHash()
           return
         }
-      } catch { /* fall through to plain text */ }
+      } catch (err) {
+        throw new Error(`Dosya panoya kopyalanamadı: ${(err as Error).message}`)
+      }
+      throw new Error('Dosya panoya kopyalanamadı: desteklenmeyen dosya adresi.')
     }
     if (item.contentType === 'image' && item.text.startsWith('data:image/')) {
       const img = nativeImage.createFromDataURL(item.text)

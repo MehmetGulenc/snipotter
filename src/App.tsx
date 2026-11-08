@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useStore } from './store/useStore'
 import { Onboarding } from './components/Onboarding'
 import { Library } from './pages/Library'
@@ -37,7 +38,13 @@ export default function App(): JSX.Element {
     setNotes,
     upsertNote,
     setAiStatus,
-  } = useStore()
+  } = useStore(useShallow((s) => ({
+    user: s.user, authLoading: s.authLoading, workspace: s.workspace,
+    setUser: s.setUser, setAuthLoading: s.setAuthLoading, setWorkspace: s.setWorkspace,
+    setSettings: s.setSettings, setClipboard: s.setClipboard,
+    upsertClipboard: s.upsertClipboard, setNotes: s.setNotes,
+    upsertNote: s.upsertNote, setAiStatus: s.setAiStatus,
+  })))
   const [route, setRoute] = useState<Route>(getRoute)
 
   useEffect(() => {
@@ -99,17 +106,26 @@ export default function App(): JSX.Element {
 
     let cancelled = false
     let inFlight = false
+    // Ignore snapshots fetched before a local mutation or realtime event.
+    let clipRevision = 0
+    let noteRevision = 0
+    const unsubscribe = useStore.subscribe((state, previous) => {
+      if (state.clipboard !== previous.clipboard) clipRevision++
+      if (state.notes !== previous.notes) noteRevision++
+    })
     const fetchData = async () => {
       if (cancelled || inFlight) return
       inFlight = true
+      const clipAtStart = clipRevision
+      const noteAtStart = noteRevision
       try {
         const [clip, notes] = await Promise.all([
           window.snipotter.clipboard.list(),
           window.snipotter.notes.list(),
         ])
         if (cancelled) return
-        if (clip.ok) setClipboard(clip.data)
-        if (notes.ok) setNotes(notes.data)
+        if (clip.ok && clipAtStart === clipRevision) setClipboard(clip.data)
+        if (notes.ok && noteAtStart === noteRevision) setNotes(notes.data)
       } catch (err) {
         console.warn('[sync] reconcile failed', err)
       } finally {
@@ -128,6 +144,7 @@ export default function App(): JSX.Element {
     document.addEventListener('visibilitychange', onFocus)
     return () => {
       cancelled = true
+      unsubscribe()
       clearInterval(interval)
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onFocus)
@@ -153,11 +170,11 @@ export default function App(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
-      <Topbar />
+      <Topbar route={route} />
       <UpdateBanner />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar route={route} onNavigate={(r) => (window.location.hash = `#/${r}`)} />
-        <main className="flex-1 overflow-hidden">
+        <Sidebar route={route} onNavigate={(r) => { useStore.getState().setQuery(''); window.location.hash = `#/${r}` }} />
+        <main className="min-w-0 flex-1 overflow-hidden bg-background">
           {route === 'library' && <Library />}
           {route === 'notes' && <Notes />}
           {route === 'settings' && <Settings />}

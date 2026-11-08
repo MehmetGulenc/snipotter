@@ -4,13 +4,13 @@
 
 @layer base {
   :root {
-    --background: 240 10% 4%;
+    --background: 225 20% 9%;
     --foreground: 220 14% 96%;
-    --card: 240 10% 7%;
+    --card: 225 18% 12%;
     --card-foreground: 220 14% 96%;
     --popover: 240 10% 7%;
     --popover-foreground: 220 14% 96%;
-    --primary: 263 90% 70%;
+    --primary: 166 48% 65%;
     --primary-foreground: 240 10% 4%;
     --secondary: 240 5% 18%;
     --secondary-foreground: 220 14% 96%;
@@ -22,18 +22,18 @@
     --destructive-foreground: 240 10% 4%;
     --border: 240 5% 18%;
     --input: 240 5% 18%;
-    --ring: 263 90% 70%;
+    --ring: 166 48% 65%;
     --radius: 0.75rem;
   }
 
   .light {
-    --background: 0 0% 100%;
+    --background: 220 23% 97%;
     --foreground: 240 10% 4%;
     --card: 0 0% 100%;
     --card-foreground: 240 10% 4%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 4%;
-    --primary: 263 80% 50%;
+    --primary: 164 65% 28%;
     --primary-foreground: 0 0% 100%;
     --secondary: 240 5% 95%;
     --secondary-foreground: 240 10% 4%;
@@ -43,9 +43,9 @@
     --accent-foreground: 240 10% 4%;
     --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 240 5% 88%;
+    --border: 220 15% 89%;
     --input: 240 5% 88%;
-    --ring: 263 80% 50%;
+    --ring: 164 65% 28%;
   }
 
   * {
@@ -82,6 +82,11 @@
     outline: none;
   }
 
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 3px;
+  }
+
   /* Drag region for frameless windows */
   .drag-region {
     -webkit-app-region: drag;
@@ -101,7 +106,7 @@
 
 /* ── Tiptap editor prose styles ── */
 .tiptap-content {
-  @apply px-4 py-3 text-sm leading-relaxed;
+  @apply mx-auto max-w-3xl px-8 py-8 text-base leading-7;
   min-height: 100%;
 }
 
@@ -206,4 +211,8 @@
 }
 .tiptap-content .selectedCell {
   @apply bg-primary/10;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }

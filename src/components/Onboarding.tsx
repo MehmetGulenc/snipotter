@@ -4,6 +4,7 @@ import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import { KeyRound, Plus, Loader2, Check, AlertCircle } from 'lucide-react'
 import { Logo } from './Logo'
+import { isMas } from '@/lib/runtime'
 
 type Mode = 'choose' | 'create' | 'join'
 
@@ -60,7 +61,9 @@ export function Onboarding(): JSX.Element {
           <Logo size={44} />
           <div>
             <h1 className="text-lg font-semibold">Snipotter</h1>
-            <p className="text-xs text-muted-foreground">Pano + AI not — cihazlar arası senkron</p>
+            <p className="text-xs text-muted-foreground">
+              {isMas() ? 'Pano + hızlı not — cihazlar arası senkron' : 'Pano + AI not — cihazlar arası senkron'}
+            </p>
           </div>
         </div>
 

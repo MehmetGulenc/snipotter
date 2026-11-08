@@ -24,8 +24,10 @@ import {
 import { createTray, refreshMenu } from './tray'
 import { registerHotkeys, unregisterAll, setRecordingPaused, validateAccelerator } from './hotkeys'
 import { UpdaterService } from './updater'
+import { IS_MAS } from './platform'
 import { sendLaunchHeartbeat } from './telemetry'
 import { hostname, userInfo } from 'node:os'
+import { createKeyedQueue } from '@shared/keyedQueue'
 import {
   IPC,
   type IpcResult,
@@ -77,9 +79,11 @@ const supabase = new SupabaseService({
   anonKey: env.MAIN_VITE_SUPABASE_ANON_KEY,
 })
 
+// Mac App Store build: provider keys are stripped at build time (scripts/build-mas.cjs)
+// and AI enrichment stays off; never pick up a key from the runtime env either.
 const ai = new AIService({
-  anthropicKey: env.MAIN_VITE_ANTHROPIC_API_KEY,
-  geminiKey: env.MAIN_VITE_GEMINI_API_KEY,
+  anthropicKey: IS_MAS ? undefined : env.MAIN_VITE_ANTHROPIC_API_KEY,
+  geminiKey: IS_MAS ? undefined : env.MAIN_VITE_GEMINI_API_KEY,
   primary: settingsStore.get().aiPrimaryProvider,
 })
 
@@ -118,6 +122,7 @@ async function handleClipboardChange(
   // Skip everything until the user is in a workspace. Avoids spamming AI/Supabase
   // during onboarding and prevents RLS-rejected inserts.
   if (!supabase.getWorkspaceId()) {
+    if (draft.contentType === 'file') console.warn('[clip-file] skipped: workspace not ready')
     return
   }
 
@@ -127,12 +132,19 @@ async function handleClipboardChange(
   // enough to re-promote it visually.
   const existing = await supabase.findClipboardByHash(draft.hash).catch(() => null)
   if (existing) {
-    const refreshed = await supabase.touchClipboard(existing.id).catch(() => null)
-    const item = refreshed ?? { ...existing, createdAt: new Date().toISOString() }
+    const isFile = draft.contentType === 'file'
+    if (isFile) console.info('[clip-file] existing record found', { previousType: existing.contentType, payloadChanged: existing.text !== draft.text })
+    const refreshed = await supabase.touchClipboard(existing.id, isFile ? draft : undefined).catch(() => null)
+    const item = refreshed ?? {
+      ...existing,
+      ...(isFile ? { ...draft, pinned: existing.pinned, synced: false } : {}),
+      createdAt: new Date().toISOString(),
+    }
     broadcast(IPC.CLIP_UPDATED, item)
+    if (isFile) console.info('[clip-file] existing record sent to renderer', { contentType: item.contentType, synced: item.synced })
     // Also broadcast to other devices instantly.
     trackLocalInsert(item.id)
-    supabase.broadcastClipUpsert(item)
+    if (item.synced) supabase.broadcastClipUpsert(item)
     return
   }
 
@@ -149,6 +161,7 @@ async function handleClipboardChange(
   }
 
   broadcast(IPC.CLIP_NEW, item)
+  if (draft.contentType === 'file') console.info('[clip-file] sent to renderer', { synced: item.synced })
   // Instant broadcast to other devices — don't wait for WAL replication.
   if (inserted) {
     trackLocalInsert(inserted.id)
@@ -237,7 +250,14 @@ function wireIPC(): void {
   })
   ipcMain.handle(IPC.AUTH_SIGN_OUT, async () => {
     await supabase.signOut()
-    return { ok: true, data: null }
+    broadcast(IPC.WORKSPACE_CHANGED, null)
+    // Çıkıştan sonra Onboarding ekranı açılır; yeni çalışma alanı oluşturma
+    // veya eşleştirme RPC'leri oturum gerektirdiği için hemen yeni bir
+    // anonim oturum aç. Başarısız olursa işlemler sırasında tekrar denenir.
+    await supabase.ensureAnonymousSession().catch((err) => {
+      console.warn('[snipotter] anon session after sign-out failed', (err as Error).message)
+    })
+    return { ok: true, data: supabase.getUser() }
   })
 
   // ===== Workspace / Pairing =====
@@ -339,7 +359,11 @@ function wireIPC(): void {
     return { ok: true, data: null }
   })
   ipcMain.handle(IPC.CLIP_COPY, async (_e, item: ClipboardItem) => {
-    await monitor.copy(item)
+    try {
+      await monitor.copy(item)
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
     // Touch the item so it rises to the top of created_at desc ordering.
     // Mirrors the dedup logic in handleClipboardChange for OS-level re-copies.
     const refreshed = await supabase.touchClipboard(item.id).catch(() => null)
@@ -406,11 +430,19 @@ function wireIPC(): void {
     }
     return { ok: true, data: note }
   })
-  ipcMain.handle(IPC.NOTE_UPDATE, async (_e, { id, partial }: { id: string; partial: Partial<Note> }) => {
-    const note = await supabase.updateNote(id, partial)
-    if (note) supabase.broadcastNoteUpsert(note)
-    return { ok: true, data: note }
-  })
+  const enqueueNoteWrite = createKeyedQueue()
+  ipcMain.handle(IPC.NOTE_UPDATE, (_e, { id, partial }: { id: string; partial: Partial<Note> }) =>
+    enqueueNoteWrite(id, async () => {
+      try {
+        const note = await supabase.updateNote(id, partial)
+        if (!note) return { ok: false, error: 'Not kaydedilemedi. Bağlantınızı kontrol edin.' }
+        supabase.broadcastNoteUpsert(note)
+        return { ok: true, data: note }
+      } catch (err) {
+        return { ok: false, error: (err as Error).message }
+      }
+    }),
+  )
   ipcMain.handle(IPC.NOTE_DELETE, async (_e, id: string) => {
     // Broadcast first for instant feedback on other devices.
     supabase.broadcastNoteDeleted(id)
@@ -673,12 +705,16 @@ app.whenReady().then(async () => {
   // Wire everything
   wireSupabaseEvents()
   wireIPC()
-  monitor.on('change', handleClipboardChange)
+  monitor.on('change', (draft) => {
+    void handleClipboardChange(draft).catch((err) => console.warn('[clip] processing failed', err))
+  })
   monitor.on('error', (err) => console.warn('[clip] monitor error', err))
 
-  if (settingsStore.get().clipboardEnabled) monitor.start()
-
   await bootstrapAuth()
+
+  // Start after workspace restoration so the initial file is not discarded.
+  if (settingsStore.get().clipboardEnabled) monitor.start()
+  else console.info('[clip] monitor disabled in settings')
 
   createMainWindow()
   createClipDetailWindow()

@@ -23,6 +23,7 @@ export function Notes(): JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // drag-to-select state (refs to avoid re-renders during drag)
   const dragActive = useRef(false)
@@ -84,8 +85,17 @@ export function Notes(): JSX.Element {
     }
   }
   const onUpdate = useCallback(async (id: string, partial: Partial<Note>) => {
-    const r = await window.snipotter.notes.update(id, partial)
-    if (r.ok && r.data) upsert(r.data)
+    try {
+      const r = await window.snipotter.notes.update(id, partial)
+      if (r.ok && r.data) {
+        upsert(r.data)
+        setSaveError(null)
+      } else {
+        setSaveError('Not kaydedilemedi. Metninizi koruyun ve bağlantınızı kontrol edin.')
+      }
+    } catch {
+      setSaveError('Not kaydedilemedi. Metninizi koruyun ve bağlantınızı kontrol edin.')
+    }
   }, [upsert])
   const onPin = async (note: Note) => {
     const r = await window.snipotter.notes.pin(note.id, !note.pinned)
@@ -204,10 +214,11 @@ export function Notes(): JSX.Element {
   const allSelected = filtered.length > 0 && selectedIds.size === filtered.length
 
   return (
-    <div className="flex h-full">
-      <aside className="flex shrink-0 flex-col bg-card/30" style={{ width: sidebarWidth }}>
-        <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <div className="flex h-full min-w-0 p-5 gap-0">
+      <aside className="flex shrink-0 flex-col rounded-l-2xl border border-r-0 border-border bg-card" style={{ width: sidebarWidth }}>
+        {saveError && <p role="alert" className="border-b border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{saveError}</p>}
+        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-5">
+          <span className="text-lg font-semibold tracking-tight">
             Notlar ({filtered.length})
           </span>
           <div className="flex items-center gap-1">
@@ -222,8 +233,8 @@ export function Notes(): JSX.Element {
               </Button>
             )}
             {hasSelection ? null : (
-              <Button size="sm" variant="ghost" onClick={onCreate}>
-                <Plus className="h-4 w-4" />
+              <Button size="sm" variant="default" onClick={onCreate} className="gap-1.5 rounded-lg" aria-label="Yeni not oluştur">
+                <Plus className="h-4 w-4" /> Yeni
               </Button>
             )}
           </div>
@@ -231,14 +242,14 @@ export function Notes(): JSX.Element {
 
         <div
           ref={listRef}
-          className={`scrollbar-thin flex-1 space-y-1 overflow-y-auto p-2 ${dragActive.current ? 'touch-none select-none' : ''}`}
+          className={`scrollbar-thin flex-1 space-y-2 overflow-y-auto p-3 ${dragActive.current ? 'touch-none select-none' : ''}`}
           onPointerMove={handleListPointerMove}
           onPointerUp={handleListPointerUp}
           onPointerCancel={handleListPointerUp}
         >
           {filtered.length === 0 ? (
             <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-              {query ? 'Sonuç yok.' : 'Henüz not yok. Cmd+Shift+N veya + butonu.'}
+              {query ? 'Sonuç yok.' : 'Henüz notun yok. Yeni butonuyla ilk notunu oluştur.'}
             </p>
           ) : (
             filtered.map((n) => (

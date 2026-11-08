@@ -5,6 +5,7 @@ import { Button } from './ui/Button'
 import { relativeTime } from '@/lib/utils'
 import { TiptapEditor, extractText, tiptapToMarkdown, tiptapToHtml } from './TiptapEditor'
 import { Pin, PinOff, Sparkles, Trash2, Check, FileDown, FileText } from 'lucide-react'
+import { isMas } from '@/lib/runtime'
 
 interface Props {
   note: Note
@@ -33,12 +34,12 @@ export const NoteCard = memo(function NoteCard({
         }
         onSelect()
       }}
-      className={`group relative flex w-full flex-col items-start gap-1 rounded-md border px-3 py-2 text-left transition-colors ${
+      className={`group relative flex w-full flex-col items-start gap-1 rounded-xl border px-4 py-4 text-left transition-colors ${
         selected
           ? 'border-primary bg-primary/5'
           : active
-            ? 'border-primary/40 bg-card'
-            : 'border-transparent bg-card/30 hover:bg-card/60'
+            ? 'border-primary/30 bg-primary/5'
+            : 'border-transparent bg-background/70 hover:border-border hover:bg-background'
       }`}
     >
       {/* Selection checkbox */}
@@ -67,12 +68,12 @@ export const NoteCard = memo(function NoteCard({
         <span className="truncate text-sm font-medium">
           {note.title?.trim() || extractText(note.content).split('\n')[0] || 'Yeni not'}
         </span>
-        {note.pinned && <Badge variant="default">pinned</Badge>}
+        {note.pinned && <Badge variant="default">Sabit</Badge>}
       </div>
       <span className="line-clamp-2 text-xs text-muted-foreground">
         {extractText(note.content) || 'Boş not'}
       </span>
-      <div className="flex w-full items-center justify-between text-[10px] text-muted-foreground">
+      <div className="flex w-full items-center justify-between text-xs text-muted-foreground">
         <span>{relativeTime(note.updatedAt)}</span>
         {note.ai?.tags?.[0] && <span>#{note.ai.tags[0]}</span>}
       </div>
@@ -129,21 +130,23 @@ export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: Edit
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-r-2xl border border-l-0 border-border bg-card">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-6 py-4">
         <input
           value={title}
-          placeholder="Başlık (opsiyonel)"
+          aria-label="Not başlığı" placeholder="Başlıksız not"
           onChange={(e) => {
             titleDirty.current = true
             setTitle(e.target.value)
           }}
-          className="flex-1 bg-transparent text-base font-semibold outline-none placeholder:text-muted-foreground"
+          className="min-w-0 flex-1 bg-transparent text-xl font-semibold outline-none placeholder:text-muted-foreground"
         />
-        <Button variant="ghost" size="icon" title="AI ile yeniden işle" onClick={() => onReenrich(note)}>
-          <Sparkles className="h-4 w-4" />
-        </Button>
+        {!isMas() && (
+          <Button variant="ghost" size="icon" title="AI ile yeniden işle" onClick={() => onReenrich(note)}>
+            <Sparkles className="h-4 w-4" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -198,7 +201,7 @@ export function NoteEditor({ note, onUpdate, onDelete, onPin, onReenrich }: Edit
       </div>
 
       {/* Footer */}
-      <div className="shrink-0 border-t border-border px-4 py-1.5 text-[10px] text-muted-foreground">
+      <div className="shrink-0 border-t border-border px-6 py-3 text-xs text-muted-foreground">
         Son güncelleme: {relativeTime(note.updatedAt)}
         {!note.synced && ' · senkron bekliyor'}
       </div>

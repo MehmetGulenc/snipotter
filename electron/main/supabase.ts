@@ -290,7 +290,11 @@ export class SupabaseService extends EventEmitter {
   }
 
   async ensureWorkspace(deviceName?: string): Promise<Workspace | null> {
-    if (!this.client || !this.user) return null
+    if (!this.client) return null
+    // Oturum çıkıştan sonra veya açılışta anonim giriş başarısız olduysa boş
+    // olabilir; RPC'ler auth.uid() gerektirdiği için önce oturumu garanti et.
+    await this.ensureAnonymousSession()
+    if (!this.user) return null
     const { error } = await this.client.rpc('ensure_workspace', {
       p_device_name: deviceName ?? null,
     })
@@ -303,6 +307,7 @@ export class SupabaseService extends EventEmitter {
 
   async createPairCode(): Promise<PairCode> {
     if (!this.client) throw new Error('Supabase not configured')
+    await this.ensureAnonymousSession()
     const { data, error } = await this.client.rpc('create_pair_code')
     if (error) throw error
     return {
@@ -313,6 +318,7 @@ export class SupabaseService extends EventEmitter {
 
   async redeemPairCode(code: string, deviceName?: string): Promise<Workspace | null> {
     if (!this.client) throw new Error('Supabase not configured')
+    await this.ensureAnonymousSession()
     const { error } = await this.client.rpc('redeem_pair_code', {
       p_code: code,
       p_device_name: deviceName ?? null,
@@ -438,12 +444,25 @@ export class SupabaseService extends EventEmitter {
    * to the top of the list (which is sorted by created_at desc). The
    * touch_updated_at trigger handles updated_at automatically.
    */
-  async touchClipboard(id: string): Promise<ClipboardItem | null> {
+  async touchClipboard(
+    id: string,
+    file?: Pick<ClipboardItem, 'contentType' | 'text' | 'html' | 'sourceApp' | 'ai'>,
+  ): Promise<ClipboardItem | null> {
     if (!this.client || !this.workspaceId) return null
+    const updates: Record<string, unknown> = { created_at: new Date().toISOString() }
+    // A prior failed capture may have stored plain text under this same hash.
+    // Re-copying a file must repair its payload, not just bump that stale row.
+    if (file?.contentType === 'file') {
+      Object.assign(updates, {
+        content_type: file.contentType, text: file.text, html: file.html ?? null,
+        source_app: file.sourceApp ?? null, ai: file.ai ?? null,
+      })
+    }
     const { data, error } = await this.client
       .from('clipboard_items')
-      .update({ created_at: new Date().toISOString() })
+      .update(updates)
       .eq('id', id)
+      .eq('workspace_id', this.workspaceId)
       .select('*')
       .single()
     if (error) {

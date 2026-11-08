@@ -23,9 +23,15 @@ function invoke<T>(channel: string, payload?: unknown): Promise<IpcResult<T>> {
 }
 
 const api = {
+  /** Build flavour. `isMas` = Mac App Store (sandboxed) build: AI enrichment,
+   *  Finder file capture, auto-paste and the in-app updater are unavailable. */
+  runtime: {
+    isMas: process.platform === 'darwin' && process.mas === true,
+  },
   auth: {
     getState: () => invoke<SnipotterUser | null>(IPC.AUTH_GET_STATE),
-    signOut: () => invoke<null>(IPC.AUTH_SIGN_OUT),
+    // Çıkıştan sonra main yeni anonim oturum açar ve onun kullanıcısını döner.
+    signOut: () => invoke<SnipotterUser | null>(IPC.AUTH_SIGN_OUT),
     onChanged: (cb: (user: SnipotterUser | null) => void) => {
       const fn = (_: unknown, user: SnipotterUser | null) => cb(user)
       ipcRenderer.on(IPC.AUTH_STATE_CHANGED, fn)
