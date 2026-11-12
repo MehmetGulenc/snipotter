@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.8.0] - 2026-11-12
+
+### 📲 İş PC ↔ iPhone Aksiyon Köprüsü
+
+Bilgisayarda kopyaladığın şeyi telefonda tek dokunuşla kullan; telefona gelen kod bilgisayarda hazır olsun.
+
+- **Telefona gönder**: Telefon numarası, adres, IBAN veya bağlantı içeren kartlarda "Telefona gönder" butonu. iPhone'a bildirim gelir; dokununca arar, haritada açar, kopyalar veya bağlantıyı açar. İçerik kilit ekranında gösterilmez.
+- **Kod otomatik kopyalama**: Başka bir cihazdan gelen tek kullanımlık kod (son 2 dk) bilgisayarın panosuna yalnızca kod olarak yazılır ve bildirim gösterilir. Aynı kod iki kez kopyalanmaz.
+- **Ödeme kopyalama**: IBAN içeren kartlarda IBAN (boşluksuz), alıcı adı ve tutar ayrı ayrı kopyalanabilir.
+
+### 🧼 Temiz Kopyala
+
+- **Düz metin kopyala**: Markdown işaretlerini (`**`, `#`, liste imleri, kod blokları) temizler.
+- **Tablo olarak kopyala**: Markdown tablolarını Excel/Sheets'e doğrudan yapıştırılabilir tabloya çevirir.
+- **Satırları birleştir**: PDF'ten kopyalanan bölünmüş satırları birleştirir.
+- **Bağlantıları temizle**: Kopyalanan bağlantılardaki izleme parametrelerini (`utm_*`, `fbclid`, `gclid`…) kaldırır.
+
+### 🎨 Tek Tasarım
+
+- Masaüstü uygulaması iPhone ve web ile aynı mor temaya ve koyu zemine geçti; yeşil/turkuaz vurgular kaldırıldı.
+- macOS sürümü artık Developer ID ile imzalı ve Apple tarafından notarize edilmiş: ilk açılışta "geliştirici doğrulanamadı" uyarısı çıkmaz.
+
 ## [0.5.0] - 2026-05-10
 
 ### 🗑️ Toplu Silme & Drag-to-Select

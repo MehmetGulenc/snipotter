@@ -18,9 +18,63 @@ interface Release {
 
 const releases: Release[] = [
   {
+    version: '0.8.0',
+    date: 'Kasım 2026',
+    badge: 'Güncel',
+    headline: 'Bilgisayar ile iPhone Artık Birlikte Çalışıyor',
+    features: [
+      {
+        emoji: '📲',
+        title: 'Telefona gönder',
+        desc: 'Masaüstünde telefon numarası, adres, IBAN veya bağlantı içeren kartlarda "Telefona gönder" butonu. iPhone\'a bildirim gelir; dokununca arar, haritada açar, kopyalar veya bağlantıyı açar. İçerik kilit ekranında gösterilmez.',
+      },
+      {
+        emoji: '🔐',
+        title: 'Kod otomatik kopyalama',
+        desc: 'Başka cihazına gelen tek kullanımlık kod (son 2 dakika içinde) bilgisayarının panosuna yalnızca kod olarak yazılır ve bildirim gösterilir.',
+      },
+      {
+        emoji: '🧼',
+        title: 'Temiz kopyala',
+        desc: '"Düz metin kopyala" Markdown işaretlerini temizler, "Tablo olarak kopyala" Markdown tablolarını Excel/Sheets\'e yapıştırılabilir hale getirir, "Satırları birleştir" PDF\'ten gelen bölünmüş satırları birleştirir, "Bağlantıları temizle" utm_, fbclid, gclid gibi izleme parametrelerini kaldırır.',
+      },
+      {
+        emoji: '💳',
+        title: 'Ödeme kopyalama',
+        desc: 'IBAN içeren kayıtlarda IBAN (boşluksuz), alıcı adı ve tutar ayrı ayrı kopyalanır.',
+      },
+      {
+        emoji: '🎨',
+        title: 'Tek tasarım + imzalı macOS',
+        desc: 'Masaüstü uygulaması iPhone ve web ile aynı mor temaya geçti. macOS sürümü Apple Developer ID ile imzalı ve Apple tarafından onaylı (notarize); ilk açılışta "geliştirici doğrulanamadı" uyarısı çıkmaz.',
+      },
+    ],
+  },
+  {
+    version: '0.7.1',
+    date: 'Haziran 2026',
+    headline: 'Notlarda Görsel ve Dosya Kopyalama',
+    features: [
+      {
+        emoji: '🖼️',
+        title: 'Not görselleri',
+        desc: 'Not görselleri yeniden boyutlandırılabiliyor.',
+      },
+      {
+        emoji: '📁',
+        title: 'Dosya kopyalama',
+        desc: "Dosya kopyalama Windows, macOS ve Linux'ta çalışıyor.",
+      },
+      {
+        emoji: '✍️',
+        title: 'Zengin metin not editörü',
+        desc: 'Web uygulamasında da zengin metin not editörü.',
+      },
+    ],
+  },
+  {
     version: '0.6.0',
     date: 'Mayıs 2026',
-    badge: 'Güncel',
     headline: 'Notlar Artık Gerçek Bir Editör',
     features: [
       {

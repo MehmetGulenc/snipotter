@@ -769,6 +769,16 @@ function Features(): JSX.Element {
       title: 'Hassas içerik koruması',
       copy: 'E-posta, telefon, kart numarası gibi bilgileri otomatik gizler. Tek tıkla açılır, başkası gördüğünde rahatsız olmazsın.',
     },
+    {
+      icon: <Smartphone className="h-5 w-5" />,
+      title: 'Telefona gönder',
+      copy: "Bilgisayarda kopyaladığın numara, adres, IBAN veya bağlantıyı tek tıkla iPhone'una bildirim olarak gönder.",
+    },
+    {
+      icon: <Wand2 className="h-5 w-5" />,
+      title: 'Temiz kopyala',
+      copy: "Markdown işaretlerini, izleme parametrelerini ve bölünmüş satırları tek tıkla temizle; tabloları Excel'e hazır kopyala.",
+    },
   ]
 
   return (
