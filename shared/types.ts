@@ -132,6 +132,19 @@ export interface AppSettings {
    * IP, account, or content. Default ON; toggle off to opt out fully.
    */
   telemetryEnabled: boolean
+  /**
+   * When a record from another paired device arrives (≤ 2 minutes old) and
+   * contains a one-time code, write just the code to the OS clipboard and
+   * show a "Kod panoda: 482913" notification. Records inserted by this device
+   * are never auto-copied. Default ON; toggle off in Settings.
+   */
+  otpAutoCopy: boolean
+  /**
+   * When enabled, links the user copies on this device have tracking
+   * parameters (utm_*, fbclid, gclid, igsh, si …) stripped and the cleaned
+   * text is written back to the OS clipboard. Opt-in; defaults to false.
+   */
+  autoCleanCopiedLinks: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -148,6 +161,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoMirrorClipboard: false,
   fileCopyEnabled: true,
   telemetryEnabled: true,
+  otpAutoCopy: true,
+  autoCleanCopiedLinks: false,
 }
 
 export interface AuthState {
@@ -182,6 +197,11 @@ export const IPC = {
   CLIP_PROMOTE_TO_NOTE: 'clip:promote-to-note',
   CLIP_NEW: 'clip:new', // pushed from main
   CLIP_UPDATED: 'clip:updated', // pushed from main
+  /** Write arbitrary text (+ optional HTML) to the OS clipboard without recording a new item. */
+  CLIP_WRITE_TEXT: 'clip:write-text',
+
+  // Action bridge (desktop → phone)
+  ACTION_SEND_TO_PHONE: 'action:send-to-phone',
 
   // Notes
   NOTE_LIST: 'note:list',
@@ -260,6 +280,20 @@ export interface DiagnosticsState {
   }>
   localInsertIdsCount: number
   autoMirrorEnabled: boolean
+}
+
+/** Kinds a desktop can push to the phone (device_actions.kind, minus 'text'). */
+export type DeviceActionKind = 'phone' | 'address' | 'iban' | 'url' | 'text'
+
+/** Renderer → main payload for "Telefona gönder" (inserted into device_actions). */
+export interface SendToPhoneRequest {
+  kind: DeviceActionKind
+  /** Value the phone acts on: E.164 number, address query, IBAN, URL. ≤ 2000 chars. */
+  payload: string
+  /** Short human label shown in the phone notification. */
+  label?: string | null
+  /** Source clipboard row, when the action came from a synced clip. */
+  clipId?: string | null
 }
 
 export type ChannelStatus = 'idle' | 'connecting' | 'subscribed' | 'channel_error' | 'timed_out' | 'closed'

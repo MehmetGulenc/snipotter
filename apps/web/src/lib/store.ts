@@ -16,6 +16,14 @@ interface Store {
   setView: (v: Store['view']) => void
   setQuery: (q: string) => void
 
+  /** Note the Notes screen should open next (e.g. made from a clip). */
+  openNoteId: string | null
+  openNote: (id: string) => void
+  clearOpenNote: () => void
+  /** True while a note is open in the editor; the header hides search then. */
+  editingNote: boolean
+  setEditingNote: (b: boolean) => void
+
   setClipboard: (items: ClipboardItem[]) => void
   upsertClip: (item: ClipboardItem) => void
   removeClip: (id: string) => void
@@ -54,6 +62,8 @@ export const useStore = create<Store>((set) => ({
   loading: true,
   view: 'library',
   query: '',
+  openNoteId: null,
+  editingNote: false,
   clipboard: [],
   notes: [],
 
@@ -81,6 +91,9 @@ export const useStore = create<Store>((set) => ({
   setLoading: (b) => set({ loading: b }),
   setView: (v) => set({ view: v }),
   setQuery: (q) => set({ query: q }),
+  openNote: (id) => set({ openNoteId: id, view: 'notes', query: '' }),
+  clearOpenNote: () => set({ openNoteId: null }),
+  setEditingNote: (b) => set({ editingNote: b }),
 
   setClipboard: (items) =>
     set((s) => ({

@@ -5,6 +5,7 @@ import { Button } from './ui/Button'
 import { relativeTime, truncate } from '@/lib/utils'
 import { Copy, Pin, PinOff, StickyNote, Trash2, Eye, EyeOff, Sparkles, Check, FileText, Download } from 'lucide-react'
 import { isMas } from '@/lib/runtime'
+import { ClipActions } from './ClipActions'
 
 interface FileInfo {
   fileName: string
@@ -154,6 +155,10 @@ export const ClipboardCard = memo(function ClipboardCard({ item, selected, onSel
             </Badge>
           ))}
         </div>
+      )}
+
+      {!isImage && !isFile && item.text !== LEGACY_REDACTED && (
+        <ClipActions item={item} concealed={sensitive && !revealed} />
       )}
 
       <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3 text-xs text-muted-foreground">

@@ -2,7 +2,7 @@
  * Snipotter — Main process entry
  * Wires the clipboard monitor, AI service, Supabase service, IPC, hotkeys, tray, and windows.
  */
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { ClipboardMonitor } from './clipboard'
@@ -28,6 +28,8 @@ import { IS_MAS } from './platform'
 import { sendLaunchHeartbeat } from './telemetry'
 import { hostname, userInfo } from 'node:os'
 import { createKeyedQueue } from '@shared/keyedQueue'
+import { decideOtpAutoCopy, OtpLedger, otpNotificationBody } from './actionBridge'
+import { validateSendToPhone } from './sendToPhone'
 import {
   IPC,
   type IpcResult,
@@ -36,6 +38,7 @@ import {
   type AppSettings,
   type UpdaterStatus,
   type DiagnosticsState,
+  type SendToPhoneRequest,
 } from '@shared/types'
 
 const DEVICE_NAME = (() => {
@@ -90,7 +93,47 @@ const ai = new AIService({
 const monitor = new ClipboardMonitor({
   redactSensitive: settingsStore.get().redactSensitive,
   fileCopyEnabled: settingsStore.get().fileCopyEnabled,
+  autoCleanLinks: settingsStore.get().autoCleanCopiedLinks,
 })
+
+// Codes already auto-copied, so the broadcast + postgres_changes double
+// delivery (or two devices forwarding the same SMS) copies and notifies once.
+const otpLedger = new OtpLedger()
+
+/**
+ * OTP auto-copy: returns true when the item carried a fresh one-time code
+ * from another device and the code was written to the OS clipboard. Writing
+ * goes through monitor.copy(), whose lastHash refresh + emit suppression keeps
+ * the code from being recorded as a new local clip (no echo back to devices).
+ */
+function maybeAutoCopyOtp(item: ClipboardItem): boolean {
+  const now = Date.now()
+  const decision = decideOtpAutoCopy(item, {
+    enabled: settingsStore.get().otpAutoCopy,
+    selfUserId: supabase.getUser()?.id ?? null,
+    localInsertIds,
+    ledger: otpLedger,
+    now,
+  })
+  if (!decision.copy) {
+    if (decision.reason !== 'no-code' && decision.reason !== 'disabled') {
+      console.log('[otp] skipped:', decision.reason)
+    }
+    return false
+  }
+  const { code } = decision
+  otpLedger.remember(item.id, code, now)
+  void monitor
+    .copy({ contentType: 'text', text: code, html: null })
+    .then(() => {
+      console.log('[otp] code copied to clipboard')
+      if (Notification.isSupported()) {
+        new Notification({ title: 'Snipotter', body: otpNotificationBody(code), silent: false }).show()
+      }
+    })
+    .catch((err: unknown) => console.warn('[otp] clipboard write failed', err))
+  return true
+}
 
 const updater = new UpdaterService()
 
@@ -196,6 +239,9 @@ function wireSupabaseEvents(): void {
   })
   supabase.on('clip:upsert', (item: ClipboardItem) => {
     broadcast(IPC.CLIP_UPDATED, item)
+    // === OTP auto-copy === takes precedence over the full-text mirror:
+    // the code alone is what the user wants to paste.
+    if (maybeAutoCopyOtp(item)) return
     // === OS Clipboard Auto-Mirror ===
     // If the user opted in, write the remote payload onto this device's
     // OS clipboard so Cmd/Ctrl+V immediately pastes the latest item from
@@ -373,6 +419,37 @@ function wireIPC(): void {
     supabase.broadcastClipUpsert(updated)
     return { ok: true, data: null }
   })
+  // Temiz kopyala / IBAN-Alıcı-Tutar: write derived text (+HTML for tables)
+  // without creating a history row. monitor.copy() refreshes lastHash and
+  // suppresses the next emit, so the write is not re-captured.
+  ipcMain.handle(
+    IPC.CLIP_WRITE_TEXT,
+    async (_e, input: { text?: unknown; html?: unknown }): Promise<IpcResult<null>> => {
+      if (typeof input?.text !== 'string' || input.text.length === 0) {
+        return { ok: false, error: 'Kopyalanacak metin boş.' }
+      }
+      const html = typeof input.html === 'string' && input.html.length > 0 ? input.html : null
+      try {
+        await monitor.copy({ contentType: html ? 'rich-text' : 'text', text: input.text, html })
+        return { ok: true, data: null }
+      } catch (err) {
+        return { ok: false, error: (err as Error).message }
+      }
+    },
+  )
+  ipcMain.handle(
+    IPC.ACTION_SEND_TO_PHONE,
+    async (_e, input: SendToPhoneRequest): Promise<IpcResult<{ id: string }>> => {
+      const checked = validateSendToPhone(input)
+      if (!checked.ok) return checked
+      try {
+        const row = await supabase.insertDeviceAction(checked.data, DEVICE_NAME)
+        return { ok: true, data: row }
+      } catch (err) {
+        return { ok: false, error: (err as Error).message }
+      }
+    },
+  )
   ipcMain.handle(
     IPC.CLIP_PROMOTE_TO_NOTE,
     async (_e, item: ClipboardItem): Promise<IpcResult<Note | null>> => {
@@ -529,6 +606,7 @@ function wireIPC(): void {
     const next = settingsStore.set(partial)
     monitor.setRedactSensitive(next.redactSensitive)
     monitor.setFileCopyEnabled(next.fileCopyEnabled)
+    monitor.setAutoCleanLinks(next.autoCleanCopiedLinks)
     if (next.clipboardEnabled) monitor.start()
     else monitor.stop()
     registerHotkeys()

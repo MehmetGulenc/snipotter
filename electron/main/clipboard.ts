@@ -18,6 +18,7 @@ import { pathToFileURL } from 'node:url'
 import type { ClipboardItem, ClipboardContentType } from '@shared/types'
 import { createMacFileReader, resolveMacFileUrl } from '@shared/macFileClipboard'
 import { IS_MAS } from './platform'
+import { planLinkCleanup } from './actionBridge'
 
 const execFileAsync = promisify(execFile)
 
@@ -98,6 +99,8 @@ interface MonitorOptions {
   redactSensitive?: boolean
   /** When true, capture file copies from Finder (macOS) / Explorer (Windows) if < 5 MB. */
   fileCopyEnabled?: boolean
+  /** When true, tracking parameters are stripped from links the user copies. */
+  autoCleanLinks?: boolean
 }
 
 // Developer-flavoured secrets — keys and tokens we never want to flash on
@@ -165,6 +168,7 @@ export class ClipboardMonitor extends EventEmitter {
       // MAS sandbox: Finder file references point outside the container and
       // cannot be read without a user-selected grant, so file capture is off.
       fileCopyEnabled: !IS_MAS && (opts.fileCopyEnabled ?? false),
+      autoCleanLinks: opts.autoCleanLinks ?? false,
     }
   }
 
@@ -196,6 +200,10 @@ export class ClipboardMonitor extends EventEmitter {
     if (IS_MAS) value = false
     if (value && !this.opts.fileCopyEnabled) this.lastHash = null
     this.opts.fileCopyEnabled = value
+  }
+
+  setAutoCleanLinks(value: boolean): void {
+    this.opts.autoCleanLinks = value
   }
 
   private snapshotHash(): string | null {
@@ -267,6 +275,25 @@ export class ClipboardMonitor extends EventEmitter {
         contentType = 'rich-text'
       }
 
+      // Strip tracking parameters from links the user just copied and put the
+      // clean text back on the OS clipboard. lastHash is set to the hash the
+      // next tick will compute for the rewritten clipboard (text only, no
+      // HTML), so the rewrite is never seen as a new copy. The cleaner is
+      // idempotent, so even a missed hash could not cause a second rewrite.
+      let recordHash = hash
+      let recordHtml = contentType === 'rich-text' ? html : null
+      const cleaned = planLinkCleanup({ contentType, text: payload }, this.opts.autoCleanLinks)
+      if (cleaned) {
+        clipboard.writeText(cleaned.text)
+        recordHash = sha1(cleaned.text)
+        this.lastHash = recordHash
+        this.suppressEmitUntil = Date.now() + 750
+        contentType = 'text'
+        payload = cleaned.text
+        recordHtml = null
+        this.emit('links-cleaned', { changed: cleaned.changed })
+      }
+
       const sensitive =
         this.opts.redactSensitive &&
         contentType !== 'image' &&
@@ -275,8 +302,8 @@ export class ClipboardMonitor extends EventEmitter {
       const draft: Omit<ClipboardItem, 'id' | 'userId' | 'synced'> = {
         contentType,
         text: payload,
-        hash,
-        html: contentType === 'rich-text' ? html : null,
+        hash: recordHash,
+        html: recordHtml,
         sourceApp: null,
         pinned: false,
         ai: sensitive ? { summary: '', tags: ['sensitive'], provider: 'none' as const } : null,

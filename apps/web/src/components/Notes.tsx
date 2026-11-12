@@ -1,12 +1,13 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Pin, PinOff, Trash2, Loader2, ArrowLeft, Check, CheckSquare, Square, Undo2, X } from 'lucide-react'
+import { Plus, Pin, PinOff, Trash2, Loader2, ChevronLeft, Check, CheckSquare, Square, Undo2, X, StickyNote } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { listNotes, createNote, updateNote, deleteNote, deleteNoteMany } from '@/lib/api'
+import { listNotes, createNote, updateNote, deleteNoteMany } from '@/lib/api'
 import { cn, relativeTime, firstLine } from '@/lib/utils'
-import { Button } from './ui/Button'
 import { TiptapEditor, extractText } from './TiptapEditor'
 import type { Note } from '@/lib/types'
+import { analyze } from '@/lib/smart'
+import { SmartActions } from './SmartActions'
 
 interface PendingDelete {
   notes: Note[]
@@ -19,16 +20,19 @@ export function Notes(): JSX.Element {
   const items = useStore((s) => s.notes)
   const setItems = useStore((s) => s.setNotes)
   const upsert = useStore((s) => s.upsertNote)
-  const remove = useStore((s) => s.removeNote)
   const removeNotes = useStore((s) => s.removeNotes)
   const shieldNotes = useStore((s) => s.shieldNotes)
   const unshieldNotes = useStore((s) => s.unshieldNotes)
   const query = useStore((s) => s.query)
+  const openNoteId = useStore((s) => s.openNoteId)
+  const clearOpenNote = useStore((s) => s.clearOpenNote)
+  const setEditingNote = useStore((s) => s.setEditingNote)
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [creating, setCreating] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const dirtyTitle = useRef(false)
   const contentSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -69,8 +73,21 @@ export function Notes(): JSX.Element {
 
   const active = filtered.find((n) => n.id === activeId) ?? null
 
+  // Open a note requested from elsewhere (a clip turned into a note).
+  useEffect(() => {
+    if (!openNoteId) return
+    setActiveId(openNoteId)
+    clearOpenNote()
+  }, [openNoteId, clearOpenNote])
+
+  useEffect(() => {
+    setEditingNote(Boolean(active))
+    return () => setEditingNote(false)
+  }, [Boolean(active), setEditingNote])
+
   // Reset title on note navigation
   useEffect(() => {
+    setSaveState('idle')
     dirtyTitle.current = false
     setTitleDraft(active?.title ?? '')
   }, [activeId])
@@ -84,13 +101,16 @@ export function Notes(): JSX.Element {
   useEffect(() => {
     if (!active) return
     if (!dirtyTitle.current) return
+    setSaveState('saving')
     const t = setTimeout(async () => {
       try {
         await updateNote(active.id, { title: titleDraft.trim() || null })
         upsert({ ...active, title: titleDraft.trim() || null })
         dirtyTitle.current = false
+        setSaveState('saved')
       } catch (e) {
         console.warn('title save failed', e)
+        setSaveState('error')
       }
     }, 400)
     return () => clearTimeout(t)
@@ -115,12 +135,6 @@ export function Notes(): JSX.Element {
     await updateNote(n.id, { pinned: !n.pinned })
   }
 
-  const onDelete = async (n: Note) => {
-    if (!confirm('Notu sil?')) return
-    remove(n.id)
-    if (activeId === n.id) setActiveId(null)
-    await deleteNote(n.id)
-  }
 
   const toggleSelection = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -139,14 +153,13 @@ export function Notes(): JSX.Element {
   const selectAll = () => setSelectedIds(new Set(filtered.map((n) => n.id)))
   const allSelected = filtered.length > 0 && selectedIds.size === filtered.length
 
-  const deleteSelected = useCallback(() => {
-    if (selectedIds.size === 0) return
-    const ids = Array.from(selectedIds)
+  const deleteItems = useCallback((ids: string[]) => {
+    if (ids.length === 0) return
     const noteObjects = ids.map((id) => items.find((n) => n.id === id)).filter(Boolean) as Note[]
 
     shieldNotes(ids)
     removeNotes(ids)
-    if (activeId && selectedIds.has(activeId)) setActiveId(null)
+    if (activeId && ids.includes(activeId)) setActiveId(null)
     setSelectedIds(new Set())
     setSelectMode(false)
 
@@ -163,7 +176,9 @@ export function Notes(): JSX.Element {
     }, 5000)
 
     setPendingDelete({ notes: noteObjects, timer })
-  }, [selectedIds, items, activeId, pendingDelete, removeNotes, shieldNotes, unshieldNotes])
+  }, [items, activeId, pendingDelete, removeNotes, shieldNotes, unshieldNotes])
+
+  const deleteSelected = () => deleteItems(Array.from(selectedIds))
 
   const undoDelete = useCallback(() => {
     if (!pendingDelete) return
@@ -254,41 +269,44 @@ export function Notes(): JSX.Element {
 
   // ─── Editor view ─────────────────────────────────────────────────────────────
   if (active) {
+    const noteActions = analyze(`${active.title ?? ''}\n${extractText(active.content)}`).actions.filter(
+      (a) => a.kind !== 'otp' && a.kind !== 'wifi',
+    )
     return (
       <div className="flex h-full flex-col">
-        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <div className="flex items-center gap-1 px-1 py-1">
           <button
             onClick={() => setActiveId(null)}
-            className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground sm:hidden"
-            title="Geri"
+            className="flex h-11 items-center gap-0.5 rounded-lg pl-1 pr-3 text-[17px] text-primary transition-opacity duration-100 active:opacity-50"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ChevronLeft className="h-6 w-6" aria-hidden="true" />
+            Notlar
           </button>
-          <div className="flex-1 truncate text-xs text-muted-foreground">
-            {active.title?.trim() || firstLine(active.content, 60) || 'Yeni not'}
-          </div>
-          <button
-            onClick={() => onPin(active)}
-            className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-            title={active.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
-          >
-            {active.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
-          </button>
-          <button
-            onClick={() => onDelete(active)}
-            className="rounded p-1.5 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-            title="Sil"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          <div className="flex-1" />
+          <NoteAction label={active.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'} onClick={() => void onPin(active)}>
+            {active.pinned ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
+          </NoteAction>
+          <NoteAction label="Notu sil" onClick={() => deleteItems([active.id])}>
+            <Trash2 className="h-5 w-5" />
+          </NoteAction>
         </div>
         <input
           value={titleDraft}
           onChange={(e) => { dirtyTitle.current = true; setTitleDraft(e.target.value) }}
-          placeholder="Başlık (opsiyonel)"
-          className="border-b border-border bg-transparent px-4 py-3 text-base font-semibold outline-none placeholder:text-muted-foreground"
-          style={{ fontSize: 16 }}
+          placeholder="Başlık"
+          aria-label="Not başlığı"
+          className="bg-transparent px-4 pb-1 pt-2 text-[24px] font-bold tracking-tight outline-none placeholder:text-muted-foreground/60"
         />
+        <div className="px-4 pb-1 text-xs text-muted-foreground" aria-live="polite">
+          {saveState === 'saving' ? 'Kaydediliyor…' : saveState === 'error' ? (
+            <span className="text-destructive">Kaydedilemedi, bağlantını kontrol et</span>
+          ) : saveState === 'saved' ? 'Tüm cihazlarına kaydedildi' : `${relativeTime(active.updatedAt)} düzenlendi`}
+        </div>
+        {noteActions.length > 0 && (
+          <div className="px-4 pb-2">
+            <SmartActions actions={noteActions} />
+          </div>
+        )}
         <div className="flex-1 overflow-hidden">
           <TiptapEditor
             content={active.content}
@@ -296,10 +314,16 @@ export function Notes(): JSX.Element {
             noteUpdatedAt={active.updatedAt}
             onUpdate={(jsonContent) => {
               upsert({ ...active, content: jsonContent })
+              setSaveState('saving')
               if (contentSaveTimer.current) clearTimeout(contentSaveTimer.current)
               contentSaveTimer.current = setTimeout(async () => {
-                try { await updateNote(active.id, { content: jsonContent }) }
-                catch (e) { console.warn('note save failed', e) }
+                try {
+                  await updateNote(active.id, { content: jsonContent })
+                  setSaveState('saved')
+                } catch (e) {
+                  console.warn('note save failed', e)
+                  setSaveState('error')
+                }
               }, 600)
             }}
           />
@@ -324,11 +348,21 @@ export function Notes(): JSX.Element {
 
   // ─── List view ───────────────────────────────────────────────────────────────
   const hasSelection = selectedIds.size > 0
+  const newNoteButton = (
+    <button
+      onClick={onCreate}
+      disabled={creating}
+      className="flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity duration-100 active:opacity-80 disabled:opacity-60"
+    >
+      {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+      Yeni not
+    </button>
+  )
 
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 pb-2 pt-3 sm:px-6">
+      <div className="flex min-h-[52px] items-center justify-between px-4 py-2 sm:px-6">
         {selectMode ? (
           <>
             <button
@@ -347,30 +381,28 @@ export function Notes(): JSX.Element {
           </>
         ) : (
           <>
-            <h2 className="text-sm font-medium text-muted-foreground">
-              {filtered.length} not
-            </h2>
-            <Button onClick={onCreate} disabled={creating} size="sm">
-              {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-              Yeni not
-            </Button>
+            <h2 className="text-sm text-muted-foreground">{filtered.length} not</h2>
+            {newNoteButton}
           </>
         )}
       </div>
 
       {!loaded && <div className="py-12 text-center text-xs text-muted-foreground">Yükleniyor…</div>}
       {loaded && filtered.length === 0 && !pendingDelete && (
-        <div className="flex h-[50vh] flex-col items-center justify-center px-8 text-center text-muted-foreground">
-          <div className="text-sm font-medium text-foreground">Henüz not yok</div>
-          <p className="mt-2 max-w-sm text-xs leading-relaxed">
-            "Yeni not" ile başla. Yazdığın notlar tüm cihazlarına anında senkronlanır.
+        <div className="flex h-[60vh] flex-col items-center justify-center px-8 text-center text-muted-foreground">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+            <StickyNote className="h-8 w-8" aria-hidden="true" />
+          </div>
+          <div className="text-[17px] font-semibold text-foreground">{query ? 'Sonuç yok' : 'Henüz not yok'}</div>
+          <p className="mt-2 max-w-xs text-sm leading-relaxed">
+            {query ? 'Aramayı temizle ya da farklı bir kelime dene.' : 'Yazdığın notlar tüm cihazlarında anında güncellenir.'}
           </p>
         </div>
       )}
 
       <div
         ref={listRef}
-        className={cn('flex-1 space-y-2 overflow-y-auto px-3 pb-4 sm:px-6', selectMode && 'touch-none')}
+        className={cn('flex-1 space-y-2.5 overflow-y-auto px-3 pb-4 sm:px-6', selectMode && 'touch-none')}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
@@ -385,10 +417,10 @@ export function Notes(): JSX.Element {
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
               className={cn(
-                'relative block w-full rounded-lg border border-border bg-card/40 p-3 text-left transition-colors',
-                n.pinned && !isSelected && 'border-primary/40 bg-primary/5',
-                isSelected && 'border-primary bg-primary/10',
-                !selectMode && 'hover:border-primary/30',
+                'relative block w-full rounded-2xl bg-card px-4 py-3 text-left ring-1 ring-white/[0.04] transition-colors duration-100',
+                n.pinned && !isSelected && 'ring-primary/40',
+                isSelected && 'bg-primary/10 ring-primary',
+                !selectMode && 'active:bg-white/[0.06]',
               )}
             >
               {/* Checkbox (visible in select mode or when selected) */}
@@ -427,19 +459,17 @@ export function Notes(): JSX.Element {
                   }
                 }}
               >
-                <div className="line-clamp-2 text-sm font-medium">
+                <div className="line-clamp-2 text-[16px] font-semibold leading-snug">
                   {n.title?.trim() || firstLine(extractText(n.content), 80) || (
                     <span className="italic text-muted-foreground">Boş not</span>
                   )}
                 </div>
-                {extractText(n.content).length > 80 && (
-                  <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                    {extractText(n.content).slice(80, 240)}
-                  </div>
+                {notePreview(n) && (
+                  <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">{notePreview(n)}</div>
                 )}
-                <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+                <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {n.pinned && <Pin className="h-3 w-3 text-primary" aria-label="Sabitlendi" />}
                   <span>{relativeTime(n.updatedAt)}</span>
-                  {n.pinned && <Pin className="h-3 w-3 text-primary" />}
                   {n.ai?.tags?.slice(0, 3).map((t) => (
                     <span key={t} className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary">
                       {t}
@@ -458,7 +488,7 @@ export function Notes(): JSX.Element {
           {pendingDelete ? (
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm text-muted-foreground">
-                {pendingDelete.notes.length} not silindi
+                {pendingDelete.notes.length === 1 ? 'Not silindi' : `${pendingDelete.notes.length} not silindi`}
               </span>
               <button
                 onClick={undoDelete}
@@ -485,5 +515,26 @@ export function Notes(): JSX.Element {
         </div>
       )}
     </div>
+  )
+}
+
+/** Body text under the title: skips the line already shown as the title. */
+function notePreview(n: Note): string {
+  const text = extractText(n.content).trim()
+  if (n.title?.trim()) return text.slice(0, 200)
+  const first = firstLine(text, 80)
+  return text.slice(first.replace(/…$/, '').length).trim().slice(0, 200)
+}
+
+function NoteAction({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="flex h-11 w-11 items-center justify-center rounded-full text-primary transition-colors duration-100 active:bg-white/10"
+    >
+      {children}
+    </button>
   )
 }

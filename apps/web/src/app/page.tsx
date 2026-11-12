@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Onboarding } from '@/components/Onboarding'
 import { AppShell } from '@/components/AppShell'
+import { FeedbackHost } from '@/components/ui/FeedbackHost'
 import { useStore } from '@/lib/store'
 import { ensureAnonymousSession, getCurrentWorkspace } from '@/lib/api'
 
@@ -63,6 +64,10 @@ export default function Home(): JSX.Element {
     )
   }
 
-  if (!workspace) return <Onboarding />
-  return <AppShell />
+  return (
+    <>
+      {workspace ? <AppShell /> : <Onboarding />}
+      <FeedbackHost />
+    </>
+  )
 }

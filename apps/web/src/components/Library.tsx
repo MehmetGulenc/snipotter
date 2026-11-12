@@ -1,10 +1,17 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Copy, Pin, PinOff, Trash2, Check, Image as ImageIcon, CheckSquare, Square, Undo2, X } from 'lucide-react'
+import { Copy, Pin, PinOff, Trash2, Check, Image as ImageIcon, CheckSquare, Square, Undo2, X, ClipboardPaste, Loader2, StickyNote, Eye, Timer } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { listClipboard, setClipPinned, deleteClip, deleteClipMany } from '@/lib/api'
+import { listClipboard, setClipPinned, deleteClipMany, createNote } from '@/lib/api'
 import { cn, relativeTime, firstLine } from '@/lib/utils'
 import type { ClipboardItem } from '@/lib/types'
+import { isNative, saveClipboardFromUserAction } from '@/lib/mobile'
+import { errorText, toast } from '@/lib/feedback'
+import { analyze, otpExpired } from '@/lib/smart'
+import { copyText } from '@/lib/native-bridge'
+import { SmartActions } from './SmartActions'
+import { CleanCopyMenu } from './CleanCopyMenu'
+import { PaymentCopy, usePayment } from './PaymentCopy'
 
 interface PendingDelete {
   items: ClipboardItem[]
@@ -13,15 +20,35 @@ interface PendingDelete {
 
 export function Library(): JSX.Element {
   const workspace = useStore((s) => s.workspace)
+  const user = useStore((s) => s.user)
   const items = useStore((s) => s.clipboard)
   const setItems = useStore((s) => s.setClipboard)
   const upsert = useStore((s) => s.upsertClip)
-  const remove = useStore((s) => s.removeClip)
   const removeClips = useStore((s) => s.removeClips)
   const shieldClips = useStore((s) => s.shieldClips)
   const unshieldClips = useStore((s) => s.unshieldClips)
   const query = useStore((s) => s.query)
   const [loaded, setLoaded] = useState(false)
+  const [savingClipboard, setSavingClipboard] = useState(false)
+  const native = isNative()
+
+  const onSaveClipboard = async () => {
+    if (!workspace || !user) return
+    setSavingClipboard(true)
+    try {
+      const result = await saveClipboardFromUserAction(workspace.id, user.id)
+      if (result.status === 'saved') {
+        upsert(result.item)
+        toast('Panodan kaydedildi')
+      } else {
+        toast('Panoda kaydedilecek metin yok', 'info')
+      }
+    } catch (e) {
+      toast('Kaydedilemedi: ' + errorText(e), 'error', 3500)
+    } finally {
+      setSavingClipboard(false)
+    }
+  }
 
   // multi-select
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -74,9 +101,8 @@ export function Library(): JSX.Element {
   const allSelected = filtered.length > 0 && selectedIds.size === filtered.length
   const hasSelection = selectedIds.size > 0
 
-  const deleteSelected = useCallback(() => {
-    if (selectedIds.size === 0) return
-    const ids = Array.from(selectedIds)
+  const deleteItems = useCallback((ids: string[]) => {
+    if (ids.length === 0) return
     const itemObjects = ids.map((id) => items.find((i) => i.id === id)).filter(Boolean) as ClipboardItem[]
 
     shieldClips(ids)
@@ -97,7 +123,38 @@ export function Library(): JSX.Element {
     }, 5000)
 
     setPendingDelete({ items: itemObjects, timer })
-  }, [selectedIds, items, pendingDelete, removeClips, shieldClips, unshieldClips])
+  }, [items, pendingDelete, removeClips, shieldClips, unshieldClips])
+
+  const deleteSelected = () => deleteItems(Array.from(selectedIds))
+
+  // One-time codes are removed ten minutes after they were copied (pinned ones stay).
+  useEffect(() => {
+    const sweep = () => {
+      const expired = useStore.getState().clipboard.filter(
+        (c) => !c.pinned && c.contentType !== 'image' && otpExpired(c.createdAt) && analyze(c.text).otp,
+      )
+      if (expired.length === 0) return
+      const ids = expired.map((c) => c.id)
+      removeClips(ids)
+      void deleteClipMany(ids).catch((e) => console.warn('otp cleanup failed', e))
+    }
+    sweep()
+    const timer = setInterval(sweep, 30_000)
+    return () => clearInterval(timer)
+  }, [removeClips])
+
+  const onMakeNote = async (item: ClipboardItem) => {
+    if (!workspace || !user) return
+    try {
+      const note = await createNote(workspace.id, user.id, textToNoteContent(item.text))
+      if (note) {
+        useStore.getState().upsertNote(note)
+        useStore.getState().openNote(note.id)
+      }
+    } catch (e) {
+      toast('Not oluşturulamadı: ' + errorText(e), 'error', 3500)
+    }
+  }
 
   const undoDelete = useCallback(() => {
     if (!pendingDelete) return
@@ -183,16 +240,30 @@ export function Library(): JSX.Element {
     dragVisited.current = new Set()
   }, [])
 
-  if (!loaded) return <Empty title="Yükleniyor…" hint="Pano kütüphanesi alınıyor." />
+  const saveButton = native ? (
+    <button
+      onClick={onSaveClipboard}
+      disabled={savingClipboard || !workspace}
+      className="flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm active:opacity-80 disabled:opacity-60"
+    >
+      {savingClipboard ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardPaste className="h-4 w-4" />}
+      Panodan kaydet
+    </button>
+  ) : null
+
+  if (!loaded) return <Empty title="Yükleniyor…" hint="Pano geçmişin alınıyor." />
   if (filtered.length === 0 && !pendingDelete)
     return (
       <Empty
-        title={query ? 'Sonuç yok' : 'Henüz pano öğesi yok'}
+        title={query ? 'Sonuç yok' : 'Henüz kayıt yok'}
         hint={
           query
             ? 'Aramayı temizle ya da farklı bir kelime dene.'
-            : 'Mac/Windows uygulamasında bir şey kopyaladığında burada görünecek. Realtime, ayrıca yenilemen gerekmez.'
+            : native
+              ? 'Bir şey kopyala, sonra aşağıdaki düğmeye dokun. Mac veya Windows’ta kopyaladıkların da burada kendiliğinden belirir.'
+              : 'Mac veya Windows’ta kopyaladıkların burada kendiliğinden belirir.'
         }
+        action={query ? null : saveButton}
       />
     )
 
@@ -214,7 +285,10 @@ export function Library(): JSX.Element {
             </button>
           </>
         ) : (
-          <span className="text-sm text-muted-foreground">{filtered.length} öğe</span>
+          <>
+            <span className="text-sm text-muted-foreground">{filtered.length} kayıt</span>
+            {saveButton}
+          </>
         )}
       </div>
 
@@ -234,8 +308,9 @@ export function Library(): JSX.Element {
               selected={isSelected}
               selectMode={selectMode}
               upsert={upsert}
-              remove={remove}
               onToggleSelect={() => toggleSelection(it.id)}
+              onDelete={() => deleteItems([it.id])}
+              onMakeNote={() => void onMakeNote(it)}
               onCheckboxPointerDown={(e) => startDrag(it.id, isSelected, e)}
               onTouchStart={() => handleTouchStart(it.id)}
               onTouchMove={handleTouchMove}
@@ -251,7 +326,7 @@ export function Library(): JSX.Element {
           {pendingDelete ? (
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm text-muted-foreground">
-                {pendingDelete.items.length} öğe silindi
+                {pendingDelete.items.length === 1 ? 'Kayıt silindi' : `${pendingDelete.items.length} kayıt silindi`}
               </span>
               <button
                 onClick={undoDelete}
@@ -264,7 +339,7 @@ export function Library(): JSX.Element {
           ) : (
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm text-muted-foreground">
-                {selectedIds.size} öğe seçili
+                {selectedIds.size} kayıt seçili
               </span>
               <button
                 onClick={deleteSelected}
@@ -286,8 +361,9 @@ function Card({
   selected,
   selectMode,
   upsert,
-  remove,
   onToggleSelect,
+  onDelete,
+  onMakeNote,
   onCheckboxPointerDown,
   onTouchStart,
   onTouchMove,
@@ -297,31 +373,34 @@ function Card({
   selected: boolean
   selectMode: boolean
   upsert: (i: ClipboardItem) => void
-  remove: (id: string) => void
   onToggleSelect: () => void
+  onDelete: () => void
+  onMakeNote: () => void
   onCheckboxPointerDown: (e: React.PointerEvent) => void
   onTouchStart: () => void
   onTouchMove: (e: React.TouchEvent) => void
   onTouchEnd: () => void
 }): JSX.Element {
   const [copied, setCopied] = useState(false)
+  const [revealed, setRevealed] = useState(false)
+  const isImage = item.contentType === 'image' && item.text.startsWith('data:image/')
+  const smart = useMemo(() => (isImage ? null : analyze(item.text)), [isImage, item.text])
+  const hidden = Boolean(smart?.sensitive) && !revealed
+  const payment = usePayment(isImage ? '' : item.text)
 
   const onCopy = async () => {
     try {
       if (item.contentType === 'image' && item.text.startsWith('data:image/')) {
         await copyImage(item.text)
       } else {
-        if (!navigator.clipboard?.writeText) {
-          throw new Error('Bu tarayıcıda pano API\'si yok.')
-        }
-        await navigator.clipboard.writeText(item.text)
+        await copyText(smart?.otp ?? item.text)
       }
       setCopied(true)
+      toast('Kopyalandı')
       setTimeout(() => setCopied(false), 1200)
     } catch (e) {
       console.warn('copy failed', e)
-      const msg = e instanceof Error ? e.message : String(e)
-      alert(`Kopyalama başarısız: ${msg}\n\nİpucu: Görsele uzun bas → Görseli kopyala (Safari) ya da bilgisayardan kopyala.`)
+      toast('Kopyalanamadı: ' + errorText(e), 'error', 3500)
     }
   }
 
@@ -330,20 +409,6 @@ function Card({
     await setClipPinned(item.id, !item.pinned)
   }
 
-  const onDelete = async () => {
-    if (!confirm('Bu öğeyi sil?')) return
-    remove(item.id)
-    try {
-      await deleteClip(item.id)
-    } catch (e) {
-      console.warn('delete failed', e)
-      upsert(item)
-      alert('Silme başarısız: ' + (e instanceof Error ? e.message : String(e)))
-    }
-  }
-
-  const isImage = item.contentType === 'image' && item.text.startsWith('data:image/')
-
   return (
     <div
       data-clip-id={item.id}
@@ -351,10 +416,10 @@ function Card({
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
       className={cn(
-        'group relative rounded-lg border border-border bg-card/40 p-3 transition-colors',
-        item.pinned && !selected && 'border-primary/40 bg-primary/5',
-        selected && 'border-primary bg-primary/10',
-        !selectMode && 'hover:border-primary/30',
+        'group relative rounded-2xl bg-card px-4 pb-2 pt-3 ring-1 ring-white/[0.04] transition-colors',
+        item.pinned && !selected && 'ring-primary/40',
+        selected && 'bg-primary/10 ring-primary',
+        !selectMode && 'active:bg-white/[0.06]',
       )}
     >
       {/* Checkbox */}
@@ -383,10 +448,11 @@ function Card({
         </button>
       )}
 
-      <div className={cn('flex items-start justify-between gap-3', (selectMode || selected) && 'pl-8')}>
+      <div className={cn((selectMode || selected) && 'pl-8')}>
         <button
           onClick={selectMode ? onToggleSelect : onCopy}
-          className="flex-1 min-w-0 text-left"
+          className="block w-full min-w-0 text-left"
+          aria-label="Kopyala"
         >
           {isImage ? (
             <div className="space-y-1.5">
@@ -395,60 +461,60 @@ function Card({
                 alt="clipboard image"
                 className="max-h-48 w-auto rounded border border-border"
               />
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <ImageIcon className="h-3 w-3" />
-                ~{Math.round(item.text.length / 1024)}KB · {relativeTime(item.createdAt)}
-              </div>
+            </div>
+          ) : smart?.otp ? (
+            <div>
+              <div className="font-mono text-[28px] font-bold tracking-[0.2em] text-foreground">{smart.otp}</div>
+              <div className="line-clamp-2 text-xs text-muted-foreground">{item.text.slice(0, 160)}</div>
             </div>
           ) : (
-            <>
-              <div className="line-clamp-3 text-sm leading-relaxed break-words">
-                {firstLine(item.text, 200) || item.text.slice(0, 200)}
-              </div>
-              <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                <span>{relativeTime(item.createdAt)}</span>
-                {item.ai?.tags?.length ? (
-                  <span className="flex flex-wrap gap-1">
-                    {item.ai.tags.slice(0, 4).map((t) => (
-                      <span
-                        key={t}
-                        className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary"
-                      >
-                        {t}
-                      </span>
-                    ))}
-                  </span>
-                ) : null}
-              </div>
-            </>
+            <div className={cn('line-clamp-4 whitespace-pre-line break-words text-[15px] leading-snug', hidden && 'select-none blur-[6px]')}>
+              {item.text.slice(0, 400)}
+            </div>
           )}
         </button>
-
-        {!selectMode && (
-          <div className="flex shrink-0 flex-col gap-1">
-            <button
-              onClick={onCopy}
-              className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-              title="Kopyala"
-            >
-              {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
-            </button>
-            <button
-              onClick={onPin}
-              className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-              title={item.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
-            >
-              {item.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
-            </button>
-            <button
-              onClick={onDelete}
-              className="rounded p-1.5 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-              title="Sil"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
+        {hidden && (
+          <button
+            onClick={() => setRevealed(true)}
+            className="mt-1 flex items-center gap-1.5 text-xs font-medium text-primary"
+          >
+            <Eye className="h-3.5 w-3.5" aria-hidden="true" /> Göster
+          </button>
         )}
+        {smart && !selectMode && (
+          <SmartActions actions={smart.actions.filter((a) => a.kind !== 'otp' && !(payment?.iban && a.kind === 'iban'))} />
+        )}
+        {!isImage && !selectMode && <PaymentCopy text={item.text} />}
+
+        <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
+          {isImage && <ImageIcon className="h-3 w-3" />}
+          {item.pinned && <Pin className="h-3 w-3 text-primary" />}
+          {smart?.otp && !item.pinned && <Timer className="h-3 w-3 text-amber-400" aria-label="Süreli" />}
+          <span className="flex-1 truncate">
+            {relativeTime(item.createdAt)}
+            {smart?.otp && !item.pinned ? ' · 10 dk içinde silinir' : ''}
+            {isImage ? ` · ~${Math.round(item.text.length / 1024)} KB` : ''}
+          </span>
+          {!selectMode && (
+            <>
+              <IconButton label={copied ? 'Kopyalandı' : 'Kopyala'} onClick={onCopy}>
+                {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+              </IconButton>
+              {!isImage && <CleanCopyMenu text={item.text} />}
+              {!isImage && (
+                <IconButton label="Nota çevir" onClick={onMakeNote}>
+                  <StickyNote className="h-4 w-4" />
+                </IconButton>
+              )}
+              <IconButton label={item.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'} onClick={onPin}>
+                {item.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+              </IconButton>
+              <IconButton label="Sil" onClick={onDelete}>
+                <Trash2 className="h-4 w-4" />
+              </IconButton>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -514,11 +580,36 @@ function encodeAsPng(dataUrl: string): Promise<Blob> {
   })
 }
 
-function Empty({ title, hint }: { title: string; hint: string }): JSX.Element {
+function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }): JSX.Element {
   return (
-    <div className="flex h-[60vh] flex-col items-center justify-center px-8 text-center text-muted-foreground">
-      <div className="text-sm font-medium text-foreground">{title}</div>
-      <p className="mt-2 max-w-sm text-xs leading-relaxed">{hint}</p>
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="-my-1 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors duration-100 active:bg-white/10 hover:text-foreground"
+    >
+      {children}
+    </button>
+  )
+}
+
+function Empty({ title, hint, action }: { title: string; hint: string; action?: React.ReactNode }): JSX.Element {
+  return (
+    <div className="flex h-[65vh] flex-col items-center justify-center px-8 text-center text-muted-foreground">
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+        <ClipboardPaste className="h-8 w-8" />
+      </div>
+      <div className="text-[17px] font-semibold text-foreground">{title}</div>
+      <p className="mt-2 max-w-xs text-sm leading-relaxed">{hint}</p>
+      {action && <div className="mt-5">{action}</div>}
     </div>
   )
+}
+
+/** Tiptap JSON for a note made from a clip: one paragraph per line. */
+function textToNoteContent(text: string): string {
+  const content = text.split('\n').map((line) =>
+    line ? { type: 'paragraph', content: [{ type: 'text', text: line }] } : { type: 'paragraph' },
+  )
+  return JSON.stringify({ type: 'doc', content })
 }

@@ -95,6 +95,7 @@ interface Props {
 
 export function TiptapEditor({ content, noteId, noteUpdatedAt, onUpdate }: Props) {
   const dirty = useRef(false)
+  const imageInput = useRef<HTMLInputElement>(null)
   const onUpdateRef = useRef(onUpdate)
   onUpdateRef.current = onUpdate
 
@@ -167,50 +168,63 @@ export function TiptapEditor({ content, noteId, noteUpdatedAt, onUpdate }: Props
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
       <InlineBubbleMenu editor={editor} />
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-border px-3 py-1.5 shrink-0">
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive('heading', { level: 1 })} title="Başlık 1">
-          <Heading1 className="h-3.5 w-3.5" />
+      <div
+        role="toolbar"
+        aria-label="Biçimlendirme"
+        className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-white/[0.06] px-2 py-1 [scrollbar-width:none]"
+      >
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleTaskList().run()} active={editor.isActive('taskList')} title="Yapılacaklar listesi">
+          <ListChecks className="h-5 w-5" />
         </ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive('heading', { level: 2 })} title="Başlık 2">
-          <Heading2 className="h-3.5 w-3.5" />
-        </ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive('heading', { level: 3 })} title="Başlık 3">
-          <Heading3 className="h-3.5 w-3.5" />
-        </ToolbarBtn>
-        <Separator />
         <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} title="Madde listesi">
-          <List className="h-3.5 w-3.5" />
+          <List className="h-5 w-5" />
         </ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Numaralı liste">
-          <ListOrdered className="h-3.5 w-3.5" />
+          <ListOrdered className="h-5 w-5" />
         </ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleTaskList().run()} active={editor.isActive('taskList')} title="Görev listesi">
-          <ListChecks className="h-3.5 w-3.5" />
+        <ToolbarBtn onClick={() => imageInput.current?.click()} active={false} title="Fotoğraf ekle">
+          <ImageIcon className="h-5 w-5" />
+        </ToolbarBtn>
+        <Separator />
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive('heading', { level: 1 })} title="Başlık 1">
+          <Heading1 className="h-5 w-5" />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive('heading', { level: 2 })} title="Başlık 2">
+          <Heading2 className="h-5 w-5" />
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive('heading', { level: 3 })} title="Başlık 3">
+          <Heading3 className="h-5 w-5" />
         </ToolbarBtn>
         <Separator />
         <ToolbarBtn onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive('blockquote')} title="Alıntı">
-          <Quote className="h-3.5 w-3.5" />
+          <Quote className="h-5 w-5" />
         </ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleCodeBlock().run()} active={editor.isActive('codeBlock')} title="Kod bloğu">
-          <Code2 className="h-3.5 w-3.5" />
+          <Code2 className="h-5 w-5" />
         </ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} active={false} title="Yatay çizgi">
-          <Minus className="h-3.5 w-3.5" />
-        </ToolbarBtn>
-        <Separator />
         <ToolbarBtn onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} active={editor.isActive('table')} title="Tablo ekle">
-          <Table2 className="h-3.5 w-3.5" />
+          <Table2 className="h-5 w-5" />
         </ToolbarBtn>
-        <ToolbarBtn
-          onClick={() => {
-            const url = window.prompt('Resim URL\'si')
-            if (url) editor.chain().focus().setImage({ src: url }).run()
+        <ToolbarBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} active={false} title="Ayırıcı çizgi">
+          <Minus className="h-5 w-5" />
+        </ToolbarBtn>
+        <input
+          ref={imageInput}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (!file) return
+            try {
+              const src = await shrinkImage(file)
+              editor.chain().focus().setImage({ src }).run()
+            } catch (err) {
+              console.warn('image insert failed', err)
+            }
           }}
-          active={false}
-          title="Resim ekle (URL) — ya da yapıştır"
-        >
-          <ImageIcon className="h-3.5 w-3.5" />
-        </ToolbarBtn>
+        />
       </div>
       <EditorContent
         editor={editor}
@@ -282,7 +296,9 @@ function ToolbarBtn({ onClick, active, title, children }: { onClick: () => void;
     <button
       onMouseDown={(e) => { e.preventDefault(); onClick() }}
       title={title}
-      className={`rounded p-1.5 transition-colors ${active ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+      aria-label={title}
+      aria-pressed={active}
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors duration-100 ${active ? 'bg-primary/20 text-primary' : 'text-muted-foreground active:bg-white/10 hover:text-foreground'}`}
     >
       {children}
     </button>
@@ -302,5 +318,29 @@ function BubbleBtn({ onClick, active, title, children }: { onClick: () => void; 
 }
 
 function Separator() {
-  return <div className="mx-1 h-4 w-px bg-border" />
+  return <div className="mx-1 h-5 w-px shrink-0 bg-white/10" aria-hidden="true" />
+}
+
+/** Photos are stored inside the note, so large ones are scaled down to 1600 px JPEG first. */
+function shrinkImage(file: File, max = 1600): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new window.Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.naturalWidth * scale)
+      canvas.height = Math.round(img.naturalHeight * scale)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return reject(new Error('canvas yok'))
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', 0.85))
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Fotoğraf okunamadı'))
+    }
+    img.src = url
+  })
 }

@@ -111,6 +111,28 @@ export function Settings(): JSX.Element {
               className="h-4 w-4 accent-primary"
             />
           </Field>
+          <Field
+            label="Telefondan gelen doğrulama kodunu panoya yaz"
+            description="Başka cihazdan son 2 dakikada gelen bir kayıtta tek kullanımlık kod varsa yalnız kod panoya yazılır ve “Kod panoda” bildirimi gösterilir. Bu cihazda kopyaladıkların hariçtir."
+          >
+            <input
+              type="checkbox"
+              checked={settings.otpAutoCopy}
+              onChange={(e) => update({ otpAutoCopy: e.target.checked })}
+              className="h-4 w-4 accent-primary"
+            />
+          </Field>
+          <Field
+            label="Kopyaladığım bağlantıları otomatik temizle"
+            description="Bu cihazda kopyaladığın bağlantılardaki utm_*, fbclid, gclid, igsh, si gibi takip parametreleri silinir ve temiz hali panoya yazılır."
+          >
+            <input
+              type="checkbox"
+              checked={settings.autoCleanCopiedLinks}
+              onChange={(e) => update({ autoCleanCopiedLinks: e.target.checked })}
+              className="h-4 w-4 accent-primary"
+            />
+          </Field>
           {!isMas() && (
           <Field
             label="Dosya kopyalamayı yakala (macOS/Windows, ≤2 MB)"
@@ -298,7 +320,7 @@ function DiagnosticsSection({ onClose }: { onClose: () => void }): JSX.Element {
         <div className="flex items-center justify-between gap-3">
           <div className="text-muted-foreground">
             Otomatik panoya yazma:{' '}
-            <span className={state.autoMirrorEnabled ? 'text-emerald-500' : 'text-rose-500'}>
+            <span className={state.autoMirrorEnabled ? 'text-primary' : 'text-rose-500'}>
               {state.autoMirrorEnabled ? 'Açık' : 'Kapalı'}
             </span>
             {' · '}
@@ -341,7 +363,7 @@ function DiagnosticsSection({ onClose }: { onClose: () => void }): JSX.Element {
                     className={
                       'rounded px-1 ' +
                       (a.result === 'mirrored'
-                        ? 'bg-emerald-500/20 text-emerald-500'
+                        ? 'bg-primary/20 text-primary'
                         : a.result === 'error'
                           ? 'bg-rose-500/20 text-rose-500'
                           : 'bg-amber-500/20 text-amber-500')
@@ -363,7 +385,7 @@ function DiagnosticsSection({ onClose }: { onClose: () => void }): JSX.Element {
 
 function ChannelBadge({ label, status }: { label: string; status: DiagnosticsState['channels']['clip'] }): JSX.Element {
   const color =
-    status === 'subscribed' ? 'bg-emerald-500' :
+    status === 'subscribed' ? 'bg-primary' :
     status === 'connecting' ? 'bg-amber-500' :
     status === 'idle' ? 'bg-muted-foreground' : 'bg-rose-500'
   return (
@@ -523,7 +545,7 @@ function UpdateStatusLine({ status }: { status: UpdaterStatus | null }): JSX.Ele
       return <div className="text-xs text-muted-foreground">Sunucu kontrol ediliyor…</div>
     case 'not-available':
       return (
-        <div className="text-xs text-emerald-500">
+        <div className="text-xs text-primary">
           En güncel sürümdesin · Son kontrol:{' '}
           {new Date(status.checkedAt).toLocaleTimeString('tr-TR', {
             hour: '2-digit',
@@ -551,7 +573,7 @@ function UpdateStatusLine({ status }: { status: UpdaterStatus | null }): JSX.Ele
       )
     case 'downloaded':
       return (
-        <div className="text-xs text-emerald-500">
+        <div className="text-xs text-primary">
           v{status.nextVersion} indirildi · Kurulum için yeniden başlat
         </div>
       )

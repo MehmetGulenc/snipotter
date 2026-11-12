@@ -9,7 +9,10 @@ export function cn(...inputs: ClassValue[]): string {
 
 export function relativeTime(iso: string): string {
   try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: tr })
+    // Server clocks can run a few seconds ahead of the device; never say "in a minute".
+    const date = new Date(Math.min(new Date(iso).getTime(), Date.now()))
+    if (Date.now() - date.getTime() < 45_000) return 'az önce'
+    return formatDistanceToNow(date, { addSuffix: true, locale: tr })
   } catch {
     return iso
   }

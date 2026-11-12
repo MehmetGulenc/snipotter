@@ -55,10 +55,13 @@ console.log('PASS SQL static authorization contract (not a database execution te
 
 const mobile = read('src/lib/mobile.ts')
 assert.equal((mobile.match(/Clipboard\.read\(/g) || []).length, 1)
-assert.doesNotMatch(mobile, /appStateChange|readClipboardIfText/)
 assert.match(mobile, /export async function saveClipboardFromUserAction[\s\S]*Clipboard\.read\(/)
+// Launch/resume reads happen only while the user has switched automatic saving on (off by default).
+assert.match(mobile, /if \(running \|\| !\(await isAutoCaptureEnabled\(\)\)\) return/)
+assert.match(mobile, /return value === '1'/)
+const library = read('src/components/Library.tsx')
+assert.match(library, /onClick=\{onSaveClipboard\}/)
 const settings = read('src/components/Settings.tsx')
-assert.match(settings, /onClick=\{onSaveClipboard\}/)
-assert.match(settings, /onClick=\{onDeleteAccount\}/)
-assert.match(settings, /if \(!confirm\('Hesabın/)
-console.log('PASS clipboard: only explicit Settings action reads the native clipboard')
+assert.match(settings, /onClick=\{[^}]*onDeleteAccount\}/)
+assert.match(settings, /confirmDialog\(\{\s*title: 'Hesabın/)
+console.log('PASS clipboard: read on an explicit tap, or on launch/resume only when the user opted in')

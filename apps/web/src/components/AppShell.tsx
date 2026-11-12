@@ -5,9 +5,12 @@ import { Logo } from './Logo'
 import { Library } from './Library'
 import { Notes } from './Notes'
 import { Settings } from './Settings'
+import { ActionBanner } from './ActionBanner'
 import { useStore } from '@/lib/store'
 import { subscribeWorkspace, listClipboard, listNotes } from '@/lib/api'
-import { initMobileBridge } from '@/lib/mobile'
+import { initMobileBridge, isNative } from '@/lib/mobile'
+import { toast } from '@/lib/feedback'
+import { startNativeBridge } from '@/lib/native-bridge'
 import { cn } from '@/lib/utils'
 import { Input } from './ui/Input'
 
@@ -24,6 +27,8 @@ export function AppShell(): JSX.Element {
   const removeClip = useStore((s) => s.removeClip)
   const upsertNote = useStore((s) => s.upsertNote)
   const removeNote = useStore((s) => s.removeNote)
+  const native = isNative()
+  const editingNote = useStore((s) => s.editingNote)
 
   // Realtime subscription
   useEffect(() => {
@@ -42,7 +47,21 @@ export function AppShell(): JSX.Element {
   // every capture path needs a workspace_id to insert into.
   useEffect(() => {
     if (!workspace || !user) return
-    void initMobileBridge({ workspaceId: workspace.id, userId: user.id })
+    void initMobileBridge({
+      workspaceId: workspace.id,
+      userId: user.id,
+      onAutoCapture: (item) => {
+        upsertClip(item)
+        toast('Panodaki yeni metin kaydedildi')
+      },
+    })
+  }, [workspace?.id, user?.id])
+
+  // iOS: share the session with the Share extension / Shortcuts action and
+  // feed the widget. Stopping it (sign-out, leaving the workspace) clears it.
+  useEffect(() => {
+    if (!workspace || !user) return
+    return startNativeBridge(workspace.id, user.id)
   }, [workspace?.id, user?.id])
 
   // Reconciliation backstop for realtime. Realtime (broadcast + postgres_changes)
@@ -93,47 +112,48 @@ export function AppShell(): JSX.Element {
           background up under the iOS status bar / Dynamic Island so the title
           and search field never collide with the system clock or camera
           cutout when the app runs as a homescreen-installed PWA. */}
-      <header
-        className="flex shrink-0 items-center gap-3 border-b border-border bg-card/40 px-4 pb-2.5 pt-[calc(env(safe-area-inset-top)+0.625rem)]"
-      >
-        {/* Wordmark doubles as a "back to landing" affordance — visitors
-            who land here from snipotter.com can't otherwise navigate back.
-            The "SnipOtter" rendering matches the marketing site: a
-            primary-tinted "O" that breathes plus a per-letter wave on
-            hover. Same animations defined in tailwind.config.ts. */}
-        <a
-          href="https://snipotter.com/"
-          className="group flex items-center gap-2 rounded transition-opacity hover:opacity-90"
-          title="snipotter.com'a dön"
-        >
-          {/* Logo with soft glow */}
-          <div className="relative flex items-center justify-center">
-            <div className="absolute h-8 w-8 animate-logo-glow rounded-full bg-fuchsia-500/40 blur-md" />
-            <Logo size={24} className="relative" />
+      <header className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.5rem)]">
+        {native ? (
+          <div className="flex items-center gap-2">
+            <Logo size={26} />
+            <Wordmark />
           </div>
-          <Wordmark />
-          <ExternalLink className="hidden h-3 w-3 text-muted-foreground sm:block" />
-        </a>
-        <a
-          href="https://snipotter.com/yenilikler"
-          target="_blank"
-          rel="noreferrer"
-          className="hidden rounded px-2 py-0.5 text-[11px] font-medium text-primary/70 hover:bg-primary/10 hover:text-primary transition-colors sm:block"
-        >
-          ✨ Yenilikler
-        </a>
-        {view !== 'settings' && (
+        ) : (
+          <>
+            {/* On the web the wordmark leads back to the marketing site. */}
+            <a href="https://snipotter.com/" className="group flex items-center gap-2 rounded transition-opacity hover:opacity-90" title="snipotter.com'a dön">
+              <div className="relative flex items-center justify-center">
+                <div className="absolute h-8 w-8 animate-logo-glow rounded-full bg-fuchsia-500/40 blur-md" />
+                <Logo size={24} className="relative" />
+              </div>
+              <Wordmark />
+              <ExternalLink className="hidden h-3 w-3 text-muted-foreground sm:block" />
+            </a>
+            <a
+              href="https://snipotter.com/yenilikler"
+              target="_blank"
+              rel="noreferrer"
+              className="hidden rounded px-2 py-0.5 text-[11px] font-medium text-primary/70 transition-colors hover:bg-primary/10 hover:text-primary sm:block"
+            >
+              ✨ Yenilikler
+            </a>
+          </>
+        )}
+        {view !== 'settings' && !(view === 'notes' && editingNote) && (
           <div className="relative ml-auto max-w-xs flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
+              type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ara…"
-              className="pl-8 text-sm"
+              placeholder="Ara"
+              className="h-9 rounded-xl border-0 bg-white/[0.08] pl-9 text-[16px] sm:text-sm"
             />
           </div>
         )}
       </header>
+
+      <ActionBanner />
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto">
@@ -143,7 +163,7 @@ export function AppShell(): JSX.Element {
       </main>
 
       {/* Bottom nav (mobile-first) */}
-      <nav className="flex shrink-0 items-center justify-around border-t border-border bg-card/60 backdrop-blur supports-[backdrop-filter]:bg-card/40 pb-[env(safe-area-inset-bottom)]">
+      <nav className="flex shrink-0 items-start justify-around border-t border-white/[0.08] bg-[hsl(240_8%_7%)]/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
         <NavBtn icon={ClipboardIcon} label="Pano" active={view === 'library'} onClick={() => setView('library')} />
         <NavBtn icon={StickyNote} label="Notlar" active={view === 'notes'} onClick={() => setView('notes')} />
         <NavBtn icon={SettingsIcon} label="Ayarlar" active={view === 'settings'} onClick={() => setView('settings')} />
@@ -166,12 +186,13 @@ function NavBtn({
   return (
     <button
       onClick={onClick}
+      aria-current={active ? 'page' : undefined}
       className={cn(
-        'flex flex-1 flex-col items-center gap-0.5 px-3 py-2.5 text-[10px] font-medium transition-colors',
+        'flex h-[52px] flex-1 flex-col items-center justify-center gap-[3px] text-[10px] font-medium transition-colors',
         active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
       )}
     >
-      <Icon className="h-5 w-5" />
+      <Icon className="h-[24px] w-[24px]" strokeWidth={active ? 2.25 : 1.75} />
       {label}
     </button>
   )

@@ -16,6 +16,7 @@ import {
   type PairCode,
   type UpdaterStatus,
   type DiagnosticsState,
+  type SendToPhoneRequest,
 } from '../../shared/types'
 
 function invoke<T>(channel: string, payload?: unknown): Promise<IpcResult<T>> {
@@ -61,6 +62,9 @@ const api = {
     pin: (id: string, pinned: boolean) => invoke<null>(IPC.CLIP_PIN, { id, pinned }),
     copy: (item: ClipboardItem) => invoke<null>(IPC.CLIP_COPY, item),
     promoteToNote: (item: ClipboardItem) => invoke<Note | null>(IPC.CLIP_PROMOTE_TO_NOTE, item),
+    /** Write derived text (and HTML, e.g. a cleaned table) to the OS clipboard
+     *  without adding a history row. Used by Temiz kopyala and IBAN/Alıcı/Tutar. */
+    writeText: (text: string, html?: string) => invoke<null>(IPC.CLIP_WRITE_TEXT, { text, html }),
     onNew: (cb: (item: ClipboardItem) => void) => {
       const fn = (_: unknown, item: ClipboardItem) => cb(item)
       ipcRenderer.on(IPC.CLIP_NEW, fn)
@@ -155,6 +159,10 @@ const api = {
       ipcRenderer.on(IPC.UPDATER_STATUS_CHANGED, fn)
       return () => ipcRenderer.off(IPC.UPDATER_STATUS_CHANGED, fn)
     },
+  },
+  actions: {
+    /** "Telefona gönder": queue a device_actions row for the paired iPhone. */
+    sendToPhone: (req: SendToPhoneRequest) => invoke<{ id: string }>(IPC.ACTION_SEND_TO_PHONE, req),
   },
   diag: {
     getState: () => invoke<DiagnosticsState>(IPC.DIAG_GET_STATE),

@@ -69,6 +69,15 @@
 .tiptap-content th { background: hsl(240 4% 16%); font-weight: 600; }
 .tiptap-content p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; pointer-events: none; color: hsl(240 5% 65%); }
 
+/* Respect the system "Reduce Motion" setting. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer utilities {
   .line-clamp-2 {
     display: -webkit-box;

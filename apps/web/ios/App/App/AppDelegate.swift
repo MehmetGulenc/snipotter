@@ -1,13 +1,26 @@
 import UIKit
 import Capacitor
+import UserNotifications
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
+    static var pendingPushAction: [String: Any]?
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        let call = UNNotificationAction(identifier: "call", title: "Ara", options: [.foreground])
+        let map = UNNotificationAction(identifier: "map", title: "Haritada aç", options: [.foreground])
+        let copy = UNNotificationAction(identifier: "copy", title: "Kopyala", options: [.foreground])
+        let open = UNNotificationAction(identifier: "open", title: "Aç", options: [.foreground])
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: "SNIPOTTER_PHONE", actions: [call, copy], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: "SNIPOTTER_ADDRESS", actions: [map, copy], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: "SNIPOTTER_URL", actions: [open, copy], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: "SNIPOTTER_COPY", actions: [copy], intentIdentifiers: [], options: []),
+        ])
         return true
     }
 
@@ -46,4 +59,46 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        NotificationCenter.default.post(name: .snipotterPushRegistered, object: token)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(name: .snipotterPushFailed, object: nil)
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        defer { completionHandler() }
+        let info = response.notification.request.content.userInfo
+        guard ["SNIPOTTER_PHONE", "SNIPOTTER_ADDRESS", "SNIPOTTER_URL", "SNIPOTTER_COPY"].contains(response.notification.request.content.categoryIdentifier),
+              let id = info["action_id"] as? String, UUID(uuidString: id) != nil,
+              let kind = info["kind"] as? String, ["phone", "address", "iban", "url", "text"].contains(kind),
+              let payload = info["payload"] as? String, payload.count <= 2000 else { return }
+        let allowed: [String]
+        switch kind {
+        case "phone": allowed = ["call", "copy"]
+        case "address": allowed = ["map", "copy"]
+        case "url": allowed = ["open", "copy"]
+        default: allowed = ["copy"]
+        }
+        let button = allowed.contains(response.actionIdentifier) ? response.actionIdentifier : "open"
+        let action: [String: Any] = ["actionId": id, "kind": kind, "payload": payload, "button": button]
+        DispatchQueue.main.async {
+            AppDelegate.pendingPushAction = action
+            NotificationCenter.default.post(name: .snipotterPushAction, object: nil, userInfo: action)
+        }
+    }
+
+}
+
+
+extension Notification.Name {
+    static let snipotterPushRegistered = Notification.Name("snipotterPushRegistered")
+    static let snipotterPushFailed = Notification.Name("snipotterPushFailed")
+    static let snipotterPushAction = Notification.Name("snipotterPushAction")
 }

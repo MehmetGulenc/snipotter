@@ -27,7 +27,7 @@ export function Topbar({ route }: { route: 'library' | 'notes' | 'settings' }): 
     <header className="drag-region flex h-[72px] shrink-0 items-center gap-6 border-b border-border bg-card px-6">
       <div className="flex w-[198px] shrink-0 items-center gap-2.5 pl-16">
         <Logo size={25} />
-        <span className="text-base font-semibold tracking-tight">Snipotter<span className="text-primary">.</span></span>
+        <span className="text-base font-semibold tracking-tight">SnipOtter<span className="text-primary">.</span></span>
       </div>
       {searchable ? (
         <div className="no-drag relative max-w-2xl flex-1">

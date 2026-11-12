@@ -63,18 +63,18 @@ export function UpdateBanner(): JSX.Element | null {
 
   if (status.kind === 'downloaded') {
     return (
-      <div className="flex items-center gap-2 bg-green-500/10 px-4 py-2 text-xs text-green-700 dark:text-green-400 border-b border-green-500/20">
+      <div className="flex items-center gap-2 bg-primary/10 px-4 py-2 text-xs text-primary border-b border-primary/20">
         <RefreshCw className="h-3.5 w-3.5 shrink-0" />
         <span className="flex-1">
           <span className="font-semibold">v{status.nextVersion} hazır!</span> Uygulamayı yeniden başlat.
         </span>
         <button
           onClick={() => window.snipotter.updater.installAndRestart()}
-          className="rounded bg-green-600 px-2 py-0.5 text-white hover:bg-green-700"
+          className="rounded bg-primary px-2 py-0.5 text-primary-foreground hover:bg-primary/90"
         >
           Yeniden Başlat
         </button>
-        <button onClick={() => setDismissed(true)} className="rounded p-0.5 hover:bg-green-500/20">
+        <button onClick={() => setDismissed(true)} className="rounded p-0.5 hover:bg-primary/20">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>

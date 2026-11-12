@@ -49,14 +49,14 @@ export function Onboarding(): JSX.Element {
   }
 
   return (
-    <div className="flex min-h-[100svh] items-center justify-center bg-background p-6">
-      <div className="w-full max-w-md space-y-6 rounded-2xl border border-border bg-card/40 p-8 shadow-xl">
+    <div className="flex min-h-[100svh] items-center justify-center bg-background px-5 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
+      <div className="w-full max-w-md space-y-6 sm:rounded-2xl sm:border sm:border-border sm:bg-card/40 sm:p-8 sm:shadow-xl">
         <div className="flex items-center gap-3">
           <Logo size={44} />
           <div>
-            <h1 className="text-lg font-semibold">Snipotter</h1>
-            <p className="text-xs text-muted-foreground">
-              Pano + AI not — cihazlar arası senkron
+            <h1 className="text-2xl font-bold tracking-tight">Snipotter</h1>
+            <p className="text-sm text-muted-foreground">
+              Pano geçmişin ve notların, tüm cihazlarında
             </p>
           </div>
         </div>
@@ -65,14 +65,14 @@ export function Onboarding(): JSX.Element {
           <div className="space-y-3">
             <button
               onClick={() => setMode('join')}
-              className="flex w-full items-start gap-3 rounded-lg border border-border bg-background/40 p-4 text-left transition-colors hover:border-primary/50 hover:bg-card"
+              className="flex w-full items-start gap-3 rounded-2xl bg-card p-4 text-left ring-1 ring-white/[0.05] transition-colors active:bg-white/[0.06] hover:ring-primary/40"
             >
               <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
                 <KeyRound className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-sm font-medium">Masaüstü cihazımla eşleştir</div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-[16px] font-semibold">Masaüstü cihazımla eşleştir</div>
+                <div className="mt-0.5 text-sm text-muted-foreground">
                   Mac/Windows uygulamanda Ayarlar → Cihazlar'dan 6 haneli kod oluştur.
                 </div>
               </div>
@@ -80,14 +80,14 @@ export function Onboarding(): JSX.Element {
 
             <button
               onClick={() => setMode('create')}
-              className="flex w-full items-start gap-3 rounded-lg border border-border bg-background/40 p-4 text-left transition-colors hover:border-primary/50 hover:bg-card"
+              className="flex w-full items-start gap-3 rounded-2xl bg-card p-4 text-left ring-1 ring-white/[0.05] transition-colors active:bg-white/[0.06] hover:ring-primary/40"
             >
               <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
                 <Plus className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-sm font-medium">Yeni alan oluştur</div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-[16px] font-semibold">Yeni alan oluştur</div>
+                <div className="mt-0.5 text-sm text-muted-foreground">
                   Bu cihazı sahip yap, masaüstünü sonra bağla.
                 </div>
               </div>

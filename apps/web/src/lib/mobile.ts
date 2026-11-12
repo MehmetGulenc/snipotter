@@ -23,12 +23,15 @@ import { Preferences } from '@capacitor/preferences'
 import { Device } from '@capacitor/device'
 import { SendIntent } from 'send-intent'
 import { createClipFromText } from './api'
+import type { ClipboardItem } from './types'
 
 export const isNative = (): boolean => Capacitor.isNativePlatform()
 
 interface InitArgs {
   workspaceId: string
   userId: string
+  /** Called when automatic saving stores a new clipboard item. */
+  onAutoCapture?: (item: ClipboardItem) => void
 }
 
 let initialized = false
@@ -38,9 +41,11 @@ let initialized = false
  * call attaches handlers. Must run AFTER the workspace + user are loaded
  * because every capture path needs a workspace_id to insert into.
  */
-export async function initMobileBridge({ workspaceId, userId }: InitArgs): Promise<void> {
+export async function initMobileBridge({ workspaceId, userId, onAutoCapture }: InitArgs): Promise<void> {
   if (!isNative() || initialized) return
   initialized = true
+
+  watchForegroundCapture(workspaceId, userId, (item) => onAutoCapture?.(item))
 
   // Anonymous launch heartbeat — admin.snipotter.com counts active
   // installs and DAU/WAU/MAU. Fires once per app session, fully
@@ -176,11 +181,86 @@ async function sendLaunchHeartbeat(): Promise<void> {
   }
 }
 
-/** Call only from an explicit tap; never from startup or lifecycle listeners. */
-export async function saveClipboardFromUserAction(workspaceId: string, userId: string): Promise<void> {
+export type CaptureResult =
+  | { status: 'saved'; item: ClipboardItem }
+  | { status: 'unchanged' }
+  | { status: 'empty' }
+
+const LAST_CAPTURE_KEY = 'snipotter.lastCaptureHash'
+
+/**
+ * Reads the system clipboard once and saves its text. Runs only after an
+ * explicit tap, or on app launch/resume when the user switched on automatic
+ * saving (see isAutoCaptureEnabled). `unchanged` means the same text was
+ * already captured from this device, so returning to the app does not
+ * re-save it.
+ */
+export async function saveClipboardFromUserAction(
+  workspaceId: string,
+  userId: string,
+  source: 'button' | 'auto' = 'button',
+): Promise<CaptureResult> {
   const { value, type } = await Clipboard.read()
-  if (!type?.startsWith('text/') || !value?.trim()) {
-    throw new Error('Panoda kaydedilecek metin yok.')
+  const text = type?.startsWith('text/') ? value?.trim() : ''
+  if (!text) return { status: 'empty' }
+  const hash = await textHash(text)
+  if (source === 'auto') {
+    const { value: last } = await Preferences.get({ key: LAST_CAPTURE_KEY })
+    if (last === hash) return { status: 'unchanged' }
   }
-  await createClipFromText(workspaceId, userId, value, `${Capacitor.getPlatform()}-clipboard`)
+  const item = await createClipFromText(workspaceId, userId, text, `${Capacitor.getPlatform()}-${source === 'auto' ? 'auto' : 'clipboard'}`)
+  await Preferences.set({ key: LAST_CAPTURE_KEY, value: hash })
+  return item ? { status: 'saved', item } : { status: 'empty' }
+}
+
+const AUTO_CAPTURE_KEY = 'snipotter.autoCapture'
+
+/** Off until the user turns it on in Settings: launch/resume reads the clipboard only then. */
+export async function isAutoCaptureEnabled(): Promise<boolean> {
+  if (!isNative()) return false
+  const { value } = await Preferences.get({ key: AUTO_CAPTURE_KEY })
+  return value === '1'
+}
+
+export async function setAutoCaptureEnabled(on: boolean): Promise<void> {
+  await Preferences.set({ key: AUTO_CAPTURE_KEY, value: on ? '1' : '0' })
+}
+
+/** Opens this app's page in iOS Settings, where "Paste from Other Apps" can be set to Allow. */
+export function openAppSettings(): void {
+  window.open('app-settings:', '_system')
+}
+
+async function textHash(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * Saves the clipboard when the app opens or comes back to the foreground,
+ * only while automatic saving is on. Each new text is saved once.
+ */
+function watchForegroundCapture(
+  workspaceId: string,
+  userId: string,
+  onSaved: (item: ClipboardItem) => void,
+): void {
+  let running = false
+  const capture = async (): Promise<void> => {
+    if (running || !(await isAutoCaptureEnabled())) return
+    running = true
+    try {
+      const result = await saveClipboardFromUserAction(workspaceId, userId, 'auto')
+      if (result.status === 'saved') onSaved(result.item)
+    } catch (err) {
+      console.warn('[mobile] auto capture failed', err)
+    } finally {
+      running = false
+    }
+  }
+  void capture()
+  App.addListener('appStateChange', ({ isActive }) => {
+    if (isActive) void capture()
+  })
 }

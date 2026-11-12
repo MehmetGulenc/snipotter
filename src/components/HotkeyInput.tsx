@@ -194,7 +194,7 @@ export function HotkeyInput({
             status === 'idle' && 'border-input bg-transparent hover:bg-accent',
             status === 'recording' && 'border-primary bg-primary/10 ring-2 ring-primary/30',
             status === 'saving' && 'border-input bg-accent/40',
-            status === 'saved' && 'border-emerald-500/60 bg-emerald-500/10',
+            status === 'saved' && 'border-primary/60 bg-primary/10',
             status === 'error' && 'border-destructive/60 bg-destructive/10',
           )}
         >
@@ -212,7 +212,7 @@ export function HotkeyInput({
               <span className="text-[10px] uppercase tracking-wide">⎋ iptal</span>
             )}
             {status === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {status === 'saved' && <Check className="h-3.5 w-3.5 text-emerald-500" />}
+            {status === 'saved' && <Check className="h-3.5 w-3.5 text-primary" />}
             {status === 'error' && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
             {status === 'idle' && (
               <Pencil className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -236,7 +236,7 @@ export function HotkeyInput({
         <div className="text-[11px] text-destructive">{errorMsg}</div>
       )}
       {status === 'saved' && (
-        <div className="text-[11px] text-emerald-500">Kaydedildi</div>
+        <div className="text-[11px] text-primary">Kaydedildi</div>
       )}
     </div>
   )

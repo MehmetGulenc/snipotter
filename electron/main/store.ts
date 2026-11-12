@@ -72,6 +72,14 @@ function sanitize(s: AppSettings): AppSettings {
   if (typeof out.telemetryEnabled !== 'boolean') {
     out.telemetryEnabled = DEFAULT_SETTINGS.telemetryEnabled
   }
+  // Migration for the action bridge: OTP auto-copy defaults ON, automatic
+  // link cleanup is opt-in.
+  if (typeof out.otpAutoCopy !== 'boolean') {
+    out.otpAutoCopy = DEFAULT_SETTINGS.otpAutoCopy
+  }
+  if (typeof out.autoCleanCopiedLinks !== 'boolean') {
+    out.autoCleanCopiedLinks = DEFAULT_SETTINGS.autoCleanCopiedLinks
+  }
   return out
 }
 

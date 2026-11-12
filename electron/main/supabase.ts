@@ -17,7 +17,10 @@ import type {
   PairCode,
   ChannelStatus,
   DiagnosticsState,
+  SendToPhoneRequest,
 } from '@shared/types'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 interface SupabaseConfig {
   url?: string
@@ -470,6 +473,43 @@ export class SupabaseService extends EventEmitter {
       return null
     }
     return clipboardFromRow(data as ClipboardRow)
+  }
+
+  /**
+   * "Telefona gönder": queue an action for the paired iPhone. The row lands in
+   * device_actions (RLS: workspace members); a database webhook turns it into
+   * an APNs push and the open iOS app also receives it via realtime.
+   * sender_user_id / created_at / expires_at come from column defaults.
+   */
+  async insertDeviceAction(
+    action: SendToPhoneRequest,
+    senderDevice: string,
+  ): Promise<{ id: string }> {
+    if (!this.client || !this.workspaceId || !this.user) {
+      throw new Error('Önce bir çalışma alanına bağlanın.')
+    }
+    const clipId = action.clipId && UUID_RE.test(action.clipId) ? action.clipId : null
+    const { data, error } = await this.client
+      .from('device_actions')
+      .insert({
+        workspace_id: this.workspaceId,
+        sender_device: senderDevice.slice(0, 200) || 'Masaüstü',
+        target_platform: 'ios',
+        kind: action.kind,
+        payload: action.payload,
+        label: action.label ?? null,
+        clip_id: clipId,
+      })
+      .select('id')
+      .single()
+    if (error) {
+      // 0009_action_bridge.sql rate-limit trigger raises P0001.
+      if (error.code === 'P0001' || /rate limit/i.test(error.message)) {
+        throw new Error('Çok sık gönderim yapıldı. Biraz bekleyip tekrar deneyin.')
+      }
+      throw new Error(`Telefona gönderilemedi: ${error.message}`)
+    }
+    return { id: (data as { id: string }).id }
   }
 
   async updateClipboardAI(id: string, ai: ClipboardItem['ai']): Promise<void> {
