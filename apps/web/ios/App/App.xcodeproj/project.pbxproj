@@ -515,7 +515,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				APNS_ENVIRONMENT = sandbox;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -539,7 +539,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				APNS_ENVIRONMENT = production;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -560,7 +560,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 3PDY9R5UKT;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
@@ -585,7 +585,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 3PDY9R5UKT;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
@@ -610,7 +610,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = SnipotterWidget/SnipotterWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 3PDY9R5UKT;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SnipotterWidget/Info.plist;
@@ -635,7 +635,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = SnipotterWidget/SnipotterWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 3PDY9R5UKT;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SnipotterWidget/Info.plist;
