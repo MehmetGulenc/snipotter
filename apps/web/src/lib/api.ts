@@ -6,6 +6,7 @@ import type {
   Workspace,
   WorkspaceMember,
 } from './types'
+import type { Notebook, NoteVersion, TrashedNote } from '@shared/types'
 
 interface ClipboardRow {
   id: string
@@ -31,6 +32,7 @@ interface NoteRow {
   ai: Note['ai']
   created_at: string
   updated_at: string
+  notebook_id?: string | null
 }
 
 function clipFromRow(r: ClipboardRow): ClipboardItem {
@@ -60,6 +62,7 @@ function noteFromRow(r: NoteRow): Note {
     ai: r.ai,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    notebookId: r.notebook_id ?? null,
   }
 }
 
@@ -231,6 +234,21 @@ export async function createClipFromText(
     .maybeSingle()
   if (existing) return clipFromRow(existing as ClipboardRow)
 
+  // Desktop hashes text + HTML, so a copy that reached the Mac via Universal
+  // Clipboard has a different hash; match recent identical text instead.
+  if (trimmed.length <= 2000) {
+    const { data: sameText } = await getSupabase()
+      .from('clipboard_items')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .eq('text', trimmed)
+      .gte('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (sameText) return clipFromRow(sameText as ClipboardRow)
+  }
+
   const { data, error } = await getSupabase()
     .from('clipboard_items')
     .insert({
@@ -324,6 +342,65 @@ export async function createNote(
   return note
 }
 
+// ---------- Notebooks ----------
+
+interface NotebookRow {
+  id: string
+  workspace_id: string
+  parent_id: string | null
+  name: string
+  icon: string | null
+  sort: number
+}
+
+const notebookFromRow = (r: NotebookRow): Notebook => ({
+  id: r.id, workspaceId: r.workspace_id, parentId: r.parent_id, name: r.name, icon: r.icon, sort: r.sort,
+})
+
+/** Empty when the server predates notebooks (migration 0013). */
+export async function listNotebooks(workspaceId: string): Promise<Notebook[]> {
+  const { data, error } = await getSupabase().from('notebooks').select('*').eq('workspace_id', workspaceId).order('sort')
+  if (error) {
+    if (error.code === '42P01' || error.code === 'PGRST205') return []
+    throw error
+  }
+  return ((data ?? []) as NotebookRow[]).map(notebookFromRow)
+}
+
+export async function createNotebook(workspaceId: string, name: string, parentId: string | null): Promise<Notebook> {
+  const { data, error } = await getSupabase()
+    .from('notebooks')
+    .insert({ workspace_id: workspaceId, name: name.trim(), parent_id: parentId })
+    .select('*')
+    .single()
+  if (error) throw error
+  return notebookFromRow(data as NotebookRow)
+}
+
+export async function updateNotebook(id: string, patch: { name?: string; parentId?: string | null; sort?: number }): Promise<Notebook> {
+  const row: Record<string, unknown> = {}
+  if (patch.name !== undefined) row.name = patch.name.trim()
+  if (patch.parentId !== undefined) row.parent_id = patch.parentId
+  if (patch.sort !== undefined) row.sort = patch.sort
+  const { data, error } = await getSupabase().from('notebooks').update(row).eq('id', id).select('*').single()
+  if (error) throw error
+  return notebookFromRow(data as NotebookRow)
+}
+
+/** Child notebooks go with it; its notes stay, unfiled. */
+export async function deleteNotebook(id: string): Promise<void> {
+  const { error } = await getSupabase().from('notebooks').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function moveNoteToNotebook(noteId: string, notebookId: string | null): Promise<Note> {
+  const { data, error } = await getSupabase().from('notes').update({ notebook_id: notebookId }).eq('id', noteId).select('*').single()
+  if (error) throw error
+  const note = noteFromRow(data as NoteRow)
+  broadcastNoteUpsert(note)
+  return note
+}
+
 export async function updateNote(
   id: string,
   partial: { title?: string | null; content?: string; pinned?: boolean },
@@ -340,10 +417,25 @@ export async function updateNote(
   return note
 }
 
+/** Mirror of the Yjs document for search, previews and older app versions. */
+export async function saveNoteContent(id: string, content: string, contentSha: string): Promise<void> {
+  const { data, error } = await getSupabase()
+    .from('notes')
+    .update({ content, ydoc_content_sha: contentSha })
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error) throw error
+  broadcastNoteUpsert(noteFromRow(data as NoteRow))
+}
+
 export async function deleteNote(id: string): Promise<void> {
   // Announce deletion to other devices first for sub-50ms feedback, then
   // issue the durable DB delete (postgres_changes is the backstop).
   broadcastNoteDeleted(id)
+  const { error: trashError } = await getSupabase().rpc('trash_notes', { p_ids: [id] })
+  if (!trashError) return
+  if (trashError.code !== 'PGRST202') throw trashError
   const { error, count } = await getSupabase()
     .from('notes')
     .delete({ count: 'exact' })
@@ -359,8 +451,53 @@ export async function deleteNote(id: string): Promise<void> {
 export async function deleteNoteMany(ids: string[]): Promise<void> {
   if (ids.length === 0) return
   ids.forEach((id) => broadcastNoteDeleted(id))
+  // Trash (migration 0011) first; a server without it falls back to a permanent delete.
+  const { error: trashError } = await getSupabase().rpc('trash_notes', { p_ids: ids })
+  if (!trashError) return
+  if (trashError.code !== 'PGRST202') throw trashError
   const { error } = await getSupabase().from('notes').delete().in('id', ids)
   if (error) throw error
+}
+
+export async function listTrashedNotes(workspaceId: string): Promise<TrashedNote[]> {
+  const { data, error } = await getSupabase()
+    .from('notes_trash')
+    .select('id, deleted_at, title:note->>title, content:note->>content')
+    .eq('workspace_id', workspaceId)
+    .order('deleted_at', { ascending: false })
+    .limit(500)
+  if (error) throw error
+  return ((data ?? []) as unknown as Array<{ id: string; deleted_at: string; title: string | null; content: string | null }>)
+    .map((r) => ({ id: r.id, title: r.title, content: r.content ?? '', deletedAt: r.deleted_at }))
+}
+
+/** Restores trashed notes and returns them so lists can show them again. */
+export async function restoreTrashedNotes(ids: string[]): Promise<Note[]> {
+  const sb = getSupabase()
+  const { error } = await sb.rpc('restore_notes', { p_ids: ids })
+  if (error) throw error
+  const { data, error: readError } = await sb.from('notes').select('*').in('id', ids)
+  if (readError) throw readError
+  const notes = ((data ?? []) as NoteRow[]).map(noteFromRow)
+  notes.forEach(broadcastNoteUpsert)
+  return notes
+}
+
+export async function purgeTrashedNotes(ids: string[]): Promise<void> {
+  const { error } = await getSupabase().rpc('purge_trashed_notes', { p_ids: ids })
+  if (error) throw error
+}
+
+export async function listNoteVersions(noteId: string): Promise<NoteVersion[]> {
+  const { data, error } = await getSupabase()
+    .from('note_versions')
+    .select('id, kind, created_at, content')
+    .eq('note_id', noteId)
+    .order('created_at', { ascending: false })
+    .limit(100)
+  if (error) throw error
+  return ((data ?? []) as Array<{ id: string; kind: NoteVersion['kind']; created_at: string; content: string }>)
+    .map((r) => ({ id: r.id, kind: r.kind, createdAt: r.created_at, content: r.content }))
 }
 
 // ---------- Realtime ----------
@@ -404,6 +541,29 @@ export function broadcastClipDeleted(id: string): void {
   broadcast('clip:deleted', { id })
 }
 
+// Yjs note updates arrive twice (instant broadcast + durable postgres_changes);
+// applying the same update again is a no-op in Yjs.
+const noteYListeners = new Map<string, Set<(update: string) => void>>()
+
+export function broadcastNoteY(noteId: string, update: string): void {
+  broadcast('note:y', { noteId, update })
+}
+
+export function onNoteY(noteId: string, cb: (update: string) => void): () => void {
+  let set = noteYListeners.get(noteId)
+  if (!set) noteYListeners.set(noteId, (set = new Set()))
+  set.add(cb)
+  return () => {
+    set.delete(cb)
+    if (set.size === 0) noteYListeners.delete(noteId)
+  }
+}
+
+function dispatchNoteY(noteId: unknown, update: unknown): void {
+  if (typeof noteId !== 'string' || typeof update !== 'string') return
+  noteYListeners.get(noteId)?.forEach((cb) => cb(update))
+}
+
 export function subscribeWorkspace(
   workspaceId: string,
   handlers: {
@@ -411,6 +571,8 @@ export function subscribeWorkspace(
     onClipDelete?: (id: string) => void
     onNote?: (note: Note) => void
     onNoteDelete?: (id: string) => void
+    /** Any notebook added, renamed, moved or deleted on another device. */
+    onNotebooksChanged?: () => void
   },
 ): () => void {
   const sb = getSupabase()
@@ -520,6 +682,10 @@ export function subscribeWorkspace(
       if (payload?.from === CLIENT_ID) return
       if (payload?.id) handlers.onNoteDelete?.(payload.id as string)
     })
+    .on('broadcast', { event: 'note:y' }, ({ payload }) => {
+      if (payload?.from === CLIENT_ID) return
+      dispatchNoteY(payload?.noteId, payload?.update)
+    })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         activeSyncChannel = syncCh
@@ -536,11 +702,29 @@ export function subscribeWorkspace(
       }
     })
 
+  const noteYCh = sb
+    .channel(`web-note-y-${workspaceId}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'note_updates', filter: `workspace_id=eq.${workspaceId}` },
+      (payload) => {
+        const row = payload.new as { note_id?: string; update?: string }
+        dispatchNoteY(row.note_id, row.update)
+      },
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'notebooks', filter: `workspace_id=eq.${workspaceId}` },
+      () => handlers.onNotebooksChanged?.(),
+    )
+    .subscribe()
+
   return () => {
     activeSyncChannel = null
     if (heartbeat) clearInterval(heartbeat)
     void sb.removeChannel(clipCh)
     void sb.removeChannel(noteCh)
     void sb.removeChannel(syncCh)
+    void sb.removeChannel(noteYCh)
   }
 }

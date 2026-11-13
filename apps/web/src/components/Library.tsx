@@ -1,6 +1,6 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Copy, Pin, PinOff, Trash2, Check, Image as ImageIcon, CheckSquare, Square, Undo2, X, ClipboardPaste, Loader2, StickyNote, Eye, Timer } from 'lucide-react'
+import { Copy, Pin, PinOff, Trash2, Check, Image as ImageIcon, CheckSquare, Square, Undo2, X, ClipboardPaste, Loader2, StickyNote, Eye, Timer, FileText } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { listClipboard, setClipPinned, deleteClipMany, createNote } from '@/lib/api'
 import { cn, relativeTime, firstLine } from '@/lib/utils'
@@ -383,15 +383,22 @@ function Card({
 }): JSX.Element {
   const [copied, setCopied] = useState(false)
   const [revealed, setRevealed] = useState(false)
-  const isImage = item.contentType === 'image' && item.text.startsWith('data:image/')
-  const smart = useMemo(() => (isImage ? null : analyze(item.text)), [isImage, item.text])
+  const file = useMemo(() => parseFileClip(item.text), [item.text])
+  const imageSrc = item.contentType === 'image' && item.text.startsWith('data:image/')
+    ? item.text
+    : file?.mime.startsWith('image/') ? file.dataUrl : null
+  const isImage = imageSrc !== null
+  const smart = useMemo(() => (isImage || file ? null : analyze(item.text)), [isImage, file, item.text])
   const hidden = Boolean(smart?.sensitive) && !revealed
-  const payment = usePayment(isImage ? '' : item.text)
+  const payment = usePayment(isImage || file ? '' : item.text)
 
   const onCopy = async () => {
     try {
-      if (item.contentType === 'image' && item.text.startsWith('data:image/')) {
-        await copyImage(item.text)
+      if (imageSrc) {
+        await copyImage(imageSrc)
+      } else if (file) {
+        toast('Bu dosya türü iPhone panosuna kopyalanamıyor', 'info', 3000)
+        return
       } else {
         await copyText(smart?.otp ?? item.text)
       }
@@ -457,10 +464,19 @@ function Card({
           {isImage ? (
             <div className="space-y-1.5">
               <img
-                src={item.text}
-                alt="clipboard image"
+                src={imageSrc}
+                alt={file?.name ?? 'Panodaki görsel'}
                 className="max-h-48 w-auto rounded border border-border"
               />
+              {file && <div className="truncate text-xs text-muted-foreground">{file.name}</div>}
+            </div>
+          ) : file ? (
+            <div className="flex items-center gap-3">
+              <FileText className="h-8 w-8 shrink-0 text-primary" aria-hidden="true" />
+              <div className="min-w-0">
+                <div className="truncate text-[15px] font-medium">{file.name}</div>
+                <div className="text-xs text-muted-foreground">{formatBytes(file.bytes)}</div>
+              </div>
             </div>
           ) : smart?.otp ? (
             <div>
@@ -484,7 +500,7 @@ function Card({
         {smart && !selectMode && (
           <SmartActions actions={smart.actions.filter((a) => a.kind !== 'otp' && !(payment?.iban && a.kind === 'iban'))} />
         )}
-        {!isImage && !selectMode && <PaymentCopy text={item.text} />}
+        {!isImage && !file && !selectMode && <PaymentCopy text={item.text} />}
 
         <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
           {isImage && <ImageIcon className="h-3 w-3" />}
@@ -500,8 +516,8 @@ function Card({
               <IconButton label={copied ? 'Kopyalandı' : 'Kopyala'} onClick={onCopy}>
                 {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
               </IconButton>
-              {!isImage && <CleanCopyMenu text={item.text} />}
-              {!isImage && (
+              {!isImage && !file && <CleanCopyMenu text={item.text} />}
+              {!isImage && !file && (
                 <IconButton label="Nota çevir" onClick={onMakeNote}>
                   <StickyNote className="h-4 w-4" />
                 </IconButton>
@@ -523,6 +539,20 @@ function Card({
 /**
  * Copy a data-URL image to the clipboard.
  */
+/** Desktop stores copied files as data:<mime>;name=<file>;base64,<content>. */
+function parseFileClip(text: string): { mime: string; name: string; dataUrl: string; bytes: number } | null {
+  const m = text.match(/^data:([^;,]+);name=([^;,]+);base64,/)
+  if (!m) return null
+  let name = m[2]
+  try { name = decodeURIComponent(name) } catch { /* keep encoded */ }
+  const base64 = text.slice(m[0].length)
+  return { mime: m[1], name, dataUrl: `data:${m[1]};base64,${base64}`, bytes: Math.round(base64.length * 0.75) }
+}
+
+function formatBytes(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
 function copyImage(dataUrl: string): Promise<void> {
   if (!navigator.clipboard || typeof window.ClipboardItem !== 'function') {
     return Promise.reject(

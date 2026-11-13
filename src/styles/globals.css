@@ -173,6 +173,12 @@
 .tiptap-content a {
   @apply text-primary underline underline-offset-2;
 }
+.tiptap-content a[href^="snipotter://note/"] {
+  @apply cursor-pointer rounded-md bg-primary/15 px-1 no-underline;
+}
+.tiptap-content .note-tag {
+  @apply cursor-pointer rounded-md bg-primary/10 px-0.5 text-primary;
+}
 
 .tiptap-content strong {
   @apply font-semibold;
@@ -216,3 +222,12 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Code highlighting (lowlight / highlight.js token classes) */
+.tiptap-content pre .hljs-comment, .tiptap-content pre .hljs-quote { color: hsl(240 5% 55%); font-style: italic; }
+.tiptap-content pre .hljs-keyword, .tiptap-content pre .hljs-selector-tag, .tiptap-content pre .hljs-built_in, .tiptap-content pre .hljs-type { color: hsl(252 83% 74%); }
+.tiptap-content pre .hljs-string, .tiptap-content pre .hljs-attr, .tiptap-content pre .hljs-regexp, .tiptap-content pre .hljs-addition { color: hsl(150 50% 60%); }
+.tiptap-content pre .hljs-number, .tiptap-content pre .hljs-literal, .tiptap-content pre .hljs-symbol { color: hsl(30 90% 65%); }
+.tiptap-content pre .hljs-title, .tiptap-content pre .hljs-section, .tiptap-content pre .hljs-name { color: hsl(205 85% 68%); }
+.tiptap-content pre .hljs-variable, .tiptap-content pre .hljs-template-variable, .tiptap-content pre .hljs-deletion { color: hsl(350 80% 70%); }
+.tiptap-content pre .hljs-meta { color: hsl(240 5% 65%); }

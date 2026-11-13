@@ -248,9 +248,11 @@ function watchForegroundCapture(
 ): void {
   let running = false
   const capture = async (): Promise<void> => {
-    if (running || !(await isAutoCaptureEnabled())) return
+    // Launch and the first appStateChange fire together; claim the slot before any await.
+    if (running) return
     running = true
     try {
+      if (!(await isAutoCaptureEnabled())) return
       const result = await saveClipboardFromUserAction(workspaceId, userId, 'auto')
       if (result.status === 'saved') onSaved(result.item)
     } catch (err) {

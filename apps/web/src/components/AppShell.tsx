@@ -1,5 +1,6 @@
 'use client'
 import { useEffect } from 'react'
+import { App } from '@capacitor/app'
 import { Clipboard as ClipboardIcon, StickyNote, Settings as SettingsIcon, Search, ExternalLink } from 'lucide-react'
 import { Logo } from './Logo'
 import { Library } from './Library'
@@ -7,7 +8,7 @@ import { Notes } from './Notes'
 import { Settings } from './Settings'
 import { ActionBanner } from './ActionBanner'
 import { useStore } from '@/lib/store'
-import { subscribeWorkspace, listClipboard, listNotes } from '@/lib/api'
+import { subscribeWorkspace, listClipboard, listNotes, listNotebooks } from '@/lib/api'
 import { initMobileBridge, isNative } from '@/lib/mobile'
 import { toast } from '@/lib/feedback'
 import { startNativeBridge } from '@/lib/native-bridge'
@@ -27,17 +28,22 @@ export function AppShell(): JSX.Element {
   const removeClip = useStore((s) => s.removeClip)
   const upsertNote = useStore((s) => s.upsertNote)
   const removeNote = useStore((s) => s.removeNote)
+  const setNotebooks = useStore((s) => s.setNotebooks)
   const native = isNative()
   const editingNote = useStore((s) => s.editingNote)
 
   // Realtime subscription
   useEffect(() => {
     if (!workspace) return
-    const unsub = subscribeWorkspace(workspace.id, {
+    const workspaceId = workspace.id
+    const unsub = subscribeWorkspace(workspaceId, {
       onClip: upsertClip,
       onClipDelete: removeClip,
       onNote: upsertNote,
       onNoteDelete: removeNote,
+      onNotebooksChanged: () => {
+        void listNotebooks(workspaceId).then(setNotebooks).catch((e) => console.warn('[sync] notebooks', e))
+      },
     })
     return unsub
   }, [workspace?.id])
@@ -78,13 +84,15 @@ export function AppShell(): JSX.Element {
       if (cancelled || inFlight) return
       inFlight = true
       try {
-        const [clips, notes] = await Promise.all([
+        const [clips, notes, notebooks] = await Promise.all([
           listClipboard(workspace.id),
           listNotes(workspace.id),
+          listNotebooks(workspace.id),
         ])
         if (cancelled) return
         setClipboard(clips)
         setNotes(notes)
+        setNotebooks(notebooks)
       } catch (err) {
         console.warn('[sync] reconcile failed', err)
       } finally {
@@ -97,8 +105,14 @@ export function AppShell(): JSX.Element {
     const interval = setInterval(fetchData, 15_000)
     document.addEventListener('visibilitychange', fetchData)
     window.addEventListener('focus', fetchData)
+    // WKWebView does not reliably fire visibilitychange/focus on resume, and the
+    // realtime socket is suspended in the background — refresh as soon as we're back.
+    const resumeSub = isNative()
+      ? App.addListener('appStateChange', ({ isActive }) => { if (isActive) void fetchData() })
+      : null
     return () => {
       cancelled = true
+      void resumeSub?.then((h) => h.remove())
       clearInterval(interval)
       document.removeEventListener('visibilitychange', fetchData)
       window.removeEventListener('focus', fetchData)

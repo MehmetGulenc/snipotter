@@ -60,5 +60,8 @@ export function toast(text: string, kind: ToastKind = 'success', durationMs = 22
 }
 
 export function errorText(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
+  if (e instanceof Error) return e.message
+  // Supabase (PostgrestError) and Capacitor rejections are plain objects.
+  if (e && typeof e === 'object' && typeof (e as { message?: unknown }).message === 'string') return (e as { message: string }).message
+  return String(e)
 }

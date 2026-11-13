@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/store/useStore'
 import { NoteCard, NoteEditor } from '@/components/NoteCard'
 import { Button } from '@/components/ui/Button'
-import { extractText } from '@/components/TiptapEditor'
+import { extractText } from '@shared/notes/content'
+import { TrashView } from '@shared/notes/TrashView'
+import { createNoteLibrary } from '@/lib/noteTransport'
+import { filterNotes, notebookPath, searchNotes } from '@shared/notes/organize'
+import { NotebookNav } from '@shared/notes/NotebookNav'
+import type { NotebookActions } from '@shared/notes/NotebookNav'
 import type { Note } from '@shared/types'
 import { Plus, Trash2, CheckSquare, Square, Undo2 } from 'lucide-react'
 
@@ -19,6 +24,10 @@ export function Notes(): JSX.Element {
   const shieldNotes = useStore((s) => s.shieldNotes)
   const unshieldNotes = useStore((s) => s.unshieldNotes)
   const query = useStore((s) => s.query)
+  const notebooks = useStore((s) => s.notebooks)
+  const setNotebooks = useStore((s) => s.setNotebooks)
+  const noteFilter = useStore((s) => s.noteFilter)
+  const setNoteFilter = useStore((s) => s.setNoteFilter)
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -54,17 +63,43 @@ export function Notes(): JSX.Element {
     window.addEventListener('mouseup', onUp)
   }, [sidebarWidth])
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return notes
-    return notes.filter((n) => {
-      if (n.title?.toLowerCase().includes(q)) return true
-      if (n.content.toLowerCase().includes(q)) return true
-      if (n.ai?.summary?.toLowerCase().includes(q)) return true
-      if (n.ai?.tags?.some((t) => t.toLowerCase().includes(q))) return true
-      return false
-    })
-  }, [notes, query])
+  const scoped = useMemo(() => filterNotes(notes, noteFilter, notebooks), [notes, noteFilter, notebooks])
+  const hits = useMemo(() => (query.trim() ? searchNotes(scoped, query) : null), [scoped, query])
+  const filtered = useMemo(() => (hits ? hits.map((h) => h.note) : scoped), [hits, scoped])
+  const hitById = useMemo(() => new Map(hits?.map((h) => [h.note.id, h]) ?? []), [hits])
+
+  // Notebooks: initial load, other devices' changes, and on window focus.
+  useEffect(() => {
+    const load = (): void => {
+      void window.snipotter.notes.notebooks.list().then((r) => { if (r.ok) setNotebooks(r.data) })
+    }
+    load()
+    const off = window.snipotter.notes.notebooks.onChanged(load)
+    window.addEventListener('focus', load)
+    return () => {
+      off()
+      window.removeEventListener('focus', load)
+    }
+  }, [setNotebooks])
+
+  const openNote = useCallback((id: string) => {
+    if (!filtered.some((n) => n.id === id)) setNoteFilter({ kind: 'all' })
+    setActiveId(id)
+  }, [filtered, setNoteFilter])
+
+  const notebookActions: NotebookActions = useMemo(() => {
+    const unwrap = async <T,>(p: Promise<{ ok: true; data: T } | { ok: false; error: string }>): Promise<T> => {
+      const r = await p
+      if (!r.ok) throw new Error(r.error)
+      return r.data
+    }
+    const refresh = async (): Promise<void> => setNotebooks(await unwrap(window.snipotter.notes.notebooks.list()))
+    return {
+      create: async (name, parentId) => { await unwrap(window.snipotter.notes.notebooks.create(name, parentId)); await refresh() },
+      rename: async (id, name) => { await unwrap(window.snipotter.notes.notebooks.update(id, { name })); await refresh() },
+      remove: async (id) => { await unwrap(window.snipotter.notes.notebooks.remove(id)); await refresh() },
+    }
+  }, [setNotebooks])
 
   // Default-select first note when list changes
   useEffect(() => {
@@ -75,13 +110,19 @@ export function Notes(): JSX.Element {
     }
   }, [filtered, activeId])
 
-  const active = filtered.find((n) => n.id === activeId) ?? null
+  const active = notes.find((n) => n.id === activeId) ?? null
 
   const onCreate = async () => {
     const r = await window.snipotter.notes.create({ content: '' })
     if (r.ok && r.data) {
-      upsert(r.data)
-      setActiveId(r.data.id)
+      let note = r.data
+      // A note created while a notebook is open goes into that notebook.
+      if (noteFilter.kind === 'notebook') {
+        const moved = await window.snipotter.notes.move(note.id, noteFilter.id)
+        if (moved.ok) note = moved.data
+      }
+      upsert(note)
+      setActiveId(note.id)
     }
   }
   const onUpdate = useCallback(async (id: string, partial: Partial<Note>) => {
@@ -96,6 +137,12 @@ export function Notes(): JSX.Element {
     } catch {
       setSaveError('Not kaydedilemedi. Metninizi koruyun ve bağlantınızı kontrol edin.')
     }
+  }, [upsert])
+  const [showTrash, setShowTrash] = useState(false)
+  const noteLibrary = useMemo(() => createNoteLibrary((restored) => restored.forEach(upsert)), [upsert])
+  const onLocalContent = useCallback((id: string, content: string) => {
+    const current = useStore.getState().notes.find((n) => n.id === id)
+    if (current) upsert({ ...current, content })
   }, [upsert])
   const onPin = async (note: Note) => {
     const r = await window.snipotter.notes.pin(note.id, !note.pinned)
@@ -219,10 +266,20 @@ export function Notes(): JSX.Element {
         {saveError && <p role="alert" className="border-b border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{saveError}</p>}
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-5">
           <span className="text-lg font-semibold tracking-tight">
-            Notlar ({filtered.length})
+            {showTrash ? 'Çöp Kutusu' : `Notlar (${filtered.length})`}
           </span>
           <div className="flex items-center gap-1">
-            {filtered.length > 0 && (
+            <Button
+              size="sm"
+              variant={showTrash ? 'secondary' : 'ghost'}
+              onClick={() => setShowTrash((v) => !v)}
+              title={showTrash ? 'Notlara dön' : 'Çöp kutusu'}
+              aria-label={showTrash ? 'Notlara dön' : 'Çöp kutusu'}
+              aria-pressed={showTrash}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            {!showTrash && filtered.length > 0 && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -232,7 +289,7 @@ export function Notes(): JSX.Element {
                 {allSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
               </Button>
             )}
-            {hasSelection ? null : (
+            {hasSelection || showTrash ? null : (
               <Button size="sm" variant="default" onClick={onCreate} className="gap-1.5 rounded-lg" aria-label="Yeni not oluştur">
                 <Plus className="h-4 w-4" /> Yeni
               </Button>
@@ -240,6 +297,28 @@ export function Notes(): JSX.Element {
           </div>
         </div>
 
+        {!showTrash && (
+          <div className="scrollbar-thin max-h-[42%] shrink-0 overflow-y-auto border-b border-border p-2">
+            <NotebookNav
+              notebooks={notebooks}
+              notes={notes}
+              filter={noteFilter}
+              onFilter={setNoteFilter}
+              actions={notebookActions}
+              confirm={(title, message) => Promise.resolve(window.confirm(`${title}\n\n${message}`))}
+              variant="desktop"
+            />
+          </div>
+        )}
+        {showTrash ? (
+          <div className="min-h-0 flex-1">
+            <TrashView
+              library={noteLibrary}
+              variant="desktop"
+              confirm={(title, message) => Promise.resolve(window.confirm(`${title}\n\n${message}`))}
+            />
+          </div>
+        ) : (
         <div
           ref={listRef}
           className={`scrollbar-thin flex-1 space-y-2 overflow-y-auto p-3 ${dragActive.current ? 'touch-none select-none' : ''}`}
@@ -261,10 +340,13 @@ export function Notes(): JSX.Element {
                 onSelect={() => setActiveId(n.id)}
                 onToggleSelect={() => toggleSelection(n.id)}
                 onCheckboxPointerDown={(e) => handleCheckboxPointerDown(n.id, selectedIds.has(n.id), e)}
+                hit={hitById.get(n.id)}
+                notebookLabel={n.notebookId && noteFilter.kind !== 'notebook' ? notebookPath(notebooks, n.notebookId) : undefined}
               />
             ))
           )}
         </div>
+        )}
 
         {/* Sticky bottom bar — visible whenever there's a selection or pending undo */}
         {(hasSelection || pendingDelete) && (
@@ -309,6 +391,10 @@ export function Notes(): JSX.Element {
       <NoteEditor
         note={active}
         onUpdate={onUpdate}
+        onLocalContent={onLocalContent}
+        library={noteLibrary}
+        onOpenNote={openNote}
+        onTag={(tag) => setNoteFilter({ kind: 'tag', tag })}
         onDelete={onDelete}
         onPin={onPin}
         onReenrich={onReenrich}

@@ -58,4 +58,8 @@ export interface Note {
   ai?: AISummary | null
   createdAt: string
   updatedAt: string
+  /** Notebook (folder); null = not filed. */
+  notebookId?: string | null
 }
+
+export type { Notebook } from '@shared/types'

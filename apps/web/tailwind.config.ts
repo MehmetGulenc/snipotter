@@ -1,7 +1,7 @@
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
-  content: ['./src/**/*.{ts,tsx}'],
+  content: ['./src/**/*.{ts,tsx}', '../../shared/**/*.tsx'],
   darkMode: 'class',
   theme: {
     extend: {
@@ -9,6 +9,7 @@ const config: Config = {
         background: 'hsl(240 10% 4%)',
         foreground: 'hsl(0 0% 98%)',
         card: 'hsl(240 6% 10%)',
+        popover: 'hsl(240 6% 12%)',
         border: 'hsl(240 6% 18%)',
         muted: { DEFAULT: 'hsl(240 4% 16%)', foreground: 'hsl(240 5% 65%)' },
         accent: { DEFAULT: 'hsl(240 4% 16%)', foreground: 'hsl(0 0% 98%)' },

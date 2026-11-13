@@ -6,6 +6,7 @@
  */
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { EventEmitter } from 'node:events'
+import { randomUUID } from 'node:crypto'
 import WebSocket from 'ws'
 import { authStorage } from './store'
 import type {
@@ -18,6 +19,10 @@ import type {
   ChannelStatus,
   DiagnosticsState,
   SendToPhoneRequest,
+  NoteSyncState,
+  NoteVersion,
+  TrashedNote,
+  Notebook,
 } from '@shared/types'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -53,6 +58,7 @@ interface NoteRow {
   ai: Note['ai']
   created_at: string
   updated_at: string
+  notebook_id?: string | null
 }
 
 interface WorkspaceRow {
@@ -94,6 +100,19 @@ function clipboardFromRow(row: ClipboardRow): ClipboardItem {
   }
 }
 
+interface NotebookRow {
+  id: string
+  workspace_id: string
+  parent_id: string | null
+  name: string
+  icon: string | null
+  sort: number
+}
+
+function notebookFromRow(r: NotebookRow): Notebook {
+  return { id: r.id, workspaceId: r.workspace_id, parentId: r.parent_id, name: r.name, icon: r.icon, sort: r.sort }
+}
+
 function noteFromRow(row: NoteRow): Note {
   return {
     id: row.id,
@@ -107,6 +126,7 @@ function noteFromRow(row: NoteRow): Note {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     synced: true,
+    notebookId: row.notebook_id ?? null,
   }
 }
 
@@ -443,6 +463,30 @@ export class SupabaseService extends EventEmitter {
   }
 
   /**
+   * Same text saved recently by another device. Hashes differ across devices
+   * (desktop hashes text + HTML, mobile hashes trimmed text), so iPhone copies
+   * arriving via Universal Clipboard would otherwise be saved twice.
+   */
+  async findRecentClipboardByText(text: string, windowMs = 10 * 60 * 1000): Promise<ClipboardItem | null> {
+    const trimmed = text.trim()
+    if (!this.client || !this.workspaceId || !trimmed || trimmed.length > 2000) return null
+    const { data, error } = await this.client
+      .from('clipboard_items')
+      .select('*')
+      .eq('workspace_id', this.workspaceId)
+      .eq('text', trimmed)
+      .gte('created_at', new Date(Date.now() - windowMs).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) {
+      console.warn('[supabase] find by text failed', error.message)
+      return null
+    }
+    return data ? clipboardFromRow(data as ClipboardRow) : null
+  }
+
+  /**
    * Bump an existing clipboard row's created_at to "now" so it floats back
    * to the top of the list (which is sorted by created_at desc). The
    * touch_updated_at trigger handles updated_at automatically.
@@ -605,8 +649,215 @@ export class SupabaseService extends EventEmitter {
     return noteFromRow(data as NoteRow)
   }
 
+  // ── Yjs note sync (shared/notes/sync.ts). These throw so the renderer can tell
+  // "offline" from "empty" and keep edits locally until the next resync.
+
+  private requireSync(): { client: SupabaseClient; workspaceId: string } {
+    if (!this.client || !this.workspaceId) throw new Error('Senkron hazır değil')
+    return { client: this.client, workspaceId: this.workspaceId }
+  }
+
+  async noteSyncLoad(noteId: string): Promise<NoteSyncState | null> {
+    const { client } = this.requireSync()
+    const { data, error } = await client
+      .from('notes')
+      .select('ydoc, ydoc_seq, content, ydoc_content_sha')
+      .eq('id', noteId)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!data) return null
+    const seq = Number(data.ydoc_seq ?? 0)
+    return {
+      ydoc: data.ydoc as string | null,
+      seq,
+      content: (data.content as string) ?? '',
+      contentSha: data.ydoc_content_sha as string | null,
+      updates: await this.noteUpdatesAfter(noteId, seq),
+    }
+  }
+
+  async noteUpdatesAfter(noteId: string, afterId: number): Promise<Array<{ id: number; update: string }>> {
+    const { client } = this.requireSync()
+    const out: Array<{ id: number; update: string }> = []
+    let cursor = afterId
+    for (;;) {
+      const { data, error } = await client
+        .from('note_updates')
+        .select('id, update')
+        .eq('note_id', noteId)
+        .gt('id', cursor)
+        .order('id', { ascending: true })
+        .limit(1000)
+      if (error) throw new Error(error.message)
+      const rows = (data ?? []) as Array<{ id: number; update: string }>
+      out.push(...rows)
+      if (rows.length < 1000) return out
+      cursor = rows[rows.length - 1].id
+    }
+  }
+
+  async notePushUpdate(noteId: string, update: string): Promise<void> {
+    const { client, workspaceId } = this.requireSync()
+    void this.broadcastChannel?.send({ type: 'broadcast', event: 'note:y', payload: { noteId, update, from: this.clientId } })
+    const { error } = await client.from('note_updates').insert({ note_id: noteId, workspace_id: workspaceId, update })
+    if (error) throw new Error(error.message)
+  }
+
+  async noteSaveContent(noteId: string, content: string, contentSha: string): Promise<Note> {
+    const { client } = this.requireSync()
+    const { data, error } = await client
+      .from('notes')
+      .update({ content, ydoc_content_sha: contentSha })
+      .eq('id', noteId)
+      .select('*')
+      .single()
+    if (error) throw new Error(error.message)
+    const note = noteFromRow(data as NoteRow)
+    this.broadcastNoteUpsert(note)
+    return note
+  }
+
+  async noteCompact(noteId: string, ydoc: string, seq: number, content: string, contentSha: string): Promise<boolean> {
+    const { client } = this.requireSync()
+    const { data, error } = await client.rpc('compact_note', {
+      p_note_id: noteId, p_ydoc: ydoc, p_seq: seq, p_content: content, p_content_sha: contentSha,
+    })
+    if (error) throw new Error(error.message)
+    return data === true
+  }
+
+  async noteSaveVersion(noteId: string, content: string, kind: 'auto' | 'manual' | 'restore'): Promise<void> {
+    const { client, workspaceId } = this.requireSync()
+    const { error } = await client.from('note_versions').insert({ note_id: noteId, workspace_id: workspaceId, kind, content })
+    if (error) throw new Error(error.message)
+  }
+
+  // ── Notebooks (migration 0013) ──────────────────────────────────────────────
+
+  /** Empty when the server predates notebooks. */
+  async listNotebooks(): Promise<Notebook[]> {
+    const { client, workspaceId } = this.requireSync()
+    const { data, error } = await client.from('notebooks').select('*').eq('workspace_id', workspaceId).order('sort')
+    if (error) {
+      if (error.code === '42P01' || error.code === 'PGRST205') return []
+      throw new Error(error.message)
+    }
+    return ((data ?? []) as NotebookRow[]).map(notebookFromRow)
+  }
+
+  async createNotebook(name: string, parentId: string | null): Promise<Notebook> {
+    const { client, workspaceId } = this.requireSync()
+    const { data, error } = await client
+      .from('notebooks')
+      .insert({ workspace_id: workspaceId, name: name.trim(), parent_id: parentId })
+      .select('*')
+      .single()
+    if (error) throw new Error(error.message)
+    return notebookFromRow(data as NotebookRow)
+  }
+
+  async updateNotebook(id: string, patch: { name?: string; parentId?: string | null; sort?: number }): Promise<Notebook> {
+    const { client } = this.requireSync()
+    const row: Record<string, unknown> = {}
+    if (patch.name !== undefined) row.name = patch.name.trim()
+    if (patch.parentId !== undefined) row.parent_id = patch.parentId
+    if (patch.sort !== undefined) row.sort = patch.sort
+    const { data, error } = await client.from('notebooks').update(row).eq('id', id).select('*').single()
+    if (error) throw new Error(error.message)
+    return notebookFromRow(data as NotebookRow)
+  }
+
+  async deleteNotebook(id: string): Promise<void> {
+    const { client } = this.requireSync()
+    const { error } = await client.from('notebooks').delete().eq('id', id)
+    if (error) throw new Error(error.message)
+  }
+
+  async moveNote(noteId: string, notebookId: string | null): Promise<Note> {
+    const { client } = this.requireSync()
+    const { data, error } = await client.from('notes').update({ notebook_id: notebookId }).eq('id', noteId).select('*').single()
+    if (error) throw new Error(error.message)
+    const note = noteFromRow(data as NoteRow)
+    this.broadcastNoteUpsert(note)
+    return note
+  }
+
+  /** Uploads a note image into <workspace>/<note>/<uuid>.<ext> and returns that path. */
+  async noteAssetUpload(noteId: string, mime: string, bytes: Buffer, ext: string): Promise<string> {
+    const { client, workspaceId } = this.requireSync()
+    const path = `${workspaceId}/${noteId}/${randomUUID()}.${ext}`
+    const { error } = await client.storage.from('note-assets').upload(path, bytes, { contentType: mime, upsert: false })
+    if (error) throw new Error(error.message)
+    return path
+  }
+
+  /** Signed URL for an image of the active workspace only. */
+  async noteAssetUrl(path: string): Promise<string> {
+    const { client, workspaceId } = this.requireSync()
+    if (!path.startsWith(`${workspaceId}/`) || path.includes('..')) throw new Error('Görsel bu çalışma alanına ait değil')
+    const { data, error } = await client.storage.from('note-assets').createSignedUrl(path, 3600)
+    if (error || !data?.signedUrl) throw new Error(error?.message ?? 'Görsel bağlantısı alınamadı')
+    return data.signedUrl
+  }
+
+  /**
+   * Moves notes to the trash (migration 0011). Returns false when the server
+   * predates it, so callers fall back to a permanent delete.
+   */
+  private async trashNotes(ids: string[]): Promise<boolean> {
+    const { client } = this.requireSync()
+    const { error } = await client.rpc('trash_notes', { p_ids: ids })
+    if (!error) return true
+    if (error.code === 'PGRST202') return false
+    throw new Error(`[supabase] trash notes: ${error.message}`)
+  }
+
+  async listTrash(): Promise<TrashedNote[]> {
+    const { client, workspaceId } = this.requireSync()
+    const { data, error } = await client
+      .from('notes_trash')
+      .select('id, deleted_at, title:note->>title, content:note->>content')
+      .eq('workspace_id', workspaceId)
+      .order('deleted_at', { ascending: false })
+      .limit(500)
+    if (error) throw new Error(error.message)
+    return ((data ?? []) as unknown as Array<{ id: string; deleted_at: string; title: string | null; content: string | null }>)
+      .map((r) => ({ id: r.id, title: r.title, content: r.content ?? '', deletedAt: r.deleted_at }))
+  }
+
+  async restoreNotes(ids: string[]): Promise<Note[]> {
+    const { client } = this.requireSync()
+    const { error } = await client.rpc('restore_notes', { p_ids: ids })
+    if (error) throw new Error(error.message)
+    const { data, error: readError } = await client.from('notes').select('*').in('id', ids)
+    if (readError) throw new Error(readError.message)
+    const notes = ((data ?? []) as NoteRow[]).map(noteFromRow)
+    notes.forEach((n) => this.broadcastNoteUpsert(n))
+    return notes
+  }
+
+  async purgeTrashedNotes(ids: string[]): Promise<void> {
+    const { client } = this.requireSync()
+    const { error } = await client.rpc('purge_trashed_notes', { p_ids: ids })
+    if (error) throw new Error(error.message)
+  }
+
+  async listNoteVersions(noteId: string): Promise<NoteVersion[]> {
+    const { client } = this.requireSync()
+    const { data, error } = await client
+      .from('note_versions')
+      .select('id, kind, created_at, content')
+      .eq('note_id', noteId)
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (error) throw new Error(error.message)
+    return ((data ?? []) as Array<{ id: string; kind: NoteVersion['kind']; created_at: string; content: string }>)
+      .map((r) => ({ id: r.id, kind: r.kind, createdAt: r.created_at, content: r.content }))
+  }
+
   async deleteNote(id: string): Promise<void> {
     if (!this.client || !this.workspaceId) return
+    if (await this.trashNotes([id])) return
     // Use `count: 'exact'` so we can detect silent RLS rejections.
     // When RLS blocks a DELETE, Postgres silently returns 0 rows affected —
     // no error is thrown. Without this check, the note stays in the DB and
@@ -636,6 +887,7 @@ export class SupabaseService extends EventEmitter {
 
   async deleteNotesMany(ids: string[]): Promise<void> {
     if (!this.client || !this.workspaceId || ids.length === 0) return
+    if (await this.trashNotes(ids)) return
     const { error } = await this.client
       .from('notes')
       .delete()
@@ -703,6 +955,19 @@ export class SupabaseService extends EventEmitter {
           this.emit('note:upsert', noteFromRow(row))
         },
       )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'note_updates', filter: `workspace_id=eq.${wsId}` },
+        (payload) => {
+          const row = payload.new as { note_id?: string; update?: string }
+          if (row.note_id && row.update) this.emit('note:y', { noteId: row.note_id, update: row.update })
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notebooks', filter: `workspace_id=eq.${wsId}` },
+        () => this.emit('notebooks:changed'),
+      )
       .subscribe((status, err) => {
         this.diagChannels.note = mapStatus(status)
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
@@ -751,6 +1016,12 @@ export class SupabaseService extends EventEmitter {
       .on('broadcast', { event: 'note:deleted' }, ({ payload }) => {
         if (payload?.from === this.clientId) return
         if (payload?.id) this.emit('note:deleted', payload.id as string)
+      })
+      .on('broadcast', { event: 'note:y' }, ({ payload }) => {
+        if (payload?.from === this.clientId) return
+        if (typeof payload?.noteId === 'string' && typeof payload?.update === 'string') {
+          this.emit('note:y', { noteId: payload.noteId, update: payload.update })
+        }
       })
       .subscribe((status, err) => {
         this.diagChannels.broadcast = mapStatus(status)

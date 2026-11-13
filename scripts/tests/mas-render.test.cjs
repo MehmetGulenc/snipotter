@@ -66,7 +66,7 @@ test('clipboard card hides the AI re-enrich button in MAS only', () => {
 
 test('note editor hides the AI re-enrich button in MAS only', () => {
   const note = { id: 'n1', title: 'Not', content: 'içerik', pinned: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-  const props = { note, onUpdate: noop, onDelete: noop, onPin: noop, onReenrich: noop }
+  const props = { note, onUpdate: noop, onLocalContent: noop, onDelete: noop, onPin: noop, onReenrich: noop }
   assert.match(renderAs(false, NoteEditor, props), /AI ile yeniden işle/)
   assert.doesNotMatch(renderAs(true, NoteEditor, props), /AI ile yeniden işle/)
 })

@@ -3,9 +3,11 @@ import type {
   AppSettings,
   ClipboardItem,
   Note,
+  Notebook,
   SnipotterUser,
   Workspace,
 } from '@shared/types'
+import type { NoteFilter } from '@shared/notes/organize'
 
 interface SnipotterState {
   // Auth
@@ -23,6 +25,10 @@ interface SnipotterState {
   notes: Note[]
   query: string
   setQuery: (q: string) => void
+  notebooks: Notebook[]
+  setNotebooks: (notebooks: Notebook[]) => void
+  noteFilter: NoteFilter
+  setNoteFilter: (filter: NoteFilter) => void
 
   // Settings
   settings: AppSettings | null
@@ -74,6 +80,10 @@ export const useStore = create<SnipotterState>((set) => ({
   notes: [],
   query: '',
   setQuery: (q) => set({ query: q }),
+  notebooks: [],
+  setNotebooks: (notebooks) => set({ notebooks }),
+  noteFilter: { kind: 'all' },
+  setNoteFilter: (noteFilter) => set({ noteFilter }),
 
   settings: null,
   setSettings: (s) => set({ settings: s }),

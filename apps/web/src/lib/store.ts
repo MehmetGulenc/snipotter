@@ -1,5 +1,8 @@
 import { create } from 'zustand'
-import type { ClipboardItem, Note, SnipotterUser, Workspace } from './types'
+import type { ClipboardItem, Note, Notebook, SnipotterUser, Workspace } from './types'
+
+import type { NoteFilter } from '@shared/notes/organize'
+export type { NoteFilter }
 
 interface Store {
   user: SnipotterUser | null
@@ -9,6 +12,10 @@ interface Store {
   query: string
   clipboard: ClipboardItem[]
   notes: Note[]
+  notebooks: Notebook[]
+  noteFilter: NoteFilter
+  setNotebooks: (notebooks: Notebook[]) => void
+  setNoteFilter: (filter: NoteFilter) => void
 
   setUser: (u: SnipotterUser | null) => void
   setWorkspace: (w: Workspace | null) => void
@@ -66,6 +73,10 @@ export const useStore = create<Store>((set) => ({
   editingNote: false,
   clipboard: [],
   notes: [],
+  notebooks: [],
+  noteFilter: { kind: 'all' },
+  setNotebooks: (notebooks) => set({ notebooks }),
+  setNoteFilter: (noteFilter) => set({ noteFilter }),
 
   _shieldedNoteIds: new Set(),
   _shieldedClipIds: new Set(),

@@ -399,7 +399,6 @@ function ChannelBadge({ label, status }: { label: string; status: DiagnosticsSta
 
 function UpdateSection({ onSecretClick }: { onSecretClick: () => void }): JSX.Element {
   const [status, setStatus] = useState<UpdaterStatus | null>(null)
-  const isMac = navigator.userAgent.includes('Macintosh')
 
   useEffect(() => {
     void window.snipotter.updater.getStatus().then((r) => {
@@ -517,14 +516,6 @@ function UpdateSection({ onSecretClick }: { onSecretClick: () => void }): JSX.El
           </div>
         )}
 
-        {isMac && (
-          <div className="mt-3 rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-            <span className="font-medium">İlk kurulumda Mac uyarısı:</span> DMG&apos;yi
-            indirip Applications&apos;a sürükledikten sonra uygulama açılmazsa, uygulamaya
-            sağ tıklayıp <span className="font-medium">&quot;Aç&quot;</span> seçeneğini kullanın.
-            Sonraki tüm güncellemeler bu pencereden otomatik yapılır.
-          </div>
-        )}
       </div>
     </section>
   )

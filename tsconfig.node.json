@@ -23,5 +23,6 @@
     "electron.vite.config.*",
     "electron/**/*",
     "shared/**/*"
-  ]
+  ],
+  "exclude": ["shared/**/*.tsx", "shared/notes/**"]
 }

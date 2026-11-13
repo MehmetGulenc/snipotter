@@ -17,6 +17,10 @@ import {
   type UpdaterStatus,
   type DiagnosticsState,
   type SendToPhoneRequest,
+  type NoteSyncState,
+  type NoteVersion,
+  type TrashedNote,
+  type Notebook,
 } from '../../shared/types'
 
 function invoke<T>(channel: string, payload?: unknown): Promise<IpcResult<T>> {
@@ -92,6 +96,47 @@ const api = {
       const fn = (_: unknown, note: Note & { deleted?: boolean }) => cb(note)
       ipcRenderer.on(IPC.NOTE_UPDATED, fn)
       return () => ipcRenderer.off(IPC.NOTE_UPDATED, fn)
+    },
+    /** Note images in Storage; returns the object path. */
+    uploadAsset: (noteId: string, mime: string, data: Uint8Array) =>
+      invoke<string>(IPC.NOTE_ASSET_UPLOAD, { noteId, mime, data }),
+    assetUrl: (path: string) => invoke<string>(IPC.NOTE_ASSET_URL, path),
+    versions: (noteId: string) => invoke<NoteVersion[]>(IPC.NOTE_VERSIONS, noteId),
+    move: (noteId: string, notebookId: string | null) => invoke<Note>(IPC.NOTE_MOVE, { noteId, notebookId }),
+    notebooks: {
+      list: () => invoke<Notebook[]>(IPC.NOTEBOOK_LIST),
+      create: (name: string, parentId: string | null) => invoke<Notebook>(IPC.NOTEBOOK_CREATE, { name, parentId }),
+      update: (id: string, patch: { name?: string; parentId?: string | null; sort?: number }) =>
+        invoke<Notebook>(IPC.NOTEBOOK_UPDATE, { id, ...patch }),
+      remove: (id: string) => invoke<void>(IPC.NOTEBOOK_DELETE, id),
+      onChanged: (cb: () => void) => {
+        const fn = (): void => cb()
+        ipcRenderer.on(IPC.NOTEBOOKS_CHANGED, fn)
+        return () => ipcRenderer.off(IPC.NOTEBOOKS_CHANGED, fn)
+      },
+    },
+    trash: {
+      list: () => invoke<TrashedNote[]>(IPC.NOTE_TRASH_LIST),
+      restore: (ids: string[]) => invoke<Note[]>(IPC.NOTE_RESTORE, ids),
+      purge: (ids: string[]) => invoke<void>(IPC.NOTE_PURGE, ids),
+    },
+    /** Yjs note sync; see shared/notes/sync.ts. */
+    y: {
+      load: (noteId: string) => invoke<NoteSyncState | null>(IPC.NOTE_Y_LOAD, noteId),
+      after: (noteId: string, afterId: number) =>
+        invoke<Array<{ id: number; update: string }>>(IPC.NOTE_Y_AFTER, { noteId, afterId }),
+      push: (noteId: string, update: string) => invoke<void>(IPC.NOTE_Y_PUSH, { noteId, update }),
+      saveContent: (noteId: string, content: string, sha: string) =>
+        invoke<void>(IPC.NOTE_Y_CONTENT, { noteId, content, sha }),
+      compact: (noteId: string, ydoc: string, seq: number, content: string, sha: string) =>
+        invoke<boolean>(IPC.NOTE_Y_COMPACT, { noteId, ydoc, seq, content, sha }),
+      saveVersion: (noteId: string, content: string, kind: 'auto' | 'manual' | 'restore') =>
+        invoke<void>(IPC.NOTE_Y_VERSION, { noteId, content, kind }),
+      onUpdate: (cb: (payload: { noteId: string; update: string }) => void) => {
+        const fn = (_: unknown, payload: { noteId: string; update: string }) => cb(payload)
+        ipcRenderer.on(IPC.NOTE_Y_UPDATE, fn)
+        return () => ipcRenderer.off(IPC.NOTE_Y_UPDATE, fn)
+      },
     },
   },
   settings: {

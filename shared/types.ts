@@ -7,6 +7,30 @@ export type ItemKind = 'clipboard' | 'note'
 /** Clipboard payload variants we currently support. */
 export type ClipboardContentType = 'text' | 'image' | 'file' | 'rich-text'
 
+export interface NoteVersion {
+  id: string
+  kind: 'auto' | 'manual' | 'restore'
+  createdAt: string
+  /** Tiptap JSON at that moment. */
+  content: string
+}
+
+export interface TrashedNote {
+  id: string
+  title: string | null
+  content: string
+  deletedAt: string
+}
+
+/** Server side of a note for Yjs sync: snapshot (base64) + updates after it. */
+export interface NoteSyncState {
+  ydoc: string | null
+  seq: number
+  content: string
+  contentSha: string | null
+  updates: Array<{ id: number; update: string }>
+}
+
 export interface SnipotterUser {
   id: string
   email: string | null
@@ -88,6 +112,17 @@ export interface Note {
   createdAt: string
   updatedAt: string
   synced: boolean
+  /** Notebook (folder); null = not filed. */
+  notebookId?: string | null
+}
+
+export interface Notebook {
+  id: string
+  workspaceId: string
+  parentId: string | null
+  name: string
+  icon: string | null
+  sort: number
 }
 
 export interface AppSettings {
@@ -213,6 +248,26 @@ export const IPC = {
   NOTE_UPDATED: 'note:updated', // pushed from main
   NOTE_EXPORT_MD: 'note:export-md',
   NOTE_EXPORT_PDF: 'note:export-pdf',
+  // Yjs note sync (renderer ⇄ main)
+  NOTE_Y_LOAD: 'note-y:load',
+  NOTE_Y_AFTER: 'note-y:after',
+  NOTE_Y_PUSH: 'note-y:push',
+  NOTE_Y_CONTENT: 'note-y:content',
+  NOTE_Y_COMPACT: 'note-y:compact',
+  NOTE_Y_VERSION: 'note-y:version',
+  NOTE_Y_UPDATE: 'note-y:update', // pushed from main
+  NOTE_ASSET_UPLOAD: 'note-asset:upload',
+  NOTE_ASSET_URL: 'note-asset:url',
+  NOTEBOOK_LIST: 'notebook:list',
+  NOTEBOOK_CREATE: 'notebook:create',
+  NOTEBOOK_UPDATE: 'notebook:update',
+  NOTEBOOK_DELETE: 'notebook:delete',
+  NOTEBOOKS_CHANGED: 'notebook:changed', // pushed from main
+  NOTE_MOVE: 'note:move',
+  NOTE_VERSIONS: 'note:versions',
+  NOTE_TRASH_LIST: 'note:trash-list',
+  NOTE_RESTORE: 'note:restore',
+  NOTE_PURGE: 'note:purge',
 
   // Settings
   SETTINGS_GET: 'settings:get',

@@ -57,7 +57,7 @@ const mobile = read('src/lib/mobile.ts')
 assert.equal((mobile.match(/Clipboard\.read\(/g) || []).length, 1)
 assert.match(mobile, /export async function saveClipboardFromUserAction[\s\S]*Clipboard\.read\(/)
 // Launch/resume reads happen only while the user has switched automatic saving on (off by default).
-assert.match(mobile, /if \(running \|\| !\(await isAutoCaptureEnabled\(\)\)\) return/)
+assert.match(mobile, /if \(running\) return\s+running = true\s+try \{\s+if \(!\(await isAutoCaptureEnabled\(\)\)\) return\s+const result = await saveClipboardFromUserAction/)
 assert.match(mobile, /return value === '1'/)
 const library = read('src/components/Library.tsx')
 assert.match(library, /onClick=\{onSaveClipboard\}/)

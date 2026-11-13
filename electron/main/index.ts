@@ -173,7 +173,10 @@ async function handleClipboardChange(
   // bump the existing row to the top instead of inserting a duplicate.
   // QuickPaste and Library both sort by created_at desc, so a touch is
   // enough to re-promote it visually.
-  const existing = await supabase.findClipboardByHash(draft.hash).catch(() => null)
+  const existing = (await supabase.findClipboardByHash(draft.hash).catch(() => null))
+    ?? (draft.contentType === 'text' || draft.contentType === 'rich-text'
+      ? await supabase.findRecentClipboardByText(draft.text).catch(() => null)
+      : null)
   if (existing) {
     const isFile = draft.contentType === 'file'
     if (isFile) console.info('[clip-file] existing record found', { previousType: existing.contentType, payloadChanged: existing.text !== draft.text })
@@ -287,6 +290,102 @@ function wireSupabaseEvents(): void {
   supabase.on('note:deleted', (id: string) => {
     broadcast(IPC.NOTE_UPDATED, { id, deleted: true })
   })
+  supabase.on('note:y', (payload: { noteId: string; update: string }) => {
+    broadcast(IPC.NOTE_Y_UPDATE, payload)
+  })
+  supabase.on('notebooks:changed', () => broadcast(IPC.NOTEBOOKS_CHANGED, null))
+}
+
+// ── Yjs note sync IPC. The renderer is treated as untrusted input. ─────────────
+const NOTE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
+const isNoteId = (v: unknown): v is string => typeof v === 'string' && NOTE_ID.test(v)
+const isB64 = (v: unknown, max: number): v is string => typeof v === 'string' && v.length > 0 && v.length <= max && BASE64.test(v)
+const isSha = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v)
+const isContent = (v: unknown): v is string => typeof v === 'string' && v.length <= 5_000_000
+const INVALID = { ok: false as const, error: 'Geçersiz not senkron isteği' }
+const IMAGE_EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/heic': 'heic' }
+
+async function ySafe<T>(fn: () => Promise<T>): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+  try {
+    return { ok: true, data: await fn() }
+  } catch (err) {
+    return { ok: false, error: (err as Error).message || 'Senkron başarısız' }
+  }
+}
+
+function wireNoteSyncIPC(): void {
+  ipcMain.handle(IPC.NOTE_Y_LOAD, (_e, noteId: unknown) =>
+    isNoteId(noteId) ? ySafe(() => supabase.noteSyncLoad(noteId)) : INVALID)
+  ipcMain.handle(IPC.NOTE_Y_AFTER, (_e, p: { noteId?: unknown; afterId?: unknown }) =>
+    isNoteId(p?.noteId) && Number.isSafeInteger(p.afterId) && (p.afterId as number) >= 0
+      ? ySafe(() => supabase.noteUpdatesAfter(p.noteId as string, p.afterId as number)) : INVALID)
+  ipcMain.handle(IPC.NOTE_Y_PUSH, (_e, p: { noteId?: unknown; update?: unknown }) =>
+    isNoteId(p?.noteId) && isB64(p.update, 1_000_000)
+      ? ySafe(() => supabase.notePushUpdate(p.noteId as string, p.update as string)) : INVALID)
+  ipcMain.handle(IPC.NOTE_Y_CONTENT, (_e, p: { noteId?: unknown; content?: unknown; sha?: unknown }) =>
+    isNoteId(p?.noteId) && isContent(p.content) && isSha(p.sha)
+      ? ySafe(async () => {
+          const note = await supabase.noteSaveContent(p.noteId as string, p.content as string, p.sha as string)
+          broadcast(IPC.NOTE_UPDATED, note)
+        })
+      : INVALID)
+  ipcMain.handle(IPC.NOTE_Y_COMPACT, (_e, p: { noteId?: unknown; ydoc?: unknown; seq?: unknown; content?: unknown; sha?: unknown }) =>
+    isNoteId(p?.noteId) && isB64(p.ydoc, 5_000_000) && Number.isSafeInteger(p.seq) && (p.seq as number) >= 0 && isContent(p.content) && isSha(p.sha)
+      ? ySafe(() => supabase.noteCompact(p.noteId as string, p.ydoc as string, p.seq as number, p.content as string, p.sha as string))
+      : INVALID)
+  ipcMain.handle(IPC.NOTE_ASSET_UPLOAD, (_e, p: { noteId?: unknown; mime?: unknown; data?: unknown }) => {
+    const ext = typeof p?.mime === 'string' ? IMAGE_EXT[p.mime] : undefined
+    if (!isNoteId(p?.noteId) || !ext || !(p.data instanceof Uint8Array) || p.data.byteLength === 0 || p.data.byteLength > 10 * 1024 * 1024) {
+      return INVALID
+    }
+    return ySafe(() => supabase.noteAssetUpload(p.noteId as string, p.mime as string, Buffer.from(p.data as Uint8Array), ext))
+  })
+  ipcMain.handle(IPC.NOTE_ASSET_URL, (_e, path: unknown) =>
+    typeof path === 'string' && /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|gif|webp|heic)$/i.test(path)
+      ? ySafe(() => supabase.noteAssetUrl(path)) : INVALID)
+  const isIdList = (v: unknown): v is string[] => Array.isArray(v) && v.length > 0 && v.length <= 500 && v.every(isNoteId)
+  const isName = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0 && v.trim().length <= 80
+  const isParent = (v: unknown): v is string | null => v === null || isNoteId(v)
+  ipcMain.handle(IPC.NOTEBOOK_LIST, () => ySafe(() => supabase.listNotebooks()))
+  ipcMain.handle(IPC.NOTEBOOK_CREATE, (_e, p: { name?: unknown; parentId?: unknown }) =>
+    isName(p?.name) && isParent(p.parentId ?? null)
+      ? ySafe(() => supabase.createNotebook(p.name as string, (p.parentId ?? null) as string | null)) : INVALID)
+  ipcMain.handle(IPC.NOTEBOOK_UPDATE, (_e, p: { id?: unknown; name?: unknown; parentId?: unknown; sort?: unknown }) => {
+    if (!isNoteId(p?.id)) return INVALID
+    if (p.name !== undefined && !isName(p.name)) return INVALID
+    if (p.parentId !== undefined && !isParent(p.parentId)) return INVALID
+    if (p.sort !== undefined && !Number.isSafeInteger(p.sort)) return INVALID
+    return ySafe(() => supabase.updateNotebook(p.id as string, {
+      name: p.name as string | undefined, parentId: p.parentId as string | null | undefined, sort: p.sort as number | undefined,
+    }))
+  })
+  ipcMain.handle(IPC.NOTEBOOK_DELETE, (_e, id: unknown) => (isNoteId(id) ? ySafe(() => supabase.deleteNotebook(id)) : INVALID))
+  ipcMain.handle(IPC.NOTE_MOVE, (_e, p: { noteId?: unknown; notebookId?: unknown }) =>
+    isNoteId(p?.noteId) && isParent(p.notebookId ?? null)
+      ? ySafe(async () => {
+          const note = await supabase.moveNote(p.noteId as string, (p.notebookId ?? null) as string | null)
+          broadcast(IPC.NOTE_UPDATED, note)
+          return note
+        })
+      : INVALID)
+  ipcMain.handle(IPC.NOTE_VERSIONS, (_e, noteId: unknown) =>
+    isNoteId(noteId) ? ySafe(() => supabase.listNoteVersions(noteId)) : INVALID)
+  ipcMain.handle(IPC.NOTE_TRASH_LIST, () => ySafe(() => supabase.listTrash()))
+  ipcMain.handle(IPC.NOTE_RESTORE, (_e, ids: unknown) =>
+    isIdList(ids)
+      ? ySafe(async () => {
+          const notes = await supabase.restoreNotes(ids)
+          notes.forEach((n) => broadcast(IPC.NOTE_UPDATED, n))
+          return notes
+        })
+      : INVALID)
+  ipcMain.handle(IPC.NOTE_PURGE, (_e, ids: unknown) =>
+    isIdList(ids) ? ySafe(() => supabase.purgeTrashedNotes(ids)) : INVALID)
+  ipcMain.handle(IPC.NOTE_Y_VERSION, (_e, p: { noteId?: unknown; content?: unknown; kind?: unknown }) =>
+    isNoteId(p?.noteId) && isContent(p.content) && (p.kind === 'auto' || p.kind === 'manual' || p.kind === 'restore')
+      ? ySafe(() => supabase.noteSaveVersion(p.noteId as string, p.content as string, p.kind as 'auto' | 'manual' | 'restore'))
+      : INVALID)
 }
 
 function wireIPC(): void {
@@ -783,6 +882,7 @@ app.whenReady().then(async () => {
   // Wire everything
   wireSupabaseEvents()
   wireIPC()
+  wireNoteSyncIPC()
   monitor.on('change', (draft) => {
     void handleClipboardChange(draft).catch((err) => console.warn('[clip] processing failed', err))
   })
