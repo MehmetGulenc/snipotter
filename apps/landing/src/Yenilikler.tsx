@@ -18,9 +18,36 @@ interface Release {
 
 const releases: Release[] = [
   {
-    version: '0.9.0',
+    version: '0.10.0',
     date: 'Kasım 2026',
     badge: 'Güncel',
+    headline: 'Pano ve Notlar Artık Uçtan Uca Şifreli',
+    features: [
+      {
+        emoji: '🔐',
+        title: 'Uçtan uca şifreleme',
+        desc: 'Pano kayıtların, notların, fotoğrafların ve defter adların cihazlarında şifrelenir. Anahtar yalnızca senin cihazlarında durur; sunucu, yedekler ve Snipotter ekibi içeriği okuyamaz.',
+      },
+      {
+        emoji: '🗝️',
+        title: '24 kelimelik kurtarma anahtarı',
+        desc: 'Şifrelemeyi açarken sana 24 kelime verilir. Tüm cihazlarını kaybedersen verine bu kelimelerle ulaşırsın. Kelimeler kopyalanamaz, böylece pano geçmişine düşmez.',
+      },
+      {
+        emoji: '📱',
+        title: '12 kelimeyle yeni cihaz',
+        desc: 'Ayarlar → Cihazlar → Yeni cihaz ekle ile 10 dakika geçerli, tek kullanımlık 12 kelime al; yeni cihazda yazınca anahtar güvenle aktarılır.',
+      },
+      {
+        emoji: '🧹',
+        title: 'Mevcut veriler de şifrelenir',
+        desc: 'Güncellemeden sonraki ilk açılışta eski pano kayıtların ve notların şifrelenir. Yarıda kalırsa bir sonraki açılışta kaldığı yerden devam eder. Çıkış yapınca anahtar cihazdan silinir.',
+      },
+    ],
+  },
+  {
+    version: '0.9.0',
+    date: 'Kasım 2026',
     headline: 'Notlar Artık Profesyonel Bir Not Aracı',
     features: [
       {

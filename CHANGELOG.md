@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.10.0] - 2026-11-13
+
+### 🔐 Pano ve Notlar Artık Uçtan Uca Şifreli
+
+Pano kayıtların ve notların artık cihazlarında şifreleniyor. Anahtar yalnızca senin cihazlarında durur; sunucu, yedekler ve Snipotter ekibi içeriği okuyamaz.
+
+- **Şifrelenenler**: Pano metinleri ve önizlemeleri, not başlıkları ve içerikleri, not geçmişi, çöp kutusu, fotoğraflar, defter adları ve cihazlar arası aksiyonlar.
+- **Kurtarma anahtarı**: Şifrelemeyi açarken 24 kelime verilir; tüm cihazlarını kaybedersen verine yalnızca bu kelimelerle ulaşabilirsin. Kelimeler kopyalanamaz, pano geçmişine düşmez.
+- **Yeni cihaz ekle**: Ayarlar → Cihazlar → Yeni cihaz ekle ile 10 dakika geçerli, tek kullanımlık 12 kelime al; yeni cihazda "Bu cihazı bağla" ekranına yaz.
+- **Mevcut veriler**: Güncellemeden sonraki ilk açılışta eski kayıtların şifrelenir; yarıda kalırsa bir sonraki açılışta devam eder.
+- **Sunucu koruması**: Şifreleme açıldıktan sonra sunucu şifresiz yazmayı reddeder.
+
+### ⚠️ Önemli
+
+- Şifreleme açıldıktan sonra eski sürümler bu verileri okuyamaz; tüm cihazlarını bu sürüme güncelle.
+- Çıkış yapınca ya da eşleşmeden ayrılınca anahtar cihazdan silinir.
+
 ## [0.9.0] - 2026-11-13
 
 ### 📝 Notlar Artık Profesyonel Bir Not Aracı

@@ -47,7 +47,9 @@ Ortak çalışma alanı daveti aynı mekanizmayı kullanır: `https://snipotter.
 2. Güncel sürüm açıldığında, çalışma alanı şifresizse: anahtar üretilir, kurtarma kelimeleri gösterilir ve onaylatılır, `workspace_keys` yazılır (`unique(workspace_id)`; aynı anda iki cihaz denerse yalnız biri kazanır, diğeri "bu cihazı eşleştir" akışına düşer).
 3. Kazanan cihaz tüm satırları şifreleyip yazar (sayfalı, yarıda kalırsa kaldığı yerden devam eder), sonra `encryption = 'v1'`.
 4. Sunucu tetikleyicisi: `encryption = 'v1'` olan alana `enc:v1:` ile başlamayan içerik yazılamaz. Eski sürümlerin yazmaları reddedilir; yeni sürümler "uygulamayı güncelle" ekranı gösterir.
-5. **Önceki yedekler** (ör. `/opt/supabase/backups/public-before-0011-*.dump`) düz metin içerir; geçiş doğrulandıktan sonra silinmeli.
+5. **Önceki yedekler** (`/opt/supabase/backups/public-before-0011-*.dump`, `public-before-0014-*.dump`) düz metin içerir; kullanıcı cihazlarında geçiş doğrulandıktan sonra silinmeli.
+
+Durum (2026-11-13): 0014 production'da, v0.10.0 ile yayınlandı.
 
 ## Bilinen sonuçlar
 
