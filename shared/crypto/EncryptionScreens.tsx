@@ -144,12 +144,12 @@ export function EncryptionGate({ status, actions, onDone, mobile }: {
                 </label>
               ))}
             </div>
+            {/* Right under the fields: at the bottom the keyboard would cover it. */}
+            <button type="button" className={`${button} mt-5`} disabled={busy || step.ask.some((i) => !answers[i]?.trim())} onClick={() => void confirm(step.ask)}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Şifrelemeyi aç
+            </button>
             <button type="button" className="mt-3 h-11 text-sm text-primary" onClick={() => setStep({ kind: 'words', words: step.words })}>
               Kelimeleri tekrar göster
-            </button>
-            <div className="flex-1" />
-            <button type="button" className={button} disabled={busy || step.ask.some((i) => !answers[i]?.trim())} onClick={() => void confirm(step.ask)}>
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Şifrelemeyi aç
             </button>
           </>
         )}
@@ -184,8 +184,7 @@ export function EncryptionGate({ status, actions, onDone, mobile }: {
               className="mt-5 w-full rounded-xl border border-border bg-card p-3 text-[16px] outline-none focus:border-primary"
             />
             <p className="mt-1 text-xs text-muted-foreground">{joinWords.trim() ? joinWords.trim().split(/\s+/).length : 0} / 24 kelime</p>
-            <div className="flex-1" />
-            <button type="button" className={button} disabled={busy || joinWords.trim().split(/\s+/).length !== 24} onClick={() => void recover()}>
+            <button type="button" className={`${button} mt-4`} disabled={busy || joinWords.trim().split(/\s+/).length !== 24} onClick={() => void recover()}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />} Verilerimi aç
             </button>
             <button type="button" className="mt-3 h-11 text-sm text-primary" onClick={() => { setError(null); setStep(status === 'plain' ? { kind: 'intro' } : { kind: 'pair' }) }}>Geri</button>

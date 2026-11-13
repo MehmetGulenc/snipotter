@@ -89,10 +89,10 @@ export function SpaceBar({ api, spaces, activeId, myName, pendingInvite, onInvit
       )}
 
       {dialog && (
-        <Sheet mobile={mobile} onClose={close}
+        <Sheet mobile={mobile} onClose={close} top={dialog.kind !== 'people'}
           title={dialog.kind === 'new' ? 'Yeni ortak alan' : dialog.kind === 'join' ? 'Davete katıl' : active?.name ?? ''}>
-          {dialog.kind === 'new' && <NewSpace api={api} myName={myName} onDone={close} />}
-          {dialog.kind === 'join' && <JoinSpace api={api} myName={myName} initial={dialog.input} onDone={close} />}
+          {dialog.kind === 'new' && <NewSpace api={api} myName={myName} onDone={close} autoFocus={!mobile} />}
+          {dialog.kind === 'join' && <JoinSpace api={api} myName={myName} initial={dialog.input} onDone={close} autoFocus={!mobile} />}
           {dialog.kind === 'people' && active && <People api={api} space={active} onLeft={close} />}
         </Sheet>
       )}
@@ -120,12 +120,15 @@ function MenuAction({ icon, label, onClick }: { icon: JSX.Element; label: string
   )
 }
 
-function Sheet({ title, mobile, onClose, children }: { title: string; mobile?: boolean; onClose: () => void; children: React.ReactNode }): JSX.Element {
+/** On the phone, forms open from the top so the keyboard never covers them (and the page does not jump). */
+function Sheet({ title, mobile, top, onClose, children }: { title: string; mobile?: boolean; top?: boolean; onClose: () => void; children: React.ReactNode }): JSX.Element {
   return (
-    <div className={`fixed inset-0 z-[60] flex bg-black/50 ${mobile ? 'items-end' : 'items-center justify-center p-6'}`} onClick={onClose}>
+    <div className={`fixed inset-0 z-[60] flex bg-black/50 ${mobile ? (top ? 'items-start' : 'items-end') : 'items-center justify-center p-6'}`} onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}
         className={mobile
-          ? 'max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-3'
+          ? top
+            ? 'max-h-[90vh] w-full overflow-y-auto rounded-b-2xl border-b border-border bg-background px-4 pb-4 pt-[max(env(safe-area-inset-top),16px)]'
+            : 'max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-3'
           : 'max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl border border-border bg-background p-5 shadow-2xl'}>
         <div className="mb-4 flex items-center gap-2">
           <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold">{title}</h2>
@@ -159,14 +162,14 @@ function useRun(): { busy: boolean; error: string | null; run: (fn: () => Promis
 const ErrorText = ({ error }: { error: string | null }): JSX.Element | null =>
   error ? <p role="alert" className="mt-3 text-sm text-destructive">{error}</p> : null
 
-function NewSpace({ api, myName, onDone }: { api: SpacesApi; myName: string; onDone: () => void }): JSX.Element {
+function NewSpace({ api, myName, onDone, autoFocus }: { api: SpacesApi; myName: string; onDone: () => void; autoFocus: boolean }): JSX.Element {
   const [name, setName] = useState('')
   const [me, setMe] = useState(myName)
   const { busy, error, run } = useRun()
   return (
     <form onSubmit={(e) => { e.preventDefault(); void run(async () => { await api.create(name, me); onDone() }) }} className="space-y-3">
       <p className="text-sm text-muted-foreground">Eşinle, ailenle ya da arkadaşlarınla notları birlikte yazın. Pano geçmişin yalnızca sende kalır.</p>
-      <input className={field} value={name} maxLength={60} autoFocus placeholder="Alanın adı (ör. Ev)" aria-label="Alanın adı" onChange={(e) => setName(e.target.value)} />
+      <input className={field} value={name} maxLength={60} autoFocus={autoFocus} placeholder="Alanın adı (ör. Ev)" aria-label="Alanın adı" onChange={(e) => setName(e.target.value)} />
       {!myName && <input className={field} value={me} maxLength={40} placeholder="Adın (diğerleri görür)" aria-label="Adın" onChange={(e) => setMe(e.target.value)} />}
       <button type="submit" className={primary} disabled={busy || !name.trim()}>
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Oluştur
@@ -176,7 +179,7 @@ function NewSpace({ api, myName, onDone }: { api: SpacesApi; myName: string; onD
   )
 }
 
-function JoinSpace({ api, myName, initial, onDone }: { api: SpacesApi; myName: string; initial: string; onDone: () => void }): JSX.Element {
+function JoinSpace({ api, myName, initial, onDone, autoFocus }: { api: SpacesApi; myName: string; initial: string; onDone: () => void; autoFocus: boolean }): JSX.Element {
   const [input, setInput] = useState(initial)
   const [me, setMe] = useState(myName)
   const [preview, setPreview] = useState<{ name: string } | null>(null)
@@ -203,7 +206,7 @@ function JoinSpace({ api, myName, initial, onDone }: { api: SpacesApi; myName: s
   return (
     <form onSubmit={(e) => { e.preventDefault(); void run(async () => setPreview(await api.preview(input))) }} className="space-y-3">
       <p className="text-sm text-muted-foreground">Sana gönderilen davet bağlantısını yapıştır.</p>
-      <input className={field} value={input} autoFocus autoCapitalize="none" autoCorrect="off" spellCheck={false}
+      <input className={field} value={input} autoFocus={autoFocus} autoCapitalize="none" autoCorrect="off" spellCheck={false}
         placeholder="https://snipotter.com/katil#…" aria-label="Davet bağlantısı" onChange={(e) => setInput(e.target.value)} />
       <button type="submit" className={primary} disabled={busy || !input.trim()}>
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />} Devam
@@ -218,8 +221,13 @@ function People({ api, space, onLeft }: { api: SpacesApi; space: Space; onLeft: 
   const [renaming, setRenaming] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const { busy, error, run } = useRun()
-  const load = (): void => { api.members(space.id).then(setMembers, () => setMembers([])) }
-  useEffect(load, [space.id])
+  const load = (): void => { api.members(space.id).then(setMembers, () => setMembers((m) => m ?? [])) }
+  // Someone may join while this is open (e.g. right after the invite was sent).
+  useEffect(() => {
+    load()
+    const t = setInterval(load, 5000)
+    return () => clearInterval(t)
+  }, [space.id])
 
   const invite = (): Promise<void> => run(async () => {
     const { link } = await api.invite(space.id)

@@ -11,10 +11,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         #if DEBUG
-        // Simulator check of the Dynamic Island layout: launch with -debugActivity.
-        if ProcessInfo.processInfo.arguments.contains("-debugActivity"), #available(iOS 16.2, *) {
-            let attrs = SpaceNoteAttributes(spaceId: UUID().uuidString.lowercased(), personId: "none", wrappedKey: "", spaceName: "")
-            let state = SpaceNoteAttributes.ContentState(noteId: UUID().uuidString.lowercased(), title: "", author: "", authorId: "")
+        // Simulator check of the Dynamic Island with real ciphertext (scripts/dev/island-demo.cjs):
+        // -debugActivity <personId> <personalKeyB64> <spaceId> <wrappedKey> <spaceName> <noteId> <title> <author> <authorId>
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-debugActivity"), args.count >= i + 10, #available(iOS 16.2, *) {
+            let v = Array(args[(i + 1)...(i + 9)])
+            if let key = Data(base64Encoded: v[1]) { SnipotterShared.storeWorkspaceKey(key, workspaceId: v[0]) }
+            let attrs = SpaceNoteAttributes(spaceId: v[2], personId: v[0], wrappedKey: v[3], spaceName: v[4])
+            let state = SpaceNoteAttributes.ContentState(noteId: v[5], title: v[6], author: v[7], authorId: v[8])
             _ = try? Activity.request(attributes: attrs, content: .init(state: state, staleDate: nil))
         }
         #endif
