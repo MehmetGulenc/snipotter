@@ -1,5 +1,8 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { PairApprovalPrompt, type PairRequestView } from '@shared/crypto/EncryptionScreens'
+import { pairApi } from '@/lib/e2e'
+import { getSupabase } from '@/lib/supabase'
 import { App } from '@capacitor/app'
 import { Clipboard as ClipboardIcon, StickyNote, Settings as SettingsIcon, Search, ExternalLink } from 'lucide-react'
 import { Logo } from './Logo'
@@ -51,6 +54,28 @@ export function AppShell(): JSX.Element {
     })
     return unsub
   }, [workspace?.id, activeSpaceId])
+
+  // A new device asks for the key: "Onayla" prompt on this device.
+  const e2eReady = useStore((s) => s.e2eStatus === 'ready')
+  const [pairRequests, setPairRequests] = useState<PairRequestView[]>([])
+  const pairs = useMemo(() => (workspace && user ? pairApi(workspace.id, user.id) : null), [workspace?.id, user?.id])
+  useEffect(() => {
+    if (!workspace || !pairs || !e2eReady) return
+    const load = (): void => { void pairs.list().then(setPairRequests).catch(() => undefined) }
+    load()
+    const sb = getSupabase()
+    const ch = sb.channel(`web-pair-${workspace.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'key_requests', filter: `workspace_id=eq.${workspace.id}` }, load)
+      .subscribe()
+    window.addEventListener('focus', load)
+    const resume = isNative() ? App.addListener('appStateChange', ({ isActive }) => { if (isActive) load() }) : null
+    return () => {
+      void sb.removeChannel(ch)
+      window.removeEventListener('focus', load)
+      void resume?.then((h) => h.remove())
+    }
+  }, [workspace?.id, pairs, e2eReady])
+  const pairRequest = pairRequests[0]
 
   // Tapped "new note in your shared space": open that space and the note.
   useEffect(() => {
@@ -138,6 +163,14 @@ export function AppShell(): JSX.Element {
 
   return (
     <div className="flex h-[100svh] flex-col bg-background text-foreground">
+      {pairRequest && pairs && (
+        <PairApprovalPrompt
+          key={pairRequest.id}
+          request={pairRequest}
+          onApprove={async () => { await pairs.approve(pairRequest.id); setPairRequests((l) => l.filter((r) => r.id !== pairRequest.id)) }}
+          onDecline={async () => { await pairs.decline(pairRequest.id); setPairRequests((l) => l.filter((r) => r.id !== pairRequest.id)) }}
+        />
+      )}
       {/* Header.
           `pt-[calc(env(safe-area-inset-top)+0.625rem)]` extends the header's
           background up under the iOS status bar / Dynamic Island so the title

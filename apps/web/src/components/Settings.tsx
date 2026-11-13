@@ -3,15 +3,14 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Copy, Check, Loader2, LogOut, Smartphone, KeyRound, Trash2, ChevronRight, Zap, Monitor, Layers, Bell, ShieldCheck } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { listMembers, createPairCode, leaveWorkspace, signOut, removeWorkspaceMember, deleteOwnAccount } from '@/lib/api'
-import { createDeviceTransfer, forgetE2E } from '@/lib/e2e'
+import { forgetE2E } from '@/lib/e2e'
 import { forgetSpaces } from '@/lib/spaces'
-import { AddDevicePanel } from '@shared/crypto/EncryptionScreens'
 import { isNative, isAutoCaptureEnabled, setAutoCaptureEnabled, openAppSettings } from '@/lib/mobile'
 import { confirmDialog, errorText, toast } from '@/lib/feedback'
 import { relativeTime, cn } from '@/lib/utils'
 import type { WorkspaceMember } from '@/lib/types'
 import { registerPush } from '@/lib/native-bridge'
-import { PUSH_TOKEN_KEY, deletePushToken, savePushToken } from '@/lib/actions'
+import { PUSH_TOKEN_KEY, deletePushToken, dropActivityToken, savePushToken, syncActivityToken } from '@/lib/actions'
 import { ShortcutGuide } from './ShortcutGuide'
 
 export function Settings(): JSX.Element {
@@ -52,6 +51,7 @@ export function Settings(): JSX.Element {
       const current = window.localStorage.getItem(PUSH_TOKEN_KEY)
       if (current) {
         await deletePushToken(current)
+        await dropActivityToken()
         window.localStorage.removeItem(PUSH_TOKEN_KEY)
         setPushToken(null)
         toast('Bildirimler kapatıldı', 'info')
@@ -70,6 +70,7 @@ export function Settings(): JSX.Element {
       })
       window.localStorage.setItem(PUSH_TOKEN_KEY, reg.token)
       setPushToken(reg.token)
+      void syncActivityToken(workspace.id, reg.environment).catch((e) => console.warn('[push] activity token', e))
       toast('Bildirimler açıldı')
     } catch (e) {
       toast('Bildirim açılamadı: izin vermediysen iPhone Ayarları → Snipotter → Bildirimler\'den aç. ' + errorText(e), 'error', 4500)
@@ -133,6 +134,7 @@ export function Settings(): JSX.Element {
     } catch (e) {
       console.warn('[push] token cleanup failed', e)
     }
+    await dropActivityToken()
     window.localStorage.removeItem(PUSH_TOKEN_KEY)
     setPushToken(null)
   }
@@ -281,13 +283,9 @@ export function Settings(): JSX.Element {
             )}
           </Row>
         ))}
-        {e2eStatus === 'ready' && workspace ? (
-          <div className="px-4 py-4">
-            <AddDevicePanel create={() => createDeviceTransfer(workspace.id)} />
-          </div>
-        ) : code ? (
+        {code ? (
           <div className="space-y-3 px-4 py-4">
-            <p className="text-center text-xs text-muted-foreground">Diğer cihazda “Eşleştir” ekranına yaz · 10 dakika geçerli</p>
+            <p className="text-center text-xs text-muted-foreground">Yeni cihazda “Eşleştir” ekranına yaz, sonra burada çıkan isteği onayla · 10 dakika geçerli</p>
             <div className="text-center font-mono text-4xl font-bold tracking-[0.3em] text-primary">{formatPairCode(code)}</div>
             <div className="flex gap-2">
               <button onClick={onCopy} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/10 py-2.5 text-sm font-medium active:bg-white/15">

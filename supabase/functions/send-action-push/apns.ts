@@ -20,6 +20,27 @@ export function pushPayload(action: Action) {
 export function spaceNotePayload(spaceId: string, noteId: string) {
   return { aps: { alert: { title: 'Snipotter', body: 'Ortak alanına yeni bir not eklendi' }, sound: 'default', category: 'SNIPOTTER_SPACE_NOTE', 'thread-id': spaceId }, space_id: spaceId, note_id: noteId };
 }
+/** Sealed texts the phone opens itself (shared Keychain); the server never sees them in plain. */
+export interface SpaceNoteSealed {
+  spaceId: string; noteId: string; personId: string; wrappedKey: string;
+  spaceName: string; title: string; author: string; authorId: string;
+}
+/** Dynamic Island push-to-start (iOS 17.2+), rendered by SpaceNoteLiveActivity in the widget. */
+export function spaceNoteActivityPayload(n: SpaceNoteSealed, now = Date.now()) {
+  const seconds = Math.floor(now / 1000);
+  return {
+    aps: {
+      timestamp: seconds,
+      event: 'start',
+      'attributes-type': 'SpaceNoteAttributes',
+      attributes: { spaceId: n.spaceId, personId: n.personId, wrappedKey: n.wrappedKey, spaceName: n.spaceName },
+      'content-state': { noteId: n.noteId, title: n.title, author: n.author, authorId: n.authorId },
+      'stale-date': seconds + 3600,
+      'relevance-score': 50,
+      alert: { title: 'Snipotter', body: 'Ortak alanına yeni bir not eklendi' },
+    },
+  };
+}
 export async function secretMatches(actual: string | null, expected: string): Promise<boolean> {
   if (!actual || !expected) return false;
   const digest = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));

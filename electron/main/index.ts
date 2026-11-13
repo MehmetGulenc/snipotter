@@ -304,6 +304,7 @@ function wireSupabaseEvents(): void {
   supabase.on('notebooks:changed', () => broadcast(IPC.NOTEBOOKS_CHANGED, null))
   supabase.on('e2e:status', (status: string) => broadcast(IPC.E2E_STATUS_CHANGED, status))
   supabase.on('spaces:changed', (state: unknown) => broadcast(IPC.SPACE_CHANGED, state))
+  supabase.on('pair:requests', (list: unknown) => broadcast(IPC.PAIR_REQUESTS_CHANGED, list))
 }
 
 // ── Yjs note sync IPC. The renderer is treated as untrusted input. ─────────────
@@ -366,7 +367,12 @@ function wireNoteSyncIPC(): void {
       ? ySafe(() => supabase.e2eCommit(answers as Array<{ index: number; word: string }>)) : INVALID)
   ipcMain.handle(IPC.E2E_HAS_PLAIN, () => ySafe(() => supabase.e2eHasPlainData()))
   ipcMain.handle(IPC.E2E_MIGRATE, (e) => ySafe(() => supabase.e2eMigrate((p) => e.sender.send(IPC.E2E_PROGRESS, p))))
-  ipcMain.handle(IPC.E2E_TRANSFER, () => ySafe(() => supabase.e2eCreateTransfer()))
+  ipcMain.handle(IPC.E2E_PAIR_START, () => ySafe(() => supabase.e2ePairStart(DEVICE_NAME)))
+  ipcMain.handle(IPC.E2E_PAIR_WAIT, (_e, id: unknown) => (isNoteId(id) ? ySafe(() => supabase.e2ePairWait(id)) : INVALID))
+  ipcMain.handle(IPC.E2E_PAIR_CANCEL, () => ySafe(async () => supabase.e2ePairCancel()))
+  ipcMain.handle(IPC.PAIR_REQUESTS, () => ySafe(() => supabase.pairRequests()))
+  ipcMain.handle(IPC.PAIR_APPROVE, (_e, id: unknown) => (isNoteId(id) ? ySafe(() => supabase.pairApprove(id)) : INVALID))
+  ipcMain.handle(IPC.PAIR_DECLINE, (_e, id: unknown) => (isNoteId(id) ? ySafe(() => supabase.pairDecline(id)) : INVALID))
   ipcMain.handle(IPC.E2E_JOIN, (_e, words: unknown) =>
     isWords(words)
       ? ySafe(async () => {
@@ -386,6 +392,7 @@ function wireNoteSyncIPC(): void {
     isSpaceName(p?.name) && isPersonName(p.myName) ? ySafe(() => supabase.spaceCreate(p.name as string, p.myName as string)) : INVALID)
   ipcMain.handle(IPC.SPACE_JOIN, (_e, p: { input?: unknown; myName?: unknown }) =>
     isInvite(p?.input) && isPersonName(p.myName) ? ySafe(() => supabase.spaceJoin(p.input as string, p.myName as string)) : INVALID)
+  ipcMain.handle(IPC.SPACE_PREVIEW, (_e, input: unknown) => (isInvite(input) ? ySafe(() => supabase.spacePreview(input)) : INVALID))
   ipcMain.handle(IPC.SPACE_INVITE, (_e, id: unknown) => (isNoteId(id) ? ySafe(() => supabase.spaceInvite(id)) : INVALID))
   ipcMain.handle(IPC.SPACE_MEMBERS, (_e, id: unknown) => (isNoteId(id) ? ySafe(() => supabase.spaceMembers(id)) : INVALID))
   ipcMain.handle(IPC.SPACE_RENAME, (_e, p: { id?: unknown; name?: unknown }) =>

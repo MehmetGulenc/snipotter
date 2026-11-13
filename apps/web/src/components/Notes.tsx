@@ -1,5 +1,5 @@
 'use client'
-import { SpaceSwitcher, SpacesPanel } from '@shared/spaces/SpacesUI'
+import { SpaceBar } from '@shared/spaces/SpacesUI'
 import { savedDisplayName, webSpacesApi } from '@/lib/spaces'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Pin, PinOff, Trash2, Loader2, ChevronLeft, Check, CheckSquare, Square, Undo2, X, StickyNote, History, BookOpen } from 'lucide-react'
@@ -51,9 +51,7 @@ export function Notes(): JSX.Element {
   const spaces = useStore((s) => s.spaces)
   const activeSpaceId = useStore((s) => s.activeSpaceId)
   const e2eReady = useStore((s) => s.e2eStatus === 'ready')
-  const [spacesOpen, setSpacesOpen] = useState(false)
   const pendingInvite = useStore((s) => s.pendingInvite)
-  useEffect(() => { if (pendingInvite && e2eReady) setSpacesOpen(true) }, [pendingInvite, e2eReady])
   /** Notes live in the personal workspace or in the open shared space. */
   const notesWs = workspace ? activeSpaceId ?? workspace.id : null
   const spacesApi = useMemo(() => (workspace ? webSpacesApi(workspace.id) : null), [workspace?.id])
@@ -520,18 +518,10 @@ export function Notes(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
-      {spacesOpen && spacesApi && (
-        <div role="dialog" aria-modal="true" aria-label="Ortak alanlar"
-          className="fixed inset-0 z-50 bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-          <SpacesPanel api={spacesApi} spaces={spaces} activeId={activeSpaceId} defaultName={savedDisplayName()}
-            initialJoin={pendingInvite ?? undefined}
-            onClose={() => { setSpacesOpen(false); useStore.getState().setPendingInvite(null) }} />
-        </div>
-      )}
       {e2eReady && spacesApi && !selectMode && (
         <div className="flex items-center px-3 pt-1 sm:px-5">
-          <SpaceSwitcher spaces={spaces} activeId={activeSpaceId} onManage={() => setSpacesOpen(true)}
-            onOpen={(id) => void spacesApi.open(id)} />
+          <SpaceBar api={spacesApi} spaces={spaces} activeId={activeSpaceId} myName={savedDisplayName()} mobile
+            pendingInvite={pendingInvite} onInviteHandled={() => useStore.getState().setPendingInvite(null)} />
         </div>
       )}
       {showNotebooks && (

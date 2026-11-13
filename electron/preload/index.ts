@@ -25,6 +25,7 @@ import {
 import type { Space, SpaceInvite, SpaceMember } from '../../shared/crypto/spaces'
 
 type SpaceState = { spaces: Space[]; activeId: string | null }
+type PairRequestView = { id: string; deviceName: string; code: string; createdAt: string }
 
 type E2EStatus = 'unknown' | 'unsupported' | 'plain' | 'ready' | 'needs-key'
 
@@ -155,6 +156,7 @@ const api = {
     open: (id: string | null) => invoke<SpaceState>(IPC.SPACE_OPEN, id),
     create: (name: string, myName: string) => invoke<Space>(IPC.SPACE_CREATE, { name, myName }),
     join: (input: string, myName: string) => invoke<Space>(IPC.SPACE_JOIN, { input, myName }),
+    preview: (input: string) => invoke<{ name: string }>(IPC.SPACE_PREVIEW, input),
     invite: (id: string) => invoke<SpaceInvite>(IPC.SPACE_INVITE, id),
     members: (id: string) => invoke<SpaceMember[]>(IPC.SPACE_MEMBERS, id),
     rename: (id: string, name: string) => invoke<void>(IPC.SPACE_RENAME, { id, name }),
@@ -179,7 +181,18 @@ const api = {
       ipcRenderer.on(IPC.E2E_PROGRESS, fn)
       return () => ipcRenderer.off(IPC.E2E_PROGRESS, fn)
     },
-    createTransfer: () => invoke<{ words: string[]; expiresAt: number }>(IPC.E2E_TRANSFER),
+    pairStart: () => invoke<{ id: string; code: string }>(IPC.E2E_PAIR_START),
+    pairWait: (id: string) => invoke<void>(IPC.E2E_PAIR_WAIT, id),
+    pairCancel: () => invoke<void>(IPC.E2E_PAIR_CANCEL),
+    /** Other devices waiting for this device's approval. */
+    pairRequests: () => invoke<PairRequestView[]>(IPC.PAIR_REQUESTS),
+    onPairRequests: (cb: (list: PairRequestView[]) => void) => {
+      const fn = (_: unknown, list: PairRequestView[]) => cb(list)
+      ipcRenderer.on(IPC.PAIR_REQUESTS_CHANGED, fn)
+      return () => ipcRenderer.off(IPC.PAIR_REQUESTS_CHANGED, fn)
+    },
+    pairApprove: (id: string) => invoke<void>(IPC.PAIR_APPROVE, id),
+    pairDecline: (id: string) => invoke<void>(IPC.PAIR_DECLINE, id),
     join: (words: string) => invoke<Workspace | null>(IPC.E2E_JOIN, words),
   },
   settings: {

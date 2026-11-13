@@ -10,7 +10,7 @@ import { useStore } from './store'
 import { nativeBridgeAvailable } from './native-bridge'
 import { clearSpaceCodecs, codec, codecFor } from '@shared/crypto/codec'
 import {
-  createInvite, createSpace, joinSpace, listMembers, loadSpaces, removeMember, renameSpace, type Space,
+  createInvite, createSpace, joinSpace, listMembers, loadSpaces, previewInvite, removeMember, renameSpace, type Space,
 } from '@shared/crypto/spaces'
 import type { SpacesApi } from '@shared/spaces/SpacesUI'
 
@@ -57,18 +57,19 @@ export function webSpacesApi(personId: string): SpacesApi {
   return {
     async create(name, myName) {
       remember(myName)
-      const space = await createSpace(sb, personId, codec(), name, myName)
+      const space = await createSpace(sb, personId, codec(), name, myName || savedDisplayName())
       await refreshSpaces(personId)
       openSpace(personId, space.id)
       return space
     },
     async join(input, myName) {
       remember(myName)
-      const space = await joinSpace(sb, personId, codec(), input, myName)
+      const space = await joinSpace(sb, personId, codec(), input, myName || savedDisplayName())
       await refreshSpaces(personId)
       openSpace(personId, space.id)
       return space
     },
+    preview: (input) => previewInvite(sb, input),
     invite: (id) => createInvite(sb, personId, codec(), id),
     members: (id) => listMembers(sb, personId, codecFor(id), id),
     async rename(id, name) {

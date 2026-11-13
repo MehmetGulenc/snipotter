@@ -63,3 +63,7 @@ Durum (2026-11-13): 0014 production'da, v0.10.0 ile yayınlandı.
 - Şifreleme çekirdeği: AES-GCM gidiş-dönüş, yanlış AAD/anahtar reddi, `enc:v1` biçimi, HMAC tekrar kontrolü, BIP39 kelime ↔ entropi ve sağlama toplamı.
 - Sunucu: tetikleyici şifresiz yazmayı reddeder; `workspace_keys` yalnız üyelere; tek kullanımlık eşleştirme kaydı süresi dolunca okunamaz (yerel Postgres, `supabase/tests`).
 - Uçtan uca: iki cihaz eşleşir, biri yazar diğeri okur; kurtarma kelimeleriyle yeni cihaz açılır; eski sürüm yazamaz.
+
+## Yeni cihaz: kod + onay (0016)
+
+12 kelimelik aktarım kaldırıldı. Yeni cihaz eski 6 haneli eşleştirme koduyla çalışma alanına katılır, sonra bir P-256 ECDH açık anahtarı yayınlar (`key_requests`). Anahtarı tutan herhangi bir cihazda "iPhone bağlanmak istiyor — Onayla" çıkar. Onaylanınca çalışma alanı anahtarı ECDH ile türetilen anahtarla (HKDF, AAD `pair|<istek>`) mühürlenip geri gönderilir. İki ekranda da yeni cihazın açık anahtarından türetilen 4 haneli kod gösterilir; sunucu açık anahtarı değiştirirse kodlar tutmaz. "Reddet" isteği siler ve o cihazı çalışma alanından çıkarır. 24 kelimelik kurtarma yalnızca hiçbir cihaza erişim kalmadığında kullanılır.

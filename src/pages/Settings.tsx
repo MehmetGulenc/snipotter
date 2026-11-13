@@ -17,8 +17,6 @@ import {
   Trash2,
   ShieldCheck,
 } from 'lucide-react'
-import { AddDevicePanel } from '@shared/crypto/EncryptionScreens'
-import { createDeviceTransfer } from '@/lib/e2e'
 import type { AppSettings, WorkspaceMember, UpdaterStatus, DiagnosticsState } from '@shared/types'
 import { isMas } from '@/lib/runtime'
 
@@ -715,15 +713,13 @@ function DevicesSection(): JSX.Element {
         ))}
       </div>
 
-      {e2eStatus === 'ready' ? (
-        <div className="space-y-3 rounded-lg border border-border p-4">
-          <div className="flex items-center gap-2 text-sm">
-            <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />
-            <span>Uçtan uca şifreleme açık: sunucu pano ve not içeriğini okuyamaz.</span>
-          </div>
-          <AddDevicePanel create={createDeviceTransfer} />
-        </div>
-      ) : !code ? (
+      {e2eStatus === 'ready' && (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+          <ShieldCheck className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+          Uçtan uca şifreli. Yeni cihazda kodu girince bu cihazda onay isteği çıkar.
+        </p>
+      )}
+      {!code ? (
         <Button onClick={generate} disabled={busy} variant="outline" className="w-full">
           {busy ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

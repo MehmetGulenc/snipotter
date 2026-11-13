@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createJwt, pushPayload, secretMatches, spaceNotePayload } from './apns.ts';
+import { createJwt, pushPayload, secretMatches, spaceNoteActivityPayload, spaceNotePayload } from './apns.ts';
 
 test('ES256 JWT has APNs claims and a verifiable JOSE signature', async () => {
   const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
@@ -78,4 +78,16 @@ test('shared-space note push carries ids only', () => {
   assert.equal(body.note_id, note);
   assert.equal(body.aps['thread-id'], space);
   assert.deepEqual(Object.keys(body).sort(), ['aps', 'note_id', 'space_id']);
+});
+test('Dynamic Island push-to-start carries only sealed texts and fits APNs limits', () => {
+  const sealed = 'enc:v1:' + 'A'.repeat(120);
+  const body = spaceNoteActivityPayload({ spaceId: crypto.randomUUID(), noteId: crypto.randomUUID(), personId: crypto.randomUUID(), wrappedKey: sealed, spaceName: sealed, title: sealed, author: sealed, authorId: crypto.randomUUID() }, 1700000000000);
+  assert.equal(body.aps.event, 'start');
+  assert.equal(body.aps['attributes-type'], 'SpaceNoteAttributes');
+  assert.equal(body.aps.timestamp, 1700000000);
+  assert.ok(body.aps['stale-date'] > body.aps.timestamp);
+  for (const v of [...Object.values(body.aps.attributes), ...Object.values(body.aps['content-state'])]) {
+    assert.ok(typeof v === 'string' && (v.startsWith('enc:v1:') || /^[0-9a-f-]{36}$/.test(v)));
+  }
+  assert.ok(Buffer.byteLength(JSON.stringify(body)) < 4096);
 });

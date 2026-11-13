@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from './store/useStore'
 import { Onboarding } from './components/Onboarding'
-import { EncryptionGate } from '@shared/crypto/EncryptionScreens'
-import { desktopEncryptionActions } from '@/lib/e2e'
+import { EncryptionGate, PairApprovalPrompt, type PairRequestView } from '@shared/crypto/EncryptionScreens'
+import { desktopEncryptionActions, pairApi } from '@/lib/e2e'
 import { Library } from './pages/Library'
 import { Notes } from './pages/Notes'
 import { Settings } from './pages/Settings'
@@ -178,6 +178,18 @@ export default function App(): JSX.Element {
     void window.snipotter.e2e.hasPlainData().then((r) => { if (r.ok && r.data) void desktopEncryptionActions.migrate(() => undefined) })
   }, [e2eStatus])
 
+  // A new device asks for the key: "Onayla" prompt (main window only).
+  const [pairRequests, setPairRequests] = useState<PairRequestView[]>([])
+  const overlay = route === 'quick-note' || route === 'quick-paste' || route === 'clip-detail'
+  useEffect(() => {
+    if (e2eStatus !== 'ready' || overlay) return
+    const load = (): void => { void pairApi.list().then(setPairRequests).catch(() => undefined) }
+    load()
+    const off = window.snipotter.e2e.onPairRequests(setPairRequests)
+    window.addEventListener('focus', load)
+    return () => { off(); window.removeEventListener('focus', load) }
+  }, [e2eStatus, overlay])
+
   // ==== Overlay windows have their own minimal routes ====
   if (route === 'quick-note') return <QuickNote />
   if (route === 'quick-paste') return <QuickPaste />
@@ -206,8 +218,17 @@ export default function App(): JSX.Element {
     )
   }
 
+  const pairRequest = pairRequests[0]
   return (
     <div className="flex h-full flex-col">
+      {pairRequest && (
+        <PairApprovalPrompt
+          key={pairRequest.id}
+          request={pairRequest}
+          onApprove={async () => { await pairApi.approve(pairRequest.id); setPairRequests((l) => l.filter((r) => r.id !== pairRequest.id)) }}
+          onDecline={async () => { await pairApi.decline(pairRequest.id); setPairRequests((l) => l.filter((r) => r.id !== pairRequest.id)) }}
+        />
+      )}
       <Topbar route={route} />
       <UpdateBanner />
       <div className="flex flex-1 overflow-hidden">

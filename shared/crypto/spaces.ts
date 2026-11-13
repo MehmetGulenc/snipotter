@@ -213,3 +213,19 @@ export async function removeMember(sb: SupabaseClient, personId: string, spaceId
   fail(error)
   if (targetPersonId === personId) setSpaceCodec(spaceId, null)
 }
+
+/** Name of the space behind an invite, before joining (the key comes with the invite). */
+export async function previewInvite(sb: SupabaseClient, input: string): Promise<{ name: string }> {
+  let secret: Uint8Array
+  try {
+    secret = wordsToSecret(inviteWords(input))
+  } catch {
+    throw new Error('Bu bir Snipotter davet bağlantısı değil')
+  }
+  if (secret.length !== 16) throw new Error('Bu bir Snipotter davet bağlantısı değil')
+  const { data, error } = await sb.rpc('peek_space_invite', { p_invite_id: await secretId(secret, 'invite') })
+  if (error) throw new Error('Davet geçersiz ya da süresi dolmuş')
+  const row = (Array.isArray(data) ? data[0] : data) as { space_id: string; wrapped: string; name: string }
+  const keys = await deriveWorkspaceKeys(row.space_id, await unwrapKey(row.wrapped, secret, 'invite'))
+  return { name: await openName(keys, nameCtx(row.space_id), row.name, 'Ortak alan') }
+}

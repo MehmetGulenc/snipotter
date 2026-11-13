@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { KeyRound, Loader2, ShieldCheck, Smartphone, RefreshCw } from 'lucide-react'
 
 export interface EncryptionActions {
   prepare(): Promise<{ words: string[] }>
   commit(answers: Array<{ index: number; word: string }>): Promise<'enabled' | 'lost-race'>
   migrate(onProgress: (p: { step: string; done: number }) => void): Promise<void>
-  /** 12 words from another device, or the 24 recovery words. */
-  join(words: string): Promise<void>
+  /** Asks this workspace's other devices for the key; resolves once one taps "Onayla". */
+  pair(): Promise<{ code: string; wait(signal: AbortSignal): Promise<void> }>
+  /** All devices lost: the 24 recovery words. */
+  recover(words: string): Promise<void>
 }
 
 type Step =
@@ -14,7 +16,8 @@ type Step =
   | { kind: 'words'; words: string[] }
   | { kind: 'confirm'; words: string[]; ask: number[] }
   | { kind: 'migrating'; step: string; done: number }
-  | { kind: 'join' }
+  | { kind: 'pair' }
+  | { kind: 'recover' }
 
 const pick3 = (): number[] => {
   const s = new Set<number>()
@@ -37,13 +40,13 @@ export function EncryptionGate({ status, actions, onDone, mobile }: {
   onDone: () => void
   mobile: boolean
 }): JSX.Element {
-  const [step, setStep] = useState<Step>(status === 'plain' ? { kind: 'intro' } : { kind: 'join' })
+  const [step, setStep] = useState<Step>(status === 'plain' ? { kind: 'intro' } : { kind: 'pair' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [joinWords, setJoinWords] = useState('')
 
-  useEffect(() => setStep(status === 'plain' ? { kind: 'intro' } : { kind: 'join' }), [status])
+  useEffect(() => setStep(status === 'plain' ? { kind: 'intro' } : { kind: 'pair' }), [status])
 
   const run = async (fn: () => Promise<void>): Promise<void> => {
     setBusy(true)
@@ -62,8 +65,7 @@ export function EncryptionGate({ status, actions, onDone, mobile }: {
   const confirm = (ask: number[]): Promise<void> => run(async () => {
     const result = await actions.commit(ask.map((index) => ({ index, word: answers[index] ?? '' })))
     if (result === 'lost-race') {
-      setError('Başka bir cihazın şifrelemeyi biraz önce açtı. O cihazdan "Yeni cihaz ekle" ile aldığın 12 kelimeyi gir.')
-      setStep({ kind: 'join' })
+      setStep({ kind: 'pair' })
       return
     }
     setStep({ kind: 'migrating', step: 'Hazırlanıyor', done: 0 })
@@ -71,8 +73,8 @@ export function EncryptionGate({ status, actions, onDone, mobile }: {
     onDone()
   })
 
-  const join = (): Promise<void> => run(async () => {
-    await actions.join(joinWords)
+  const recover = (): Promise<void> => run(async () => {
+    await actions.recover(joinWords)
     onDone()
   })
 
@@ -98,6 +100,9 @@ export function EncryptionGate({ status, actions, onDone, mobile }: {
             <div className="flex-1" />
             <button type="button" className={button} disabled={busy} onClick={() => void start()}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />} Kurtarma kelimelerini oluştur
+            </button>
+            <button type="button" className="mt-3 h-11 text-sm text-muted-foreground" onClick={() => setStep({ kind: 'recover' })}>
+              Daha önce kullandım, kurtarma kelimelerim var
             </button>
           </>
         )}
@@ -158,31 +163,32 @@ export function EncryptionGate({ status, actions, onDone, mobile }: {
           </div>
         )}
 
-        {step.kind === 'join' && (
+        {step.kind === 'pair' && (
+          <PairWait actions={actions} onDone={onDone} onRecover={() => setStep({ kind: 'recover' })} />
+        )}
+
+        {step.kind === 'recover' && (
           <>
-            <Smartphone className="mb-4 h-12 w-12 text-primary" aria-hidden="true" />
-            <h1 className="text-2xl font-bold">Bu cihazı bağla</h1>
+            <KeyRound className="mb-4 h-12 w-12 text-primary" aria-hidden="true" />
+            <h1 className="text-2xl font-bold">Kurtarma kelimeleri</h1>
             <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-              Verilerin şifreli. Diğer cihazında <b className="text-foreground">Ayarlar → Cihazlar → Yeni cihaz ekle</b> ile 12 kelime al
-              ve buraya yaz. Hiçbir cihazın kalmadıysa 24 kelimelik kurtarma anahtarını gir.
+              Şifrelemeyi açarken yazdığın 24 kelimeyi sırasıyla gir.
             </p>
             <textarea
               value={joinWords}
               onChange={(e) => setJoinWords(e.target.value)}
               autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off"
-              rows={4}
+              rows={5}
               placeholder="kelime kelime kelime …"
-              aria-label="Eşleştirme veya kurtarma kelimeleri"
+              aria-label="Kurtarma kelimeleri"
               className="mt-5 w-full rounded-xl border border-border bg-card p-3 text-[16px] outline-none focus:border-primary"
             />
-            <p className="mt-1 text-xs text-muted-foreground">{joinWords.trim() ? joinWords.trim().split(/\s+/).length : 0} kelime</p>
+            <p className="mt-1 text-xs text-muted-foreground">{joinWords.trim() ? joinWords.trim().split(/\s+/).length : 0} / 24 kelime</p>
             <div className="flex-1" />
-            <button type="button" className={button} disabled={busy || ![12, 24].includes(joinWords.trim().split(/\s+/).length)} onClick={() => void join()}>
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />} Bağlan
+            <button type="button" className={button} disabled={busy || joinWords.trim().split(/\s+/).length !== 24} onClick={() => void recover()}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />} Verilerimi aç
             </button>
-            {status === 'plain' && (
-              <button type="button" className="mt-3 h-11 text-sm text-primary" onClick={() => setStep({ kind: 'intro' })}>Geri</button>
-            )}
+            <button type="button" className="mt-3 h-11 text-sm text-primary" onClick={() => { setError(null); setStep(status === 'plain' ? { kind: 'intro' } : { kind: 'pair' }) }}>Geri</button>
           </>
         )}
 
@@ -192,56 +198,110 @@ export function EncryptionGate({ status, actions, onDone, mobile }: {
   )
 }
 
-/** "Yeni cihaz ekle": 12 one-time words, valid for 10 minutes. */
-export function AddDevicePanel({ create }: { create: () => Promise<{ words: string[]; expiresAt: number }> }): JSX.Element {
-  const [offer, setOffer] = useState<{ words: string[]; expiresAt: number } | null>(null)
+/** New device: shows the code and waits until another device taps "Onayla". */
+function PairWait({ actions, onDone, onRecover }: { actions: EncryptionActions; onDone: () => void; onRecover: () => void }): JSX.Element {
+  const [code, setCode] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [now, setNow] = useState(Date.now())
-  const [busy, setBusy] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const done = useRef(onDone)
+  done.current = onDone
 
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [])
-
-  const make = async (): Promise<void> => {
-    setBusy(true)
+    const ctrl = new AbortController()
+    setCode(null)
     setError(null)
-    try {
-      setOffer(await create())
-    } catch (err) {
-      setError((err as Error).message || 'Kelimeler oluşturulamadı')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const left = offer ? Math.max(0, Math.round((offer.expiresAt - now) / 1000)) : 0
-  const expired = Boolean(offer) && left === 0
-  const mmss = useMemo(() => `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`, [left])
+    void (async () => {
+      try {
+        const pending = await actions.pair()
+        if (ctrl.signal.aborted) return
+        setCode(pending.code)
+        await pending.wait(ctrl.signal)
+        if (!ctrl.signal.aborted) done.current()
+      } catch (err) {
+        if (!ctrl.signal.aborted) setError((err as Error).message || 'Eşleştirme yapılamadı')
+      }
+    })()
+    return () => ctrl.abort()
+  }, [actions, attempt])
 
   return (
-    <div className="space-y-3">
-      {!offer || expired ? (
-        <button type="button" onClick={() => void make()} disabled={busy} className="flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : expired ? <RefreshCw className="h-4 w-4" /> : <Smartphone className="h-4 w-4" />}
-          {expired ? 'Süre doldu, yeni kelimeler oluştur' : 'Yeni cihaz ekle'}
-        </button>
-      ) : (
+    <div className="flex flex-1 flex-col items-center text-center">
+      <Smartphone className="mb-4 mt-6 h-12 w-12 text-primary" aria-hidden="true" />
+      <h1 className="text-2xl font-bold">Diğer cihazında onayla</h1>
+      <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-muted-foreground">
+        Snipotter'ın açık olduğu diğer cihazında bir onay isteği çıktı. Oradaki kod bununla aynıysa <b className="text-foreground">Onayla</b>'ya dokun.
+      </p>
+      {code ? (
+        <div className="mt-8 font-mono text-5xl font-bold tracking-[0.3em] text-primary" aria-label={`Doğrulama kodu ${code.split('').join(' ')}`}>{code}</div>
+      ) : !error ? (
+        <Loader2 className="mt-10 h-8 w-8 animate-spin text-primary" aria-hidden="true" />
+      ) : null}
+      {code && !error && (
+        <p className="mt-4 flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Onay bekleniyor…
+        </p>
+      )}
+      {error && (
         <>
-          <p className="text-sm text-muted-foreground">
-            Yeni cihazda <b className="text-foreground">"Bu cihazı bağla"</b> ekranına bu 12 kelimeyi yaz. Kelimeler tek kullanımlık, {mmss} içinde geçerli.
-          </p>
-          <ol className="grid select-none grid-cols-3 gap-2" style={{ WebkitUserSelect: 'none' }} onCopy={(e) => e.preventDefault()}>
-            {offer.words.map((w, i) => (
-              <li key={i} className="rounded-lg border border-border bg-card px-2 py-1.5 text-sm">
-                <span className="mr-1 text-xs text-muted-foreground">{i + 1}.</span>{w}
-              </li>
-            ))}
-          </ol>
+          <p role="alert" className="mt-6 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">{error}</p>
+          <button type="button" onClick={() => setAttempt((n) => n + 1)}
+            className="mt-4 flex h-11 items-center gap-2 rounded-xl border border-border px-4 text-sm font-medium">
+            <RefreshCw className="h-4 w-4" /> Tekrar dene
+          </button>
         </>
       )}
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <div className="flex-1" />
+      <button type="button" className="h-11 text-sm text-muted-foreground" onClick={onRecover}>
+        Diğer cihazlarıma erişimim yok
+      </button>
+    </div>
+  )
+}
+
+export interface PairRequestView {
+  id: string
+  deviceName: string
+  code: string
+}
+
+/** Existing device: "iPhone bağlanmak istiyor · 4821 — Onayla / Reddet". */
+export function PairApprovalPrompt({ request, onApprove, onDecline }: {
+  request: PairRequestView
+  onApprove: () => Promise<void>
+  onDecline: () => Promise<void>
+}): JSX.Element {
+  const [busy, setBusy] = useState<'approve' | 'decline' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const act = async (kind: 'approve' | 'decline'): Promise<void> => {
+    setBusy(kind)
+    setError(null)
+    try {
+      await (kind === 'approve' ? onApprove() : onDecline())
+    } catch (err) {
+      setError((err as Error).message || 'İşlem yapılamadı')
+      setBusy(null)
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="Yeni cihaz onayı">
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 text-center shadow-2xl">
+        <Smartphone className="mx-auto h-10 w-10 text-primary" aria-hidden="true" />
+        <h2 className="mt-3 text-lg font-semibold">{request.deviceName} bağlanmak istiyor</h2>
+        <p className="mt-2 text-sm text-muted-foreground">O cihazın ekranındaki kod bununla aynıysa onayla.</p>
+        <div className="mt-4 font-mono text-4xl font-bold tracking-[0.3em] text-primary">{request.code}</div>
+        {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button type="button" disabled={busy !== null} onClick={() => void act('decline')}
+            className="flex h-11 items-center justify-center rounded-xl border border-border text-sm font-medium disabled:opacity-50">
+            {busy === 'decline' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reddet'}
+          </button>
+          <button type="button" disabled={busy !== null} onClick={() => void act('approve')}
+            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-50">
+            {busy === 'approve' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Onayla
+          </button>
+        </div>
+        <p className="mt-3 text-[11px] text-muted-foreground">Tanımadığın bir cihazsa reddet; o cihaz eşleşmeden çıkarılır.</p>
+      </div>
     </div>
   )
 }

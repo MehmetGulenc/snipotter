@@ -10,8 +10,8 @@ import { NotebookNav } from '@shared/notes/NotebookNav'
 import type { NotebookActions } from '@shared/notes/NotebookNav'
 import type { Note } from '@shared/types'
 import { Plus, Trash2, CheckSquare, Square, Undo2 } from 'lucide-react'
-import { SpaceSwitcher, SpacesPanel } from '@shared/spaces/SpacesUI'
-import { desktopSpacesApi } from '@/lib/spaces'
+import { SpaceBar } from '@shared/spaces/SpacesUI'
+import { desktopSpacesApi, savedSpaceName } from '@/lib/spaces'
 
 interface PendingDelete {
   notes: Note[]
@@ -33,7 +33,6 @@ export function Notes(): JSX.Element {
   const spaces = useStore((s) => s.spaces)
   const activeSpaceId = useStore((s) => s.activeSpaceId)
   const e2eReady = useStore((s) => s.e2eStatus === 'ready')
-  const [spacesOpen, setSpacesOpen] = useState(false)
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -268,14 +267,6 @@ export function Notes(): JSX.Element {
 
   return (
     <div className="flex h-full min-w-0 p-5 gap-0">
-      {spacesOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-6" onClick={() => setSpacesOpen(false)}>
-          <div role="dialog" aria-label="Ortak alanlar" className="h-[min(640px,90vh)] w-full max-w-md overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
-            onClick={(e) => e.stopPropagation()}>
-            <SpacesPanel api={desktopSpacesApi} spaces={spaces} activeId={activeSpaceId} defaultName="" onClose={() => setSpacesOpen(false)} />
-          </div>
-        </div>
-      )}
       <aside className="flex shrink-0 flex-col rounded-l-2xl border border-r-0 border-border bg-card" style={{ width: sidebarWidth }}>
         {saveError && <p role="alert" className="border-b border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{saveError}</p>}
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-5">
@@ -283,8 +274,7 @@ export function Notes(): JSX.Element {
             <span className="text-lg font-semibold tracking-tight">Çöp Kutusu</span>
           ) : e2eReady ? (
             <div className="flex min-w-0 items-center gap-1">
-              <SpaceSwitcher spaces={spaces} activeId={activeSpaceId} onManage={() => setSpacesOpen(true)}
-                onOpen={(id) => { setActiveId(null); void desktopSpacesApi.open(id) }} />
+              <SpaceBar api={desktopSpacesApi} spaces={spaces} activeId={activeSpaceId} myName={savedSpaceName()} />
               <span className="shrink-0 text-xs text-muted-foreground">{filtered.length}</span>
             </div>
           ) : (

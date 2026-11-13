@@ -19,9 +19,28 @@ export const desktopEncryptionActions: EncryptionActions = {
       off()
     }
   },
-  async join(words) {
+  async pair() {
+    const { id, code } = await unwrap(window.snipotter.e2e.pairStart())
+    return {
+      code,
+      async wait(signal) {
+        const cancel = () => void window.snipotter.e2e.pairCancel()
+        signal.addEventListener('abort', cancel)
+        try {
+          await unwrap(window.snipotter.e2e.pairWait(id))
+        } finally {
+          signal.removeEventListener('abort', cancel)
+        }
+      },
+    }
+  },
+  async recover(words) {
     await unwrap(window.snipotter.e2e.join(words))
   },
 }
 
-export const createDeviceTransfer = (): Promise<{ words: string[]; expiresAt: number }> => unwrap(window.snipotter.e2e.createTransfer())
+export const pairApi = {
+  list: () => unwrap(window.snipotter.e2e.pairRequests()),
+  approve: (id: string) => unwrap(window.snipotter.e2e.pairApprove(id)),
+  decline: (id: string) => unwrap(window.snipotter.e2e.pairDecline(id)),
+}

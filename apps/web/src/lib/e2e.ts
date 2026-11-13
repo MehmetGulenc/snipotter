@@ -7,10 +7,11 @@ import { getSupabase } from './supabase'
 import { nativeBridgeAvailable, SnipotterNative } from './native-bridge'
 import { fromBase64, toBase64 } from '@shared/crypto/e2e'
 import {
-  activateWorkspaceKey, commitEncryption, createKeyTransfer, forgetWorkspaceKey, prepareEncryption, recoverWithWords, redeemKeyTransfer,
+  activateWorkspaceKey, commitEncryption, forgetWorkspaceKey, prepareEncryption, recoverWithWords,
   type KeyBackend, type KeyStatus, type PreparedKey,
 } from '@shared/crypto/workspaceKey'
 import { encryptExistingData, hasPlainData } from '@shared/crypto/migrate'
+import { approveKeyRequest, declineKeyRequest, pendingKeyRequests, requestKey } from '@shared/crypto/pairing'
 import type { EncryptionActions } from '@shared/crypto/EncryptionScreens'
 
 const keychainBackend: KeyBackend = {
@@ -76,25 +77,28 @@ export function encryptionActions(workspaceId: string, deviceName: string, onJoi
       return ok ? 'enabled' : 'lost-race'
     },
     migrate: (onProgress) => encryptExistingData(getSupabase(), workspaceId, onProgress),
-    async join(words) {
-      const count = words.trim().split(/\s+/).length
-      const joined = count >= 24
-        ? await recoverWithWords(getSupabase(), keyBackend(), words, deviceName)
-        : await redeemKeyTransfer(getSupabase(), keyBackend(), words, deviceName)
+    async pair() {
+      const pending = await requestKey(getSupabase(), keyBackend(), workspaceId, deviceName)
+      return { code: pending.code, wait: (signal) => pending.wait(signal) }
+    },
+    async recover(words) {
+      const joined = await recoverWithWords(getSupabase(), keyBackend(), words, deviceName)
       preferredWorkspace.set(joined)
       await onJoined(joined)
     },
   }
 }
 
-/** Fresh device: joins an encrypted workspace with 12 words from another device or the 24 recovery words. */
-export async function joinWithWords(words: string, deviceName: string): Promise<string> {
-  const count = words.trim().split(/\s+/).length
-  const joined = count >= 24
-    ? await recoverWithWords(getSupabase(), keyBackend(), words, deviceName)
-    : await redeemKeyTransfer(getSupabase(), keyBackend(), words, deviceName)
-  preferredWorkspace.set(joined)
-  return joined
+/** This device's "Onayla" side: other devices of the workspace waiting for the key. */
+export const pairApi = (workspaceId: string, userId: string) => ({
+  list: () => pendingKeyRequests(getSupabase(), workspaceId, userId),
+  approve: (id: string) => approveKeyRequest(getSupabase(), keyBackend(), workspaceId, id),
+  decline: (id: string) => declineKeyRequest(getSupabase(), id),
+})
+
+/** Finishes an interrupted migration in the background (any device holding the key may do it). */
+export async function resumeMigrationIfNeeded(workspaceId: string): Promise<void> {
+  if (await hasPlainData(getSupabase(), workspaceId)) await encryptExistingData(getSupabase(), workspaceId)
 }
 
 /** Leaving the workspace or signing out: drops the key and the workspace preference. */
@@ -103,12 +107,4 @@ export async function forgetE2E(workspaceId: string): Promise<void> {
   if (preferredWorkspace.get() === workspaceId) {
     try { window.localStorage.removeItem(PREFERRED) } catch { /* private mode */ }
   }
-}
-
-export const createDeviceTransfer =(workspaceId: string): Promise<{ words: string[]; expiresAt: number }> =>
-  createKeyTransfer(getSupabase(), keyBackend(), workspaceId)
-
-/** Finishes an interrupted migration in the background (any device holding the key may do it). */
-export async function resumeMigrationIfNeeded(workspaceId: string): Promise<void> {
-  if (await hasPlainData(getSupabase(), workspaceId)) await encryptExistingData(getSupabase(), workspaceId)
 }

@@ -5,6 +5,7 @@
  */
 import { getSupabase } from './supabase'
 import { codec } from '@shared/crypto/codec'
+import { nativeBridgeAvailable, SnipotterNative } from './native-bridge'
 
 export type ActionKind = 'phone' | 'address' | 'iban' | 'url' | 'text'
 export type ActionButton = 'call' | 'map' | 'copy' | 'open'
@@ -149,6 +150,33 @@ export async function savePushToken(args: {
       { onConflict: 'token' },
     )
   if (error) throw error
+}
+
+const ACTIVITY_TOKEN_KEY = 'snipotter.activityToken'
+
+/**
+ * Dynamic Island (iOS 17.2+): the push-to-start token for "new note in a shared
+ * space". Kept next to the alert token; devices without one keep plain banners.
+ */
+export async function syncActivityToken(workspaceId: string, environment: 'sandbox' | 'production'): Promise<void> {
+  if (!nativeBridgeAvailable()) return
+  const { token } = await SnipotterNative.liveActivityToken()
+  if (!token) return
+  const previous = window.localStorage.getItem(ACTIVITY_TOKEN_KEY)
+  const { error } = await getSupabase().from('push_tokens').upsert(
+    { workspace_id: workspaceId, token, platform: 'ios', kind: 'activity', environment, device_name: 'iPhone', updated_at: new Date().toISOString() },
+    { onConflict: 'token' },
+  )
+  if (error) throw error
+  if (previous && previous !== token) await deletePushToken(previous).catch(() => undefined)
+  window.localStorage.setItem(ACTIVITY_TOKEN_KEY, token)
+}
+
+export async function dropActivityToken(): Promise<void> {
+  const token = window.localStorage.getItem(ACTIVITY_TOKEN_KEY)
+  if (!token) return
+  await deletePushToken(token).catch((e) => console.warn('[push] activity token cleanup failed', e))
+  window.localStorage.removeItem(ACTIVITY_TOKEN_KEY)
 }
 
 export async function deletePushToken(token: string): Promise<void> {

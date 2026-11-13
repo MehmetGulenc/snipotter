@@ -1,4 +1,4 @@
-import { createJwt, pushPayload, secretMatches, spaceNotePayload, type Action } from './apns.ts';
+import { createJwt, pushPayload, secretMatches, spaceNoteActivityPayload, spaceNotePayload, type Action } from './apns.ts';
 
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
     if (!action || action.consumed_at || Date.parse(action.expires_at) <= Date.now()) return Response.json({ sent: 0 });
     const members: { user_id: string }[] = await read(`workspace_members?workspace_id=eq.${action.workspace_id}&select=user_id`);
     const memberIds = new Set(members.map(m => m.user_id));
-    const tokens: { id: string; user_id: string; token: string; environment: string }[] = await read(`push_tokens?workspace_id=eq.${action.workspace_id}&platform=eq.ios&select=id,user_id,token,environment`);
+    const tokens: { id: string; user_id: string; token: string; environment: string }[] = await read(`push_tokens?workspace_id=eq.${action.workspace_id}&platform=eq.ios&kind=eq.alert&select=id,user_id,token,environment`);
     const jwt = await createJwt(env('APNS_PRIVATE_KEY'), env('APNS_KEY_ID'), env('APNS_TEAM_ID'));
     let sent = 0;
     let failed = 0;
@@ -42,30 +42,50 @@ Deno.serve(async (req: Request) => {
 });
 
 type Read = (path: string) => Promise<any>;
-type Token = { id: string; workspace_id: string; token: string; environment: string };
+type Token = { id: string; user_id: string; workspace_id: string; token: string; environment: string; kind: string };
+type Person = { person_id: string; wrapped_key: string; display_name: string | null };
 
-/** New note in a shared space: every other member person's iPhones, never the writer's own devices. */
+/**
+ * New note in a shared space: every other member person's iPhones, never the writer's own.
+ * Devices with a Dynamic Island token get a Live Activity (sealed names, opened on the
+ * phone); the others get a plain banner.
+ */
 async function notifySpaceNote(noteId: string, read: Read, base: string, headers: Record<string, string>, env: (n: string) => string): Promise<Response> {
-  const [note]: { id: string; workspace_id: string; created_by: string | null }[] = await read(`notes?id=eq.${noteId}&select=id,workspace_id,created_by`);
+  const [note]: { id: string; workspace_id: string; created_by: string | null; title: string | null }[] = await read(`notes?id=eq.${noteId}&select=id,workspace_id,created_by,title`);
   if (!note) return Response.json({ sent: 0 });
-  const [space]: { kind: string }[] = await read(`workspaces?id=eq.${note.workspace_id}&select=kind`);
+  const [space]: { kind: string; name: string }[] = await read(`workspaces?id=eq.${note.workspace_id}&select=kind,name`);
   if (space?.kind !== 'shared') return Response.json({ sent: 0 });
-  const persons: { person_id: string }[] = await read(`space_members?space_id=eq.${note.workspace_id}&select=person_id`);
-  // The writer's person: the personal workspace this device belongs to.
+  const persons: Person[] = await read(`space_members?space_id=eq.${note.workspace_id}&select=person_id,wrapped_key,display_name`);
+  // The writer's person: the personal workspace the writing device belongs to.
   const writer: { workspace_id: string }[] = note.created_by ? await read(`workspace_members?user_id=eq.${note.created_by}&select=workspace_id`) : [];
   const writerPersons = new Set(writer.map((w) => w.workspace_id));
-  const targets = persons.map((p) => p.person_id).filter((id) => /^[0-9a-f-]{36}$/i.test(id) && !writerPersons.has(id));
+  const author = persons.find((p) => writerPersons.has(p.person_id));
+  const targets = persons.filter((p) => /^[0-9a-f-]{36}$/i.test(p.person_id) && !writerPersons.has(p.person_id));
   if (targets.length === 0) return Response.json({ sent: 0 });
-  const tokens: Token[] = await read(`push_tokens?workspace_id=in.(${targets.join(',')})&platform=eq.ios&select=id,workspace_id,token,environment`);
+  const byPerson = new Map(targets.map((p) => [p.person_id, p]));
+  const tokens: Token[] = await read(`push_tokens?workspace_id=in.(${targets.map((p) => p.person_id).join(',')})&platform=eq.ios&select=id,user_id,workspace_id,token,environment,kind`);
+  const withIsland = new Set(tokens.filter((t) => t.kind === 'activity').map((t) => t.user_id));
   const jwt = await createJwt(env('APNS_PRIVATE_KEY'), env('APNS_KEY_ID'), env('APNS_TEAM_ID'));
+  const topic = env('APNS_TOPIC');
   let sent = 0;
   let failed = 0;
   for (const token of tokens) {
+    if (token.kind === 'alert' && withIsland.has(token.user_id)) continue;
+    const person = byPerson.get(token.workspace_id);
+    if (!person) continue;
+    const island = token.kind === 'activity';
+    const body = island
+      ? spaceNoteActivityPayload({
+          spaceId: note.workspace_id, noteId: note.id, personId: person.person_id, wrappedKey: person.wrapped_key,
+          spaceName: space.name ?? '', title: note.title ?? '', author: author?.display_name ?? '', authorId: author?.person_id ?? '',
+        })
+      : spaceNotePayload(note.workspace_id, note.id);
     const host = token.environment === 'sandbox' ? 'api.sandbox.push.apple.com' : 'api.push.apple.com';
     const response = await fetch(`https://${host}/3/device/${token.token}`, { method: 'POST', headers: {
-      'content-type': 'application/json', authorization: `bearer ${jwt}`, 'apns-topic': env('APNS_TOPIC'), 'apns-push-type': 'alert', 'apns-priority': '10',
+      'content-type': 'application/json', authorization: `bearer ${jwt}`, 'apns-priority': '10',
+      'apns-topic': island ? `${topic}.push-type.liveactivity` : topic, 'apns-push-type': island ? 'liveactivity' : 'alert',
       'apns-expiration': String(Math.floor(Date.now() / 1000) + 24 * 3600), 'apns-collapse-id': note.id,
-    }, body: JSON.stringify(spaceNotePayload(note.workspace_id, note.id)) });
+    }, body: JSON.stringify(body) });
     if (response.status === 410) {
       const deleted = await fetch(`${base}/push_tokens?id=eq.${token.id}&token=eq.${token.token}`, { method: 'DELETE', headers });
       if (!deleted.ok) throw new Error('Token cleanup failed');

@@ -11,6 +11,7 @@ import {
   PUSH_TOKEN_KEY,
   deletePushToken,
   savePushToken,
+  syncActivityToken,
   subscribeActions,
   type ActionButton,
   type DeviceAction,
@@ -136,6 +137,7 @@ export function ActionBanner(): JSX.Element | null {
         const reg = await registerPush()
         if (!reg || cancelled) return
         await savePushToken({ workspaceId: workspace.id, token: reg.token, environment: reg.environment, deviceName: 'iPhone' })
+        await syncActivityToken(workspace.id, reg.environment).catch((e) => console.warn('[push] activity token', e))
         if (reg.token !== stored) {
           await deletePushToken(stored).catch((e) => console.warn('[push] old token cleanup failed', e))
           window.localStorage.setItem(PUSH_TOKEN_KEY, reg.token)

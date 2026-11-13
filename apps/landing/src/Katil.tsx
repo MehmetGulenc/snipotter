@@ -53,18 +53,10 @@ export default function Katil(): JSX.Element {
               <Smartphone className="h-5 w-5" /> iPhone'da Snipotter ile aç
             </a>
             <div className="mt-6 rounded-xl border border-border bg-card p-4">
-              <p className="flex items-center gap-2 text-sm font-medium"><Laptop className="h-4 w-4" /> Bilgisayarda ya da elle katılmak için</p>
+              <p className="flex items-center gap-2 text-sm font-medium"><Laptop className="h-4 w-4" /> Bilgisayarda katılmak için</p>
               <p className="mt-2 text-sm text-muted-foreground">
-                Snipotter'da <b className="text-foreground">Notlar → Notlarım ▾ → Ortak alanlar → Davete katıl</b> ekranına bu sayfanın bağlantısını
-                ya da aşağıdaki 12 kelimeyi yaz.
+                Bu sayfanın bağlantısını kopyala; Snipotter'da <b className="text-foreground">Notlar → Notlarım ▾ → Davete katıl</b> ekranına yapıştır.
               </p>
-              <ol className="mt-3 grid grid-cols-3 gap-2">
-                {words.map((w, i) => (
-                  <li key={i} className="rounded-lg border border-border px-2 py-1.5 text-sm">
-                    <span className="mr-1 text-xs text-muted-foreground">{i + 1}.</span>{w}
-                  </li>
-                ))}
-              </ol>
             </div>
             <p className="mt-4 text-xs text-muted-foreground">Davet tek kullanımlıktır ve 7 gün geçerlidir. Snipotter yüklü değilse önce snipotter.com'dan indir.</p>
           </>

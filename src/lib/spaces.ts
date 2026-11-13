@@ -10,9 +10,15 @@ async function unwrap<T>(p: Promise<Result<T>>): Promise<T> {
 const s = () => window.snipotter.spaces
 
 /** The main process holds the keys; the renderer only drives the screens. */
+const NAME = 'snipotter.spaceName'
+/** Name shown to the other members; asked once, then remembered. */
+export const savedSpaceName = (): string => { try { return window.localStorage.getItem(NAME) ?? '' } catch { return '' } }
+const remember = (name: string): void => { try { if (name.trim()) window.localStorage.setItem(NAME, name.trim()) } catch { /* ignore */ } }
+
 export const desktopSpacesApi: SpacesApi = {
-  create: (name, myName) => unwrap(s().create(name, myName)),
-  join: (input, myName) => unwrap(s().join(input, myName)),
+  create: (name, myName) => { remember(myName); return unwrap(s().create(name, myName || savedSpaceName())) },
+  join: (input, myName) => { remember(myName); return unwrap(s().join(input, myName || savedSpaceName())) },
+  preview: (input) => unwrap(s().preview(input)),
   invite: (id) => unwrap(s().invite(id)),
   members: (id) => unwrap(s().members(id)),
   rename: (id, name) => unwrap(s().rename(id, name)),

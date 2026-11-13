@@ -4,6 +4,7 @@ import WidgetKit
 import EventKit
 import EventKitUI
 import UserNotifications
+import ActivityKit
 
 /// Bridge between the web app and the native extensions. The web app owns the
 /// Supabase session and the clip list; it mirrors what the extensions need here.
@@ -22,6 +23,7 @@ public class SnipotterNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setWorkspaceKey", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getWorkspaceKey", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "deleteWorkspaceKey", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "liveActivityToken", returnType: CAPPluginReturnPromise),
     ]
 
     private var pushCall: CAPPluginCall?
@@ -81,6 +83,23 @@ public class SnipotterNativePlugin: CAPPlugin, CAPBridgedPlugin {
         guard let data = notification.userInfo as? [String: Any] else { return }
         AppDelegate.pendingPushAction = nil
         notifyListeners("pushAction", data: data, retainUntilConsumed: true)
+    }
+
+    /// Push-to-start token for the shared-space Dynamic Island (iOS 17.2+); empty when unavailable.
+    @objc func liveActivityToken(_ call: CAPPluginCall) {
+        guard #available(iOS 17.2, *), ActivityAuthorizationInfo().areActivitiesEnabled else { call.resolve([:]); return }
+        let wait = Task { () -> String? in
+            for await data in Activity<SpaceNoteAttributes>.pushToStartTokenUpdates {
+                return data.map { String(format: "%02x", $0) }.joined()
+            }
+            return nil
+        }
+        Task {
+            let timeout = Task { try? await Task.sleep(nanoseconds: 8_000_000_000); wait.cancel() }
+            let token = await wait.value
+            timeout.cancel()
+            if let token { call.resolve(["token": token]) } else { call.resolve([:]) }
+        }
     }
 
     @objc func copyRich(_ call: CAPPluginCall) {

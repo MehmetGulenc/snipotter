@@ -11,12 +11,15 @@ import { clearSpaceCodecs, codec, codecFor, E2ECodec, setCodec } from '@shared/c
 import WebSocket from 'ws'
 import { activeSpaceStore, authStorage, preferredWorkspace, workspaceKeyStore } from './store'
 import {
-  activateWorkspaceKey, commitEncryption, createKeyTransfer, forgetWorkspaceKey, prepareEncryption, recoverWithWords, redeemKeyTransfer,
+  activateWorkspaceKey, commitEncryption, forgetWorkspaceKey, prepareEncryption, recoverWithWords,
   type KeyStatus, type PreparedKey,
 } from '@shared/crypto/workspaceKey'
 import { encryptExistingData, hasPlainData, type MigrationProgress } from '@shared/crypto/migrate'
 import {
-  createInvite, createSpace, joinSpace, listMembers, loadSpaces, removeMember, renameSpace, setMyName,
+  approveKeyRequest, declineKeyRequest, pendingKeyRequests, requestKey, type KeyRequest, type PendingPair,
+} from '@shared/crypto/pairing'
+import {
+  createInvite, createSpace, joinSpace, listMembers, loadSpaces, previewInvite, removeMember, renameSpace, setMyName,
   type Space, type SpaceInvite, type SpaceMember,
 } from '@shared/crypto/spaces'
 import type {
@@ -430,6 +433,11 @@ export class SupabaseService extends EventEmitter {
     return space
   }
 
+  spacePreview(input: string): Promise<{ name: string }> {
+    const { client } = this.requirePerson()
+    return previewInvite(client, input)
+  }
+
   spaceInvite(spaceId: string): Promise<SpaceInvite> {
     const { client, personId } = this.requirePerson()
     return createInvite(client, personId, codec(), spaceId)
@@ -507,19 +515,56 @@ export class SupabaseService extends EventEmitter {
     await encryptExistingData(client, workspaceId, onProgress)
   }
 
-  async e2eCreateTransfer(): Promise<{ words: string[]; expiresAt: number }> {
+  // ── New device by approval (migration 0016) ──
+  private pairWait: { id: string; ctrl: AbortController; pending: PendingPair } | null = null
+
+  /** This device asks the others for the key; returns the code both screens show. */
+  async e2ePairStart(deviceName: string): Promise<{ id: string; code: string }> {
     const { client, workspaceId } = this.requireSync()
-    return createKeyTransfer(client, workspaceKeyStore, workspaceId)
+    this.pairWait?.ctrl.abort()
+    const pending = await requestKey(client, workspaceKeyStore, workspaceId, deviceName)
+    this.pairWait = { id: pending.id, ctrl: new AbortController(), pending }
+    return { id: pending.id, code: pending.code }
   }
 
-  /** This device joins another device's encrypted workspace (12 words) or recovers one (24 words). */
+  /** Resolves once another device approved; the key is then stored and active. */
+  async e2ePairWait(id: string): Promise<void> {
+    const w = this.pairWait
+    if (!w || w.id !== id) throw new Error('Eşleştirme isteği bulunamadı')
+    await w.pending.wait(w.ctrl.signal)
+    this.pairWait = null
+    await this.refreshE2EStatus()
+    await this.subscribeRealtime()
+  }
+
+  e2ePairCancel(): void {
+    this.pairWait?.ctrl.abort()
+    this.pairWait = null
+  }
+
+  /** Other devices waiting for this device's "Onayla". */
+  async pairRequests(): Promise<KeyRequest[]> {
+    if (!this.client || !this.workspaceId || !this.user || this.e2eStatus !== 'ready') return []
+    return pendingKeyRequests(this.client, this.workspaceId, this.user.id)
+  }
+
+  async pairApprove(id: string): Promise<void> {
+    const { client, workspaceId } = this.requireSync()
+    await approveKeyRequest(client, workspaceKeyStore, workspaceId, id)
+    this.emit('pair:requests', await this.pairRequests())
+  }
+
+  async pairDecline(id: string): Promise<void> {
+    const { client } = this.requireSync()
+    await declineKeyRequest(client, id)
+    this.emit('pair:requests', await this.pairRequests())
+  }
+
+  /** All devices lost: the 24 recovery words bring the workspace back to this device. */
   async e2eJoin(words: string, deviceName: string): Promise<Workspace | null> {
     if (!this.client) throw new Error('Supabase not configured')
     await this.ensureAnonymousSession()
-    const count = words.trim().split(/\s+/).length
-    const workspaceId = count >= 24
-      ? await recoverWithWords(this.client, workspaceKeyStore, words, deviceName)
-      : await redeemKeyTransfer(this.client, workspaceKeyStore, words, deviceName)
+    const workspaceId = await recoverWithWords(this.client, workspaceKeyStore, words, deviceName)
     preferredWorkspace.set(workspaceId)
     this.unsubscribeRealtime()
     return this.fetchCurrentWorkspace()
@@ -1184,6 +1229,12 @@ export class SupabaseService extends EventEmitter {
             this.emit('clip:upsert', item)
           })
         },
+      )
+      // A new device asking for the key ("Onayla" prompt on this device).
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'key_requests', filter: `workspace_id=eq.${wsId}` },
+        () => void this.pairRequests().then((r) => this.emit('pair:requests', r)).catch(() => undefined),
       )
       .subscribe((status, err) => {
         this.diagChannels.clip = mapStatus(status)

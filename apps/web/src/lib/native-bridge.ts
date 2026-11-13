@@ -29,6 +29,8 @@ export interface PushAction {
 
 interface SnipotterNativePlugin {
   registerPush(): Promise<{ token: string; environment: 'sandbox' | 'production' }>
+  /** Dynamic Island push-to-start token; empty below iOS 17.2 or with Live Activities off. */
+  liveActivityToken(): Promise<{ token?: string }>
   copyRich(options: { text: string; html?: string }): Promise<void>
   addListener(event: 'pushAction', cb: (action: PushAction) => void): Promise<PluginListenerHandle>
   syncSession(options: {
@@ -135,6 +137,19 @@ export function startNativeBridge(workspaceId: string, userId: string): () => vo
 /** snipotter://copy?id=<clip id> from the widget: copy that clip. */
 async function handleUrl(url: string): Promise<void> {
   // Shared-space invite (snipotter://katil#…): the Notes screen offers to join.
+  // Dynamic Island tap: snipotter://not?space=…&note=…
+  if (url.startsWith('snipotter://not')) {
+    const q = new URL(url.replace('snipotter://', 'https://snipotter.app/')).searchParams
+    const space = q.get('space') ?? ''
+    const note = q.get('note') ?? ''
+    const st = useStore.getState()
+    if (!st.workspace || !st.spaces.some((s) => s.id === space)) return
+    const { openSpace } = await import('./spaces')
+    openSpace(st.workspace.id, space)
+    st.setView('notes')
+    if (/^[0-9a-f-]{36}$/i.test(note)) st.openNote(note)
+    return
+  }
   if (url.startsWith('snipotter://katil')) {
     useStore.getState().setPendingInvite(url)
     useStore.getState().setView('notes')

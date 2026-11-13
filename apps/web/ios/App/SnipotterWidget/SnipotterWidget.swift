@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import ActivityKit
 
 /// Home screen widget with the latest clips. Tapping one opens the app, which
 /// copies it (snipotter://copy?id=…). The app reloads this widget whenever its
@@ -143,6 +144,15 @@ extension View {
 }
 
 @main
+struct SnipotterWidgets: WidgetBundle {
+    var body: some Widget {
+        SnipotterWidget()
+        if #available(iOSApplicationExtension 16.1, *) {
+            SpaceNoteLiveActivity()
+        }
+    }
+}
+
 struct SnipotterWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "SnipotterRecentClips", provider: ClipProvider()) { entry in
@@ -159,5 +169,57 @@ struct SnipotterWidget: Widget {
             families += [.accessoryRectangular, .accessoryInline]
         }
         return families
+    }
+}
+
+// MARK: Dynamic Island / Lock Screen: new note in a shared space
+
+@available(iOSApplicationExtension 16.1, *)
+struct SpaceNoteLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: SpaceNoteAttributes.self) { context in
+            let t = SpaceNoteText.open(context.attributes, context.state)
+            HStack(spacing: 12) {
+                Image(systemName: "person.2.fill").font(.title2).foregroundColor(.purple)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(t.author) · \(t.space)").font(.caption).foregroundColor(.secondary).lineLimit(1)
+                    Text(t.title).font(.headline).lineLimit(2)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding()
+            .activityBackgroundTint(Color.black.opacity(0.8))
+            .activitySystemActionForegroundColor(.white)
+            .widgetURL(Self.url(context.attributes, context.state))
+        } dynamicIsland: { context in
+            let t = SpaceNoteText.open(context.attributes, context.state)
+            return DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Image(systemName: "person.2.fill").foregroundColor(.purple).padding(.leading, 4)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(t.space).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(t.author) yeni not ekledi").font(.caption).foregroundColor(.secondary).lineLimit(1)
+                        Text(t.title).font(.headline).lineLimit(2)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } compactLeading: {
+                Image(systemName: "person.2.fill").foregroundColor(.purple)
+            } compactTrailing: {
+                Text(t.author).font(.caption2).lineLimit(1).frame(maxWidth: 64)
+            } minimal: {
+                Image(systemName: "note.text").foregroundColor(.purple)
+            }
+            .widgetURL(Self.url(context.attributes, context.state))
+            .keylineTint(.purple)
+        }
+    }
+
+    static func url(_ a: SpaceNoteAttributes, _ s: SpaceNoteAttributes.ContentState) -> URL? {
+        URL(string: "snipotter://not?space=\(a.spaceId)&note=\(s.noteId)")
     }
 }

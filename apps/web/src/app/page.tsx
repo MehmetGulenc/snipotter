@@ -105,7 +105,10 @@ export default function Home(): JSX.Element {
           status={e2eStatus}
           actions={actions}
           mobile={isNative()}
-          onDone={() => void activateE2E(workspace.id).then(setE2EStatus)}
+          onDone={() => void activateE2E(workspace.id).then((st) => {
+            setE2EStatus(st)
+            if (st === 'ready') void refreshSpaces(workspace.id)
+          })}
         />
         <FeedbackHost />
       </>

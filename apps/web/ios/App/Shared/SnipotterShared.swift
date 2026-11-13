@@ -1,6 +1,9 @@
 import Foundation
 import CryptoKit
 import Security
+#if canImport(ActivityKit)
+import ActivityKit
+#endif
 
 /// Shared between the app, the Share extension and the widget through the
 /// `group.com.snipotter.app` App Group.
@@ -243,3 +246,51 @@ enum SnipotterShared {
         Insecure.SHA1.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
+
+// MARK: Dynamic Island: "new note in a shared space" (docs/ortak-alan-tasarimi.md)
+
+#if canImport(ActivityKit)
+/// Started by a push-to-start APNs push (iOS 17.2+). The server only sees ciphertext:
+/// names and title arrive sealed and are opened on the phone with the shared Keychain.
+@available(iOS 16.1, *)
+struct SpaceNoteAttributes: ActivityAttributes {
+    public struct ContentState: Codable, Hashable {
+        var noteId: String
+        /// Sealed note title ("" when the note has none yet).
+        var title: String
+        /// Sealed display name of the writer, and the writer's person id (its AAD row).
+        var author: String
+        var authorId: String
+    }
+    var spaceId: String
+    /// The recipient's personal workspace: its key (Keychain) opens `wrappedKey`.
+    var personId: String
+    /// Space key sealed with the recipient's personal key.
+    var wrappedKey: String
+    /// Sealed space name.
+    var spaceName: String
+}
+
+@available(iOS 16.1, *)
+enum SpaceNoteText {
+    struct Opened { let space: String; let title: String; let author: String }
+
+    static func open(_ a: SpaceNoteAttributes, _ s: SpaceNoteAttributes.ContentState) -> Opened {
+        guard let personal = SnipotterShared.loadWorkspaceKey(workspaceId: a.personId),
+              let keyB64 = try? SnipotterShared.E2E.open(a.wrappedKey, raw: personal, workspaceId: a.personId, table: "space_members", row: a.spaceId, column: "key"),
+              let raw = Data(base64Encoded: keyB64), raw.count == 32 else {
+            return Opened(space: "Ortak alan", title: "Yeni not", author: "Biri")
+        }
+        func open(_ v: String, _ table: String, _ row: String, _ column: String, _ fallback: String) -> String {
+            guard !v.isEmpty, let text = try? SnipotterShared.E2E.open(v, raw: raw, workspaceId: a.spaceId, table: table, row: row, column: column),
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return fallback }
+            return String(text.prefix(80))
+        }
+        return Opened(
+            space: open(a.spaceName, "workspaces", a.spaceId, "name", "Ortak alan"),
+            title: open(s.title, "notes", s.noteId, "title", "Yeni not"),
+            author: open(s.author, "space_members", s.authorId, "display_name", "Biri")
+        )
+    }
+}
+#endif

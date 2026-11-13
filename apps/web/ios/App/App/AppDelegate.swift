@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import UserNotifications
+import ActivityKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -9,6 +10,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        #if DEBUG
+        // Simulator check of the Dynamic Island layout: launch with -debugActivity.
+        if ProcessInfo.processInfo.arguments.contains("-debugActivity"), #available(iOS 16.2, *) {
+            let attrs = SpaceNoteAttributes(spaceId: UUID().uuidString.lowercased(), personId: "none", wrappedKey: "", spaceName: "")
+            let state = SpaceNoteAttributes.ContentState(noteId: UUID().uuidString.lowercased(), title: "", author: "", authorId: "")
+            _ = try? Activity.request(attributes: attrs, content: .init(state: state, staleDate: nil))
+        }
+        #endif
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         let call = UNNotificationAction(identifier: "call", title: "Ara", options: [.foreground])
@@ -39,7 +48,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        // The app is open: "new note" Live Activities have done their job.
+        if #available(iOS 16.2, *) {
+            Task {
+                for activity in Activity<SpaceNoteAttributes>.activities {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                }
+            }
+        }
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

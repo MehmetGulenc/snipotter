@@ -18,7 +18,7 @@ Karar (2026-11-13): eş, aile ya da arkadaş grubu notları birlikte yazabilsin.
 ## Davet
 
 1. Herhangi bir üye 16 baytlık tek kullanımlık bir sır üretir. `invite_id = HMAC(sır, 'invite')`, alan anahtarı sırdan türetilen anahtarla sarılır ve `space_invites` tablosuna yazılır (7 gün geçerli).
-2. Sır 12 kelimeye çevrilir. Bağlantı `https://snipotter.com/katil#kelime-kelime-…` biçimindedir. `#` sonrası tarayıcı tarafından sunucuya gönderilmez; sayfa yalnızca kelimeleri gösterir ve `snipotter://katil#…` ile uygulamayı açar.
+2. Bağlantı `https://snipotter.com/katil#…` biçimindedir (sır bağlantıya gömülü; arayüz yalnızca bağlantıyı gösterir). `#` sonrası tarayıcı tarafından sunucuya gönderilmez; sayfa `snipotter://katil#…` ile uygulamayı açar.
 3. Davet edilen kişi `peek_space_invite` ile sarılı anahtarı alır, açar, kendi kişisel anahtarıyla yeniden mühürler ve `join_space` ile tek adımda katılır. Davet bu anda silinir.
 
 ## Kurallar
@@ -34,7 +34,7 @@ Karar (2026-11-13): eş, aile ya da arkadaş grubu notları birlikte yazabilsin.
 - Pano kayıtları ortak alana otomatik gitmez. "Ortak alana gönder" kaydın bir kopyasını not olarak ekler.
 - Bildirim: ortak alanda yeni not açılınca yazan kişi dışındaki üyelerin iPhone'larına "Ortak alanına yeni bir not eklendi" gider. İçerik ve alan adı bildirimde yer almaz. Düzenlemeler bildirim üretmez.
 - Masaüstünde `snipotter://` bağlantısı kayıtlı değil; masaüstünde davet bağlantısı "Davete katıl" ekranına yapıştırılır.
-- Dynamic Island / Live Activity bu sürümde yok.
+- **Dynamic Island** (iOS 17.2+, bildirimler açıkken): uygulama Live Activity push-to-start jetonunu `push_tokens` tablosuna `kind = 'activity'` olarak kaydeder. Yeni notta sunucu bu cihazlara `liveactivity` push'u gönderir. Push'ta yalnızca şifreli alan adı, başlık, yazan kişinin adı ve alıcının kendi anahtarıyla mühürlü alan anahtarı bulunur. Widget bunları telefonda, ortak Keychain'deki kişisel anahtarla açar. Uygulama açılınca etkinlik kapanır. Bu jetonu olmayan cihazlara normal bildirim gider.
 
 ## Test
 
