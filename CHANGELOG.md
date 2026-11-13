@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.12.0] - 2026-11-14
+
+### 📲 Kolay Cihaz Eşleştirme
+
+- **Kodu gir, Onayla**: Yeni cihazda 6 haneli eşleştirme kodunu yaz; diğer cihazında "iPhone bağlanmak istiyor — Onayla" çıkar. 12 kelime girmek kalktı.
+- **Doğrulama kodu**: İki ekranda aynı 4 rakam görünür; şifre anahtarı cihazlar arasında sunucuya görünmeden aktarılır.
+- **Reddet**: Tanımadığın bir cihazı reddedersen eşleşmeden çıkarılır.
+- **Kurtarma**: 24 kelimelik kurtarma anahtarı yalnızca hiçbir cihazına erişimin kalmadığında gerekir.
+
+### 🏝️ Dynamic Island
+
+- Ortak alana yeni not eklenince Dynamic Island ve kilit ekranında kimin hangi alana ne eklediği görünür; dokununca not açılır.
+- İsimler ve başlık telefonunda çözülür, sunucu yine göremez. iOS 17.2 ve üstü, bildirimler açıkken.
+
+### ✨ Sade Ortak Alan Ekranları
+
+- Tek menü: Notlar ekranındaki "Notlarım ▾" ile alanlar arası geçiş, yeni alan, davete katıl.
+- Açık alanda "Kişiler" düğmesi: tek dokunuşla davet, kişi listesi, alandan çıkma.
+- Davet yalnızca bağlantıyla; bağlantı açılınca alanın adı gösterilip "Katıl" sorulur.
+
+### 🐛 Düzeltmeler
+
+- iPhone'da formlara dokununca sayfanın kayması ve klavyenin düğmeleri örtmesi düzeltildi.
+- Kişiler listesi açıkken yeni katılanlar kendiliğinden görünür.
+
 ## [0.11.0] - 2026-11-13
 
 ### 👥 Ortak Çalışma Alanları

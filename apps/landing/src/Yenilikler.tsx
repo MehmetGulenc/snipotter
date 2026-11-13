@@ -18,9 +18,31 @@ interface Release {
 
 const releases: Release[] = [
   {
-    version: '0.11.0',
+    version: '0.12.0',
     date: 'Kasım 2026',
     badge: 'Güncel',
+    headline: 'Kolay Eşleştirme ve Dynamic Island',
+    features: [
+      {
+        emoji: '📲',
+        title: 'Yeni cihaz: kodu gir, Onayla',
+        desc: 'Yeni cihazda 6 haneli kodu yaz; diğer cihazında "iPhone bağlanmak istiyor — Onayla" çıkar. İki ekranda aynı 4 rakamı görürsün; şifre anahtarı cihazlar arasında sunucuya görünmeden geçer. Kelime girmek yok.',
+      },
+      {
+        emoji: '🏝️',
+        title: 'Dynamic Island',
+        desc: 'Ortak alana yeni not eklenince Dynamic Island ve kilit ekranında kimin hangi alana ne eklediği görünür; isimler telefonunda çözülür. iOS 17.2 ve üstü.',
+      },
+      {
+        emoji: '✨',
+        title: 'Sade ortak alan ekranları',
+        desc: 'Her şey Notlar ekranındaki "Notlarım ▾" menüsünde: yeni alan, davete katıl, alanlar arası geçiş. Açık alanda Kişiler düğmesinden tek dokunuşla davet gönder.',
+      },
+    ],
+  },
+  {
+    version: '0.11.0',
+    date: 'Kasım 2026',
     headline: 'Ortak Çalışma Alanları',
     features: [
       {
