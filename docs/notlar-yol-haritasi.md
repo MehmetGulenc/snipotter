@@ -71,6 +71,13 @@ Hedef: Snipotter notlarını iPhone, web ve masaüstünde (macOS/Windows/Linux) 
 - [ ] Yapay zekâ: özetle, maddeleştir, başlık öner, düzelt (mevcut AI anahtarları ile)
 - [ ] Dışa aktarma: Markdown, PDF, HTML (tüm platformlar); bağlantıyla paylaşma
 
+### Aşama 5 — Güvenlik ve paylaşım (2026-11-13 kararı)
+- [ ] Uçtan uca şifreleme (pano + notlar), 24 kelimelik kurtarma anahtarı, zorunlu güncelleme — ayrıntı: `docs/sifreleme-tasarimi.md`
+- [ ] Ortak çalışma alanı (eş / arkadaş grubu), davet bağlantısı anahtarı da taşır
+- [ ] iOS: ortak alanda yeni not gelince bildirim + Dynamic Island (Live Activity)
+- [ ] Notlarda çizim
+- [ ] iOS ana ekran widget'ı: seçilen not / çizim
+
 ## Yayın planı
 
-Her aşama sonunda: tüm testler, iOS TestFlight build'i ve masaüstü sürümü — **her birinden önce onay alınır**. Migration'lar production'a yalnız onayla uygulanır.
+Her aşama sonunda: tüm testler, iOS TestFlight build'i ve masaüstü sürümü — **her birinden önce onay alınır**. Migration'lar production'a yalnız onayla uygulanır. 0010–0013 production'a uygulandı (2026-11-13, öncesinde `public` şeması yedeklendi).

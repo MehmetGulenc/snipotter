@@ -50,7 +50,7 @@ export const NoteCard = memo(function NoteCard({
         }
         onSelect()
       }}
-      className={`group relative flex w-full flex-col items-start gap-1 rounded-xl border px-4 py-4 text-left transition-colors ${
+      className={`group relative flex w-full min-w-0 flex-col items-start gap-1 overflow-hidden rounded-xl border px-4 py-4 text-left transition-colors ${
         selected
           ? 'border-primary bg-primary/5'
           : active
@@ -81,15 +81,15 @@ export const NoteCard = memo(function NoteCard({
         </div>
       )}
       <div className={`flex w-full items-center justify-between gap-2 ${onToggleSelect ? 'pl-7' : ''}`}>
-        <span className="truncate text-sm font-medium">
+        <span className="min-w-0 truncate text-sm font-medium">
           {note.title?.trim() || noteTitleFallback(note.content) || 'Yeni not'}
         </span>
         {note.pinned && <Badge variant="default">Sabit</Badge>}
       </div>
       {hit?.snippet ? (
-        <span className="line-clamp-2 text-xs text-muted-foreground"><Highlighted hit={hit} /></span>
+        <span className="line-clamp-2 w-full break-words text-xs text-muted-foreground [overflow-wrap:anywhere]"><Highlighted hit={hit} /></span>
       ) : (
-        <span className="line-clamp-2 whitespace-pre-line text-xs text-muted-foreground">
+        <span className="line-clamp-2 w-full whitespace-pre-line break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">
           {extractText(note.content) || 'Boş not'}
         </span>
       )}

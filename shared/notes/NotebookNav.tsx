@@ -39,7 +39,13 @@ export function NotebookNav({ notebooks, notes, filter, onFilter, actions, confi
     try {
       await fn()
     } catch (err) {
-      setError((err as Error).message?.includes('4 levels') ? 'Defterler en fazla 4 kat iç içe olabilir.' : 'İşlem yapılamadı. Bağlantını kontrol et.')
+      const msg = (err as Error).message ?? ''
+      setError(
+        msg.includes('4 levels') ? 'Defterler en fazla 4 kat iç içe olabilir.'
+          // Server without migration 0013: PostgREST reports the table as missing.
+          : /notebooks|schema cache|does not exist/i.test(msg) ? 'Defterler sunucuda henüz etkin değil.'
+          : 'İşlem yapılamadı. Bağlantını kontrol et.',
+      )
     }
   }
 

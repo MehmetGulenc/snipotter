@@ -321,7 +321,7 @@ export function Notes(): JSX.Element {
         ) : (
         <div
           ref={listRef}
-          className={`scrollbar-thin flex-1 space-y-2 overflow-y-auto p-3 ${dragActive.current ? 'touch-none select-none' : ''}`}
+          className={`scrollbar-thin min-w-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden p-3 ${dragActive.current ? 'touch-none select-none' : ''}`}
           onPointerMove={handleListPointerMove}
           onPointerUp={handleListPointerUp}
           onPointerCancel={handleListPointerUp}

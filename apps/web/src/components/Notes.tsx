@@ -639,15 +639,15 @@ export function Notes(): JSX.Element {
                   }
                 }}
               >
-                <div className="line-clamp-2 text-[16px] font-semibold leading-snug">
+                <div className="line-clamp-2 break-words text-[16px] font-semibold leading-snug [overflow-wrap:anywhere]">
                   {n.title?.trim() || noteTitleFallback(n.content) || (
                     <span className="italic text-muted-foreground">Boş not</span>
                   )}
                 </div>
                 {hitById.get(n.id)?.snippet ? (
-                  <div className="mt-1 line-clamp-3 text-sm text-muted-foreground"><Highlighted hit={hitById.get(n.id)!} /></div>
+                  <div className="mt-1 line-clamp-3 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]"><Highlighted hit={hitById.get(n.id)!} /></div>
                 ) : notePreview(n) ? (
-                  <div className="mt-1 line-clamp-3 whitespace-pre-line text-sm text-muted-foreground">{notePreview(n)}</div>
+                  <div className="mt-1 line-clamp-3 whitespace-pre-line break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">{notePreview(n)}</div>
                 ) : null}
                 <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
                   {n.pinned && <Pin className="h-3 w-3 text-primary" aria-label="Sabitlendi" />}
