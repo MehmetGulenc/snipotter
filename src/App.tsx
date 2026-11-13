@@ -103,6 +103,7 @@ export default function App(): JSX.Element {
   // socket was down. The interval below is a cheap reconciliation backstop:
   // every 10s we re-fetch both lists, so any divergence converges quickly
   // without forcing the user to restart the app.
+  const activeSpaceId = useStore((s) => s.activeSpaceId)
   useEffect(() => {
     if (!workspace) return
 
@@ -151,7 +152,16 @@ export default function App(): JSX.Element {
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onFocus)
     }
-  }, [workspace?.id, setClipboard, setNotes])
+  }, [workspace?.id, activeSpaceId, setClipboard, setNotes])
+
+  // Shared spaces: the main process owns the state and pushes every change.
+  useEffect(() => {
+    if (!workspace) return
+    const apply = useStore.getState().setSpaceState
+    void window.snipotter.spaces.state().then((r) => { if (r.ok) apply(r.data) })
+    const off = window.snipotter.spaces.onChange(apply)
+    return () => { off() }
+  }, [workspace?.id])
 
   // End-to-end encryption: the main process activates the key when the workspace opens.
   const e2eStatus = useStore((s) => s.e2eStatus)

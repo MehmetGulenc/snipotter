@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { HelmetProvider } from 'react-helmet-async'
 import App from './App'
 import Yenilikler from './Yenilikler'
+import Katil from './Katil'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -13,6 +14,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Routes>
           <Route path="/" element={<App />} />
           <Route path="/yenilikler" element={<Yenilikler />} />
+          <Route path="/katil" element={<Katil />} />
         </Routes>
       </BrowserRouter>
     </HelmetProvider>

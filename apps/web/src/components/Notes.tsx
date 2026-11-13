@@ -1,4 +1,6 @@
 'use client'
+import { SpaceSwitcher, SpacesPanel } from '@shared/spaces/SpacesUI'
+import { savedDisplayName, webSpacesApi } from '@/lib/spaces'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Pin, PinOff, Trash2, Loader2, ChevronLeft, Check, CheckSquare, Square, Undo2, X, StickyNote, History, BookOpen } from 'lucide-react'
 import { useStore } from '@/lib/store'
@@ -46,13 +48,22 @@ export function Notes(): JSX.Element {
   const openNoteId = useStore((s) => s.openNoteId)
   const clearOpenNote = useStore((s) => s.clearOpenNote)
   const setEditingNote = useStore((s) => s.setEditingNote)
+  const spaces = useStore((s) => s.spaces)
+  const activeSpaceId = useStore((s) => s.activeSpaceId)
+  const e2eReady = useStore((s) => s.e2eStatus === 'ready')
+  const [spacesOpen, setSpacesOpen] = useState(false)
+  const pendingInvite = useStore((s) => s.pendingInvite)
+  useEffect(() => { if (pendingInvite && e2eReady) setSpacesOpen(true) }, [pendingInvite, e2eReady])
+  /** Notes live in the personal workspace or in the open shared space. */
+  const notesWs = workspace ? activeSpaceId ?? workspace.id : null
+  const spacesApi = useMemo(() => (workspace ? webSpacesApi(workspace.id) : null), [workspace?.id])
 
   const [activeId, setActiveId] = useState<string | null>(null)
-  const noteTransport = useMemo(() => (workspace ? createNoteTransport(workspace.id) : null), [workspace?.id])
-  const noteAssets = useMemo(() => (workspace ? createNoteAssets(workspace.id) : undefined), [workspace?.id])
+  const noteTransport = useMemo(() => (notesWs ? createNoteTransport(notesWs) : null), [notesWs])
+  const noteAssets = useMemo(() => (notesWs ? createNoteAssets(notesWs) : undefined), [notesWs])
   const noteLibrary = useMemo(
-    () => (workspace ? createNoteLibrary(workspace.id, (notes) => notes.forEach((n) => useStore.getState().upsertNote(n))) : null),
-    [workspace?.id],
+    () => (notesWs ? createNoteLibrary(notesWs, (notes) => notes.forEach((n) => useStore.getState().upsertNote(n))) : null),
+    [notesWs],
   )
   const [showTrash, setShowTrash] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
@@ -97,12 +108,13 @@ export function Notes(): JSX.Element {
   const touchMoved = useRef(false)
 
   useEffect(() => {
-    if (!workspace) return
-    void listNotes(workspace.id)
+    if (!notesWs) return
+    setActiveId(null)
+    void listNotes(notesWs)
       .then((rows) => setItems(rows))
       .catch((e) => console.warn('notes load failed', e))
       .finally(() => setLoaded(true))
-  }, [workspace?.id])
+  }, [notesWs])
 
   const scoped = useMemo(() => filterNotes(items, noteFilter, notebooks), [items, noteFilter, notebooks])
   const hits = useMemo(() => (query.trim() ? searchNotes(scoped, query) : null), [scoped, query])
@@ -163,7 +175,7 @@ export function Notes(): JSX.Element {
     if (!workspace || !user) return
     setCreating(true)
     try {
-      let note = await createNote(workspace.id, user.id, '')
+      let note = await createNote(notesWs ?? workspace.id, user.id, '')
       if (note) {
         // A note created while a notebook is open goes into that notebook.
         if (noteFilter.kind === 'notebook') note = await moveNoteToNotebook(note.id, noteFilter.id).catch(() => note!)
@@ -488,12 +500,12 @@ export function Notes(): JSX.Element {
   )
 
   const refreshNotebooks = async (): Promise<void> => {
-    if (workspace) setNotebooks(await listNotebooks(workspace.id))
+    if (notesWs) setNotebooks(await listNotebooks(notesWs))
   }
   const notebookActions: NotebookActions = {
     create: async (name, parentId) => {
-      if (!workspace) return
-      await createNotebook(workspace.id, name, parentId)
+      if (!notesWs) return
+      await createNotebook(notesWs, name, parentId)
       await refreshNotebooks()
     },
     rename: async (id, name) => {
@@ -508,6 +520,20 @@ export function Notes(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
+      {spacesOpen && spacesApi && (
+        <div role="dialog" aria-modal="true" aria-label="Ortak alanlar"
+          className="fixed inset-0 z-50 bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
+          <SpacesPanel api={spacesApi} spaces={spaces} activeId={activeSpaceId} defaultName={savedDisplayName()}
+            initialJoin={pendingInvite ?? undefined}
+            onClose={() => { setSpacesOpen(false); useStore.getState().setPendingInvite(null) }} />
+        </div>
+      )}
+      {e2eReady && spacesApi && !selectMode && (
+        <div className="flex items-center px-3 pt-1 sm:px-5">
+          <SpaceSwitcher spaces={spaces} activeId={activeSpaceId} onManage={() => setSpacesOpen(true)}
+            onOpen={(id) => void spacesApi.open(id)} />
+        </div>
+      )}
       {showNotebooks && (
         <div role="dialog" aria-modal="true" aria-label="Defterler" className="fixed inset-0 z-40 flex items-end bg-black/50" onClick={() => setShowNotebooks(false)}>
           <div className="max-h-[80vh] w-full overflow-y-auto rounded-t-2xl border-t border-border bg-card px-2 pb-[max(env(safe-area-inset-bottom),16px)] pt-2" onClick={(e) => e.stopPropagation()}>

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createJwt, pushPayload, secretMatches } from './apns.ts';
+import { createJwt, pushPayload, secretMatches, spaceNotePayload } from './apns.ts';
 
 test('ES256 JWT has APNs claims and a verifiable JOSE signature', async () => {
   const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
@@ -68,4 +68,14 @@ test('webhook rejects unauthorized requests and deletes only APNs 410 tokens', a
     assert.ok(!calls.some(c => c.url.includes('b'.repeat(64))));
     assert.ok(calls.some(c => c.method === 'DELETE' && c.url.includes(`id=eq.token-row&token=eq.${expiredToken}`)));
   } finally { globalThis.fetch = originalFetch; delete runtime.Deno; }
+});
+test('shared-space note push carries ids only', () => {
+  const space = crypto.randomUUID();
+  const note = crypto.randomUUID();
+  const body = spaceNotePayload(space, note);
+  assert.equal(body.aps.category, 'SNIPOTTER_SPACE_NOTE');
+  assert.equal(body.space_id, space);
+  assert.equal(body.note_id, note);
+  assert.equal(body.aps['thread-id'], space);
+  assert.deepEqual(Object.keys(body).sort(), ['aps', 'note_id', 'space_id']);
 });

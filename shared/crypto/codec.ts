@@ -103,9 +103,24 @@ export class E2ECodec {
   }
 }
 
-/** Current workspace's codec; replaced when the workspace or its key changes. */
+/** Current (personal) workspace's codec; replaced when the workspace or its key changes. */
 let current = new E2ECodec(null)
 export const codec = (): E2ECodec => current
 export function setCodec(next: E2ECodec): void {
   current = next
+}
+
+/** Codecs of shared spaces the user belongs to, by space id. */
+const spaces = new Map<string, E2ECodec>()
+export function setSpaceCodec(spaceId: string, next: E2ECodec | null): void {
+  if (next) spaces.set(spaceId, next)
+  else spaces.delete(spaceId)
+}
+export function clearSpaceCodecs(): void {
+  spaces.clear()
+}
+
+/** The codec for rows of `workspaceId`: a shared space's own key, otherwise the personal one. */
+export function codecFor(workspaceId: string | null | undefined): E2ECodec {
+  return (workspaceId && spaces.get(workspaceId)) || current
 }

@@ -7,14 +7,18 @@
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import { codec, E2ECodec, setCodec } from '@shared/crypto/codec'
+import { clearSpaceCodecs, codec, codecFor, E2ECodec, setCodec } from '@shared/crypto/codec'
 import WebSocket from 'ws'
-import { authStorage, preferredWorkspace, workspaceKeyStore } from './store'
+import { activeSpaceStore, authStorage, preferredWorkspace, workspaceKeyStore } from './store'
 import {
   activateWorkspaceKey, commitEncryption, createKeyTransfer, forgetWorkspaceKey, prepareEncryption, recoverWithWords, redeemKeyTransfer,
   type KeyStatus, type PreparedKey,
 } from '@shared/crypto/workspaceKey'
 import { encryptExistingData, hasPlainData, type MigrationProgress } from '@shared/crypto/migrate'
+import {
+  createInvite, createSpace, joinSpace, listMembers, loadSpaces, removeMember, renameSpace, setMyName,
+  type Space, type SpaceInvite, type SpaceMember,
+} from '@shared/crypto/spaces'
 import type {
   ClipboardItem,
   Note,
@@ -108,7 +112,7 @@ function clipboardFromRow(row: ClipboardRow): ClipboardItem {
 
 // Rows pass through the end-to-end codec (a no-op until the workspace is encrypted).
 const openClip = async (r: ClipboardRow): Promise<ClipboardItem> => clipboardFromRow(await codec().openRow('clipboard_items', r))
-const openNote = async (r: NoteRow): Promise<Note> => noteFromRow(await codec().openRow('notes', r))
+const openNote = async (r: NoteRow): Promise<Note> => noteFromRow(await codecFor(r.workspace_id).openRow('notes', r))
 const openClips = (rows: unknown[] | null): Promise<ClipboardItem[]> => Promise.all(((rows ?? []) as ClipboardRow[]).map(openClip))
 const openNotes = (rows: unknown[] | null): Promise<Note[]> => Promise.all(((rows ?? []) as NoteRow[]).map(openNote))
 
@@ -158,6 +162,11 @@ export class SupabaseService extends EventEmitter {
   // Broadcasts go through Supabase Realtime's pub/sub layer directly without
   // waiting for postgres WAL replication (which adds 100-500ms latency).
   private broadcastChannel: RealtimeChannel | null = null
+  /** Broadcasts of the open shared space (notes only); null while notes are personal. */
+  private spaceChannel: RealtimeChannel | null = null
+  /** Open shared space for notes; null = personal notes. Clipboard is always personal. */
+  private spaceId: string | null = null
+  private spaces: Space[] = []
   // Unique per-process ID used to ignore echoes of our own broadcasts
   // (self: false on the client should handle this, but we belt-and-brace).
   private readonly clientId: string = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -293,7 +302,11 @@ export class SupabaseService extends EventEmitter {
     this.unsubscribeRealtime()
     await this.client.auth.signOut()
     setCodec(new E2ECodec(null))
+    clearSpaceCodecs()
     workspaceKeyStore.clear()
+    activeSpaceStore.set(null)
+    this.spaces = []
+    this.spaceId = null
     this.e2eStatus = 'unknown'
     this.workspaceId = null
     this.workspace = null
@@ -348,7 +361,120 @@ export class SupabaseService extends EventEmitter {
       console.warn('[e2e] activation failed', (err as Error).message)
     }
     this.emit('e2e:status', this.e2eStatus)
+    await this.refreshSpaces()
     return this.e2eStatus
+  }
+
+  // ── Shared spaces (docs/ortak-alan-tasarimi.md) ─────────────────────────────
+
+  private get notesWs(): string | null {
+    return this.spaceId ?? this.workspaceId
+  }
+
+  private nc(): E2ECodec {
+    return codecFor(this.notesWs)
+  }
+
+  private requirePerson(): { client: SupabaseClient; personId: string } {
+    if (!this.client || !this.workspaceId) throw new Error('Senkron hazır değil')
+    if (this.e2eStatus !== 'ready') throw new Error('Ortak alan için önce şifrelemeyi tamamla')
+    return { client: this.client, personId: this.workspaceId }
+  }
+
+  getSpaceState(): { spaces: Space[]; activeId: string | null } {
+    return { spaces: this.spaces, activeId: this.spaceId }
+  }
+
+  /** Reloads spaces and their keys; falls back to personal notes if the open space is gone. */
+  async refreshSpaces(): Promise<{ spaces: Space[]; activeId: string | null }> {
+    if (!this.client || !this.workspaceId || this.e2eStatus !== 'ready') {
+      this.spaces = []
+    } else {
+      try {
+        this.spaces = await loadSpaces(this.client, this.workspaceId, codec())
+      } catch (err) {
+        console.warn('[spaces] load failed', (err as Error).message)
+      }
+    }
+    const wanted = this.spaceId ?? activeSpaceStore.get()
+    const next = wanted && this.spaces.some((s) => s.id === wanted) ? wanted : null
+    if (next !== this.spaceId) await this.openSpace(next)
+    else this.emit('spaces:changed', this.getSpaceState())
+    return this.getSpaceState()
+  }
+
+  /** Switches the notes view between personal (null) and a shared space. */
+  async openSpace(spaceId: string | null): Promise<{ spaces: Space[]; activeId: string | null }> {
+    if (spaceId && !this.spaces.some((s) => s.id === spaceId)) throw new Error('Bu ortak alana üye değilsin')
+    this.spaceId = spaceId
+    activeSpaceStore.set(spaceId)
+    this.lastNoteEventAt = new Date(0).toISOString()
+    await this.subscribeRealtime()
+    this.emit('spaces:changed', this.getSpaceState())
+    return this.getSpaceState()
+  }
+
+  async spaceCreate(name: string, myName: string): Promise<Space> {
+    const { client, personId } = this.requirePerson()
+    const space = await createSpace(client, personId, codec(), name, myName)
+    await this.refreshSpaces()
+    await this.openSpace(space.id)
+    return space
+  }
+
+  async spaceJoin(input: string, myName: string): Promise<Space> {
+    const { client, personId } = this.requirePerson()
+    const space = await joinSpace(client, personId, codec(), input, myName)
+    await this.refreshSpaces()
+    await this.openSpace(space.id)
+    return space
+  }
+
+  spaceInvite(spaceId: string): Promise<SpaceInvite> {
+    const { client, personId } = this.requirePerson()
+    return createInvite(client, personId, codec(), spaceId)
+  }
+
+  spaceMembers(spaceId: string): Promise<SpaceMember[]> {
+    const { client, personId } = this.requirePerson()
+    return listMembers(client, personId, codecFor(spaceId), spaceId)
+  }
+
+  async spaceRename(spaceId: string, name: string): Promise<void> {
+    const { client } = this.requirePerson()
+    await renameSpace(client, codecFor(spaceId), spaceId, name)
+    await this.refreshSpaces()
+  }
+
+  async spaceSetMyName(spaceId: string, name: string): Promise<void> {
+    const { client, personId } = this.requirePerson()
+    await setMyName(client, personId, codecFor(spaceId), spaceId, name)
+  }
+
+  /** Owner removes someone, or target = null to leave the space yourself. */
+  async spaceRemove(spaceId: string, targetPersonId: string | null): Promise<void> {
+    const { client, personId } = this.requirePerson()
+    await removeMember(client, personId, spaceId, targetPersonId ?? personId)
+    await this.refreshSpaces()
+  }
+
+  /** "Send to space": a clip becomes a note in a shared space. */
+  async createNoteIn(spaceId: string, partial: Partial<Note>): Promise<Note | null> {
+    if (!this.client || !this.user) return null
+    if (!this.spaces.some((s) => s.id === spaceId)) throw new Error('Bu ortak alana üye değilsin')
+    const row = await codecFor(spaceId).sealRow('notes', {
+      id: randomUUID(),
+      workspace_id: spaceId,
+      created_by: this.user.id,
+      title: partial.title ?? null,
+      content: partial.content ?? '',
+      pinned: false,
+    })
+    const { data, error } = await this.client.from('notes').insert(row).select('*').single()
+    if (error) throw new Error(error.message)
+    const note = await openNote(data as NoteRow)
+    if (spaceId === this.spaceId) this.broadcastNoteUpsert(note)
+    return note
   }
 
   /** Step 1: new key + 24 recovery words; nothing is stored until the user confirms them. */
@@ -464,6 +590,10 @@ export class SupabaseService extends EventEmitter {
       .eq('user_id', this.user.id)
     this.unsubscribeRealtime()
     await forgetWorkspaceKey(workspaceKeyStore, this.workspaceId)
+    clearSpaceCodecs()
+    activeSpaceStore.set(null)
+    this.spaces = []
+    this.spaceId = null
     if (preferredWorkspace.get() === this.workspaceId) preferredWorkspace.set(null)
     this.e2eStatus = 'unknown'
     this.workspaceId = null
@@ -692,22 +822,24 @@ export class SupabaseService extends EventEmitter {
   }
 
   async listNotes(): Promise<Note[]> {
-    if (!this.client || !this.workspaceId) return []
+    if (!this.client || !this.notesWs) return []
     const { data, error } = await this.client
       .from('notes')
       .select('*')
-      .eq('workspace_id', this.workspaceId)
+      .eq('workspace_id', this.notesWs)
       .order('pinned', { ascending: false })
       .order('updated_at', { ascending: false })
     if (error) throw error
     return openNotes(data)
   }
 
-  async createNote(partial: Partial<Note>): Promise<Note | null> {
-    if (!this.client || !this.workspaceId || !this.user) return null
-    const payload = await codec().sealRow('notes', {
+  /** New note in the open notes space, or always personal (e.g. a clip saved as a note). */
+  async createNote(partial: Partial<Note>, personal = false): Promise<Note | null> {
+    const ws = personal ? this.workspaceId : this.notesWs
+    if (!this.client || !ws || !this.user) return null
+    const payload = await codecFor(ws).sealRow('notes', {
       id: randomUUID(),
-      workspace_id: this.workspaceId,
+      workspace_id: ws,
       created_by: this.user.id,
       title: partial.title ?? null,
       content: partial.content ?? '',
@@ -724,13 +856,19 @@ export class SupabaseService extends EventEmitter {
   }
 
   async updateNote(id: string, partial: Partial<Note>): Promise<Note | null> {
-    if (!this.client || !this.workspaceId) return null
+    if (!this.client || !this.notesWs) return null
     const updates: Record<string, unknown> = {}
     if (partial.title !== undefined) updates['title'] = partial.title
     if (partial.content !== undefined) updates['content'] = partial.content
     if (partial.pinned !== undefined) updates['pinned'] = partial.pinned
     if (partial.ai !== undefined) updates['ai'] = partial.ai
-    const { id: _id, ...sealed } = await codec().sealRow('notes', { id, ...updates })
+    // With a space open the note may still be personal (AI summary of a saved clip): seal with its own key.
+    let ws = this.notesWs
+    if (this.spaceId) {
+      const { data: row } = await this.client.from('notes').select('workspace_id').eq('id', id).maybeSingle()
+      ws = (row as { workspace_id?: string } | null)?.workspace_id ?? ws
+    }
+    const { id: _id, ...sealed } = await codecFor(ws).sealRow('notes', { id, ...updates })
     const { data, error } = await this.client
       .from('notes')
       .update(sealed)
@@ -752,8 +890,14 @@ export class SupabaseService extends EventEmitter {
     return { client: this.client, workspaceId: this.workspaceId }
   }
 
+  /** Notes live in the personal workspace or in the open shared space. */
+  private requireNotes(): { client: SupabaseClient; workspaceId: string } {
+    if (!this.client || !this.notesWs) throw new Error('Senkron hazır değil')
+    return { client: this.client, workspaceId: this.notesWs }
+  }
+
   async noteSyncLoad(noteId: string): Promise<NoteSyncState | null> {
-    const { client } = this.requireSync()
+    const { client } = this.requireNotes()
     const { data, error } = await client
       .from('notes')
       .select('ydoc, ydoc_seq, content, ydoc_content_sha')
@@ -762,9 +906,9 @@ export class SupabaseService extends EventEmitter {
     if (error) throw new Error(error.message)
     if (!data) return null
     const seq = Number(data.ydoc_seq ?? 0)
-    const open = await codec().openRow('notes', { id: noteId, content: (data.content as string) ?? '' })
+    const open = await this.nc().openRow('notes', { id: noteId, content: (data.content as string) ?? '' })
     return {
-      ydoc: data.ydoc ? await codec().openNoteBlob(noteId, 'ydoc', data.ydoc as string) : null,
+      ydoc: data.ydoc ? await this.nc().openNoteBlob(noteId, 'ydoc', data.ydoc as string) : null,
       seq,
       content: open.content,
       contentSha: data.ydoc_content_sha as string | null,
@@ -773,7 +917,7 @@ export class SupabaseService extends EventEmitter {
   }
 
   async noteUpdatesAfter(noteId: string, afterId: number): Promise<Array<{ id: number; update: string }>> {
-    const { client } = this.requireSync()
+    const { client } = this.requireNotes()
     const out: Array<{ id: number; update: string }> = []
     let cursor = afterId
     for (;;) {
@@ -786,25 +930,25 @@ export class SupabaseService extends EventEmitter {
         .limit(1000)
       if (error) throw new Error(error.message)
       const rows = (data ?? []) as Array<{ id: number; update: string }>
-      for (const r of rows) out.push({ id: r.id, update: await codec().openNoteBlob(noteId, 'update', r.update) })
+      for (const r of rows) out.push({ id: r.id, update: await this.nc().openNoteBlob(noteId, 'update', r.update) })
       if (rows.length < 1000) return out
       cursor = rows[rows.length - 1].id
     }
   }
 
   async notePushUpdate(noteId: string, plain: string): Promise<void> {
-    const { client, workspaceId } = this.requireSync()
-    const update = await codec().sealNoteBlob(noteId, 'update', plain)
-    void this.broadcastChannel?.send({ type: 'broadcast', event: 'note:y', payload: { noteId, update, from: this.clientId } })
+    const { client, workspaceId } = this.requireNotes()
+    const update = await this.nc().sealNoteBlob(noteId, 'update', plain)
+    void this.noteBus?.send({ type: 'broadcast', event: 'note:y', payload: { noteId, update, from: this.clientId } })
     const { error } = await client.from('note_updates').insert({ note_id: noteId, workspace_id: workspaceId, update })
     if (error) throw new Error(error.message)
   }
 
   async noteSaveContent(noteId: string, content: string, contentSha: string): Promise<Note> {
-    const { client } = this.requireSync()
+    const { client } = this.requireNotes()
     const { data, error } = await client
       .from('notes')
-      .update({ content: (await codec().sealRow('notes', { id: noteId, content })).content, ydoc_content_sha: contentSha })
+      .update({ content: (await this.nc().sealRow('notes', { id: noteId, content })).content, ydoc_content_sha: contentSha })
       .eq('id', noteId)
       .select('*')
       .single()
@@ -815,12 +959,12 @@ export class SupabaseService extends EventEmitter {
   }
 
   async noteCompact(noteId: string, ydoc: string, seq: number, content: string, contentSha: string): Promise<boolean> {
-    const { client } = this.requireSync()
+    const { client } = this.requireNotes()
     const { data, error } = await client.rpc('compact_note', {
       p_note_id: noteId,
-      p_ydoc: await codec().sealNoteBlob(noteId, 'ydoc', ydoc),
+      p_ydoc: await this.nc().sealNoteBlob(noteId, 'ydoc', ydoc),
       p_seq: seq,
-      p_content: (await codec().sealRow('notes', { id: noteId, content })).content,
+      p_content: (await this.nc().sealRow('notes', { id: noteId, content })).content,
       p_content_sha: contentSha,
     })
     if (error) throw new Error(error.message)
@@ -828,8 +972,8 @@ export class SupabaseService extends EventEmitter {
   }
 
   async noteSaveVersion(noteId: string, content: string, kind: 'auto' | 'manual' | 'restore'): Promise<void> {
-    const { client, workspaceId } = this.requireSync()
-    const row = await codec().sealRow('note_versions', { id: randomUUID(), note_id: noteId, workspace_id: workspaceId, kind, content })
+    const { client, workspaceId } = this.requireNotes()
+    const row = await this.nc().sealRow('note_versions', { id: randomUUID(), note_id: noteId, workspace_id: workspaceId, kind, content })
     const { error } = await client.from('note_versions').insert(row)
     if (error) throw new Error(error.message)
   }
@@ -838,7 +982,7 @@ export class SupabaseService extends EventEmitter {
 
   /** Empty when the server predates notebooks. */
   async listNotebooks(): Promise<Notebook[]> {
-    const { client, workspaceId } = this.requireSync()
+    const { client, workspaceId } = this.requireNotes()
     const { data, error } = await client.from('notebooks').select('*').eq('workspace_id', workspaceId).order('sort')
     if (error) {
       if (error.code === '42P01' || error.code === 'PGRST205') return []
@@ -848,10 +992,10 @@ export class SupabaseService extends EventEmitter {
   }
 
   async createNotebook(name: string, parentId: string | null): Promise<Notebook> {
-    const { client, workspaceId } = this.requireSync()
+    const { client, workspaceId } = this.requireNotes()
     const { data, error } = await client
       .from('notebooks')
-      .insert(await codec().sealRow('notebooks', { id: randomUUID(), workspace_id: workspaceId, name: name.trim(), parent_id: parentId }))
+      .insert(await this.nc().sealRow('notebooks', { id: randomUUID(), workspace_id: workspaceId, name: name.trim(), parent_id: parentId }))
       .select('*')
       .single()
     if (error) throw new Error(error.message)
@@ -859,9 +1003,9 @@ export class SupabaseService extends EventEmitter {
   }
 
   async updateNotebook(id: string, patch: { name?: string; parentId?: string | null; sort?: number }): Promise<Notebook> {
-    const { client } = this.requireSync()
+    const { client } = this.requireNotes()
     const row: Record<string, unknown> = {}
-    if (patch.name !== undefined) row.name = (await codec().sealRow('notebooks', { id, name: patch.name.trim() })).name
+    if (patch.name !== undefined) row.name = (await this.nc().sealRow('notebooks', { id, name: patch.name.trim() })).name
     if (patch.parentId !== undefined) row.parent_id = patch.parentId
     if (patch.sort !== undefined) row.sort = patch.sort
     const { data, error } = await client.from('notebooks').update(row).eq('id', id).select('*').single()
@@ -870,13 +1014,13 @@ export class SupabaseService extends EventEmitter {
   }
 
   async deleteNotebook(id: string): Promise<void> {
-    const { client } = this.requireSync()
+    const { client } = this.requireNotes()
     const { error } = await client.from('notebooks').delete().eq('id', id)
     if (error) throw new Error(error.message)
   }
 
   async moveNote(noteId: string, notebookId: string | null): Promise<Note> {
-    const { client } = this.requireSync()
+    const { client } = this.requireNotes()
     const { data, error } = await client.from('notes').update({ notebook_id: notebookId }).eq('id', noteId).select('*').single()
     if (error) throw new Error(error.message)
     const note = await openNote(data as NoteRow)
@@ -886,9 +1030,9 @@ export class SupabaseService extends EventEmitter {
 
   /** Uploads a note image into <workspace>/<note>/<uuid>.<ext> and returns that path. */
   async noteAssetUpload(noteId: string, mime: string, bytes: Buffer, ext: string): Promise<string> {
-    const { client, workspaceId } = this.requireSync()
+    const { client, workspaceId } = this.requireNotes()
     const path = `${workspaceId}/${noteId}/${randomUUID()}.${ext}`
-    const body = codec().enabled ? Buffer.from(await codec().sealFile(path, new Uint8Array(bytes))) : bytes
+    const body = this.nc().enabled ? Buffer.from(await this.nc().sealFile(path, new Uint8Array(bytes))) : bytes
     const { error } = await client.storage.from('note-assets').upload(path, body, { contentType: mime, upsert: false })
     if (error) throw new Error(error.message)
     return path
@@ -896,17 +1040,17 @@ export class SupabaseService extends EventEmitter {
 
   /** Signed URL for an image of the active workspace only. */
   async noteAssetUrl(path: string): Promise<string> {
-    const { client, workspaceId } = this.requireSync()
+    const { client, workspaceId } = this.requireNotes()
     if (!path.startsWith(`${workspaceId}/`) || path.includes('..')) throw new Error('Görsel bu çalışma alanına ait değil')
     const { data, error } = await client.storage.from('note-assets').createSignedUrl(path, 3600)
     if (error || !data?.signedUrl) throw new Error(error?.message ?? 'Görsel bağlantısı alınamadı')
-    if (!codec().enabled) return data.signedUrl
+    if (!this.nc().enabled) return data.signedUrl
     // Encrypted workspace: decrypt here and hand the renderer a data: URL. Images stored
     // before encryption fail authentication and are shown as they are.
     const res = await fetch(data.signedUrl)
     if (!res.ok) throw new Error(`Görsel indirilemedi (${res.status})`)
     const bytes = new Uint8Array(await res.arrayBuffer())
-    const plain = await codec().openFile(path, bytes).catch(() => bytes)
+    const plain = await this.nc().openFile(path, bytes).catch(() => bytes)
     const ext = path.split('.').pop() ?? 'jpeg'
     return `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${Buffer.from(plain).toString('base64')}`
   }
@@ -916,7 +1060,7 @@ export class SupabaseService extends EventEmitter {
    * predates it, so callers fall back to a permanent delete.
    */
   private async trashNotes(ids: string[]): Promise<boolean> {
-    const { client } = this.requireSync()
+    const { client } = this.requireNotes()
     const { error } = await client.rpc('trash_notes', { p_ids: ids })
     if (!error) return true
     if (error.code === 'PGRST202') return false
@@ -924,7 +1068,7 @@ export class SupabaseService extends EventEmitter {
   }
 
   async listTrash(): Promise<TrashedNote[]> {
-    const { client, workspaceId } = this.requireSync()
+    const { client, workspaceId } = this.requireNotes()
     const { data, error } = await client
       .from('notes_trash')
       .select('id, deleted_at, title:note->>title, content:note->>content')
@@ -934,13 +1078,13 @@ export class SupabaseService extends EventEmitter {
     if (error) throw new Error(error.message)
     return Promise.all(((data ?? []) as unknown as Array<{ id: string; deleted_at: string; title: string | null; content: string | null }>)
       .map(async (r) => {
-        const open = await codec().openRow('notes', { id: r.id, title: r.title, content: r.content ?? '' })
+        const open = await this.nc().openRow('notes', { id: r.id, title: r.title, content: r.content ?? '' })
         return { id: r.id, title: open.title, content: open.content, deletedAt: r.deleted_at }
       }))
   }
 
   async restoreNotes(ids: string[]): Promise<Note[]> {
-    const { client } = this.requireSync()
+    const { client } = this.requireNotes()
     const { error } = await client.rpc('restore_notes', { p_ids: ids })
     if (error) throw new Error(error.message)
     const { data, error: readError } = await client.from('notes').select('*').in('id', ids)
@@ -951,13 +1095,13 @@ export class SupabaseService extends EventEmitter {
   }
 
   async purgeTrashedNotes(ids: string[]): Promise<void> {
-    const { client } = this.requireSync()
+    const { client } = this.requireNotes()
     const { error } = await client.rpc('purge_trashed_notes', { p_ids: ids })
     if (error) throw new Error(error.message)
   }
 
   async listNoteVersions(noteId: string): Promise<NoteVersion[]> {
-    const { client } = this.requireSync()
+    const { client } = this.requireNotes()
     const { data, error } = await client
       .from('note_versions')
       .select('id, kind, created_at, content')
@@ -967,13 +1111,13 @@ export class SupabaseService extends EventEmitter {
     if (error) throw new Error(error.message)
     return Promise.all(((data ?? []) as Array<{ id: string; kind: NoteVersion['kind']; created_at: string; content: string }>)
       .map(async (r) => {
-        const open = await codec().openRow('note_versions', r)
+        const open = await this.nc().openRow('note_versions', r)
         return { id: r.id, kind: r.kind, createdAt: r.created_at, content: open.content }
       }))
   }
 
   async deleteNote(id: string): Promise<void> {
-    if (!this.client || !this.workspaceId) return
+    if (!this.client || !this.notesWs) return
     if (await this.trashNotes([id])) return
     // Use `count: 'exact'` so we can detect silent RLS rejections.
     // When RLS blocks a DELETE, Postgres silently returns 0 rows affected —
@@ -990,7 +1134,7 @@ export class SupabaseService extends EventEmitter {
       // instead of by owner, so workspace admins can clean up any note.
       const { error: rpcError } = await this.client.rpc('delete_note_by_workspace', {
         p_note_id: id,
-        p_workspace_id: this.workspaceId,
+        p_workspace_id: this.notesWs,
       })
       if (rpcError) {
         throw new Error(
@@ -1003,7 +1147,7 @@ export class SupabaseService extends EventEmitter {
   }
 
   async deleteNotesMany(ids: string[]): Promise<void> {
-    if (!this.client || !this.workspaceId || ids.length === 0) return
+    if (!this.client || !this.notesWs || ids.length === 0) return
     if (await this.trashNotes(ids)) return
     const { error } = await this.client
       .from('notes')
@@ -1055,11 +1199,12 @@ export class SupabaseService extends EventEmitter {
       })
 
     this.diagChannels.note = 'connecting'
+    const notesWs = this.notesWs ?? wsId
     this.noteChannel = this.client
-      .channel(`notes-${wsId}`)
+      .channel(`notes-${notesWs}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'notes', filter: `workspace_id=eq.${wsId}` },
+        { event: '*', schema: 'public', table: 'notes', filter: `workspace_id=eq.${notesWs}` },
         (payload) => {
           if (payload.eventType === 'DELETE') {
             const id = (payload.old as { id?: string }).id
@@ -1075,7 +1220,7 @@ export class SupabaseService extends EventEmitter {
       )
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'note_updates', filter: `workspace_id=eq.${wsId}` },
+        { event: 'INSERT', schema: 'public', table: 'note_updates', filter: `workspace_id=eq.${notesWs}` },
         (payload) => {
           const row = payload.new as { note_id?: string; update?: string }
           if (row.note_id && row.update) this.emitNoteY(row.note_id, row.update)
@@ -1083,7 +1228,7 @@ export class SupabaseService extends EventEmitter {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'notebooks', filter: `workspace_id=eq.${wsId}` },
+        { event: '*', schema: 'public', table: 'notebooks', filter: `workspace_id=eq.${notesWs}` },
         () => this.emit('notebooks:changed'),
       )
       .subscribe((status, err) => {
@@ -1102,7 +1247,7 @@ export class SupabaseService extends EventEmitter {
     // op, it broadcasts the change on this channel; all other devices in the
     // workspace receive it near-instantly via WebSocket (no WAL round-trip).
     // postgres_changes above remains as the durable backstop.
-    this.broadcastChannel = this.client
+    const personal = this.client
       .channel(`sync-${wsId}`, {
         config: {
           broadcast: { self: false, ack: false },
@@ -1123,9 +1268,33 @@ export class SupabaseService extends EventEmitter {
         if (payload?.from === this.clientId) return
         if (payload?.id) this.emit('clip:deleted', payload.id as string)
       })
+    // Note events ride the personal channel, or the space's own channel when one is open.
+    const noteBus = notesWs === wsId ? personal : this.client.channel(`sync-${notesWs}`, { config: { broadcast: { self: false, ack: false } } })
+    this.registerNoteBroadcasts(noteBus)
+    if (noteBus !== personal) {
+      this.spaceChannel = noteBus.subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') this.scheduleReconnect()
+      })
+    }
+    this.broadcastChannel = personal
+      .subscribe((status, err) => {
+        this.diagChannels.broadcast = mapStatus(status)
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn('[supabase] broadcast channel error', status, err)
+          this.scheduleReconnect()
+        } else if (status === 'SUBSCRIBED') {
+          console.log('[supabase] instant-broadcast channel active')
+          this.startHeartbeat()
+        }
+      })
+    this.diagChannels.broadcast = 'connecting'
+  }
+
+  private registerNoteBroadcasts(channel: RealtimeChannel): void {
+    channel
       .on('broadcast', { event: 'note:upsert' }, async ({ payload }) => {
         if (payload?.from === this.clientId) return
-        const body = await codec().openBroadcast('note:upsert', payload ?? {})
+        const body = await this.nc().openBroadcast('note:upsert', payload ?? {})
         if (!body?.note) return
         const note = body.note as Note
         if (note.updatedAt && note.updatedAt > this.lastNoteEventAt) {
@@ -1143,17 +1312,6 @@ export class SupabaseService extends EventEmitter {
           this.emitNoteY(payload.noteId, payload.update)
         }
       })
-      .subscribe((status, err) => {
-        this.diagChannels.broadcast = mapStatus(status)
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          console.warn('[supabase] broadcast channel error', status, err)
-          this.scheduleReconnect()
-        } else if (status === 'SUBSCRIBED') {
-          console.log('[supabase] instant-broadcast channel active')
-          this.startHeartbeat()
-        }
-      })
-    this.diagChannels.broadcast = 'connecting'
   }
 
   /**
@@ -1230,13 +1388,13 @@ export class SupabaseService extends EventEmitter {
   }
 
   private async replayNotesSince(sinceIso: string): Promise<void> {
-    if (!this.client || !this.workspaceId) return
+    if (!this.client || !this.notesWs) return
     if (sinceIso === new Date(0).toISOString()) return
     try {
       const { data, error } = await this.client
         .from('notes')
         .select('*')
-        .eq('workspace_id', this.workspaceId)
+        .eq('workspace_id', this.notesWs)
         .gt('updated_at', sinceIso)
         .order('updated_at', { ascending: true })
         .limit(500)
@@ -1264,17 +1422,21 @@ export class SupabaseService extends EventEmitter {
    * separately and acts as the durable source of truth.
    */
   /** Yjs updates arrive sealed (realtime row or broadcast); the renderer gets plain base64. */
+  private get noteBus(): RealtimeChannel | null {
+    return this.spaceChannel ?? this.broadcastChannel
+  }
+
   private emitNoteY(noteId: string, sealed: string): void {
-    void codec().openNoteBlob(noteId, 'update', sealed)
+    void this.nc().openNoteBlob(noteId, 'update', sealed)
       .then((update) => this.emit('note:y', { noteId, update }))
       .catch(() => undefined)
   }
 
   /** Broadcasts travel through the server: in encrypted workspaces the payload is sealed. */
-  private sendSealed(event: string, id: string, payload: Record<string, unknown>): void {
-    const channel = this.broadcastChannel
+  private sendSealed(event: string, id: string, payload: Record<string, unknown>, bus: 'clip' | 'note' = 'clip'): void {
+    const channel = bus === 'note' ? this.noteBus : this.broadcastChannel
     if (!channel) return
-    void codec().sealBroadcast(event, id, payload).then((body) =>
+    void codecFor(bus === 'note' ? this.notesWs : this.workspaceId).sealBroadcast(event, id, payload).then((body) =>
       channel.send({ type: 'broadcast', event, payload: { ...body, from: this.clientId } }),
     )
   }
@@ -1292,13 +1454,16 @@ export class SupabaseService extends EventEmitter {
     })
   }
 
+  /** Each note goes only to its own workspace's channel: a personal note never reaches a space. */
   broadcastNoteUpsert(note: Note): void {
-    this.sendSealed('note:upsert', note.id, { note })
+    const ws = note.workspaceId ?? this.notesWs
+    if (ws === this.notesWs) this.sendSealed('note:upsert', note.id, { note }, 'note')
+    else if (ws === this.workspaceId) this.sendSealed('note:upsert', note.id, { note }, 'clip')
   }
 
   broadcastNoteDeleted(id: string): void {
-    if (!this.broadcastChannel) return
-    void this.broadcastChannel.send({
+    if (!this.noteBus) return
+    void this.noteBus.send({
       type: 'broadcast',
       event: 'note:deleted',
       payload: { id, from: this.clientId },
@@ -1317,9 +1482,10 @@ export class SupabaseService extends EventEmitter {
   }
 
   broadcastNoteDeletedMany(ids: string[]): void {
-    if (!this.broadcastChannel || ids.length === 0) return
+    const bus = this.noteBus
+    if (!bus || ids.length === 0) return
     for (const id of ids) {
-      void this.broadcastChannel.send({
+      void bus.send({
         type: 'broadcast',
         event: 'note:deleted',
         payload: { id, from: this.clientId },
@@ -1340,6 +1506,10 @@ export class SupabaseService extends EventEmitter {
     if (this.broadcastChannel) {
       void this.client?.removeChannel(this.broadcastChannel)
       this.broadcastChannel = null
+    }
+    if (this.spaceChannel) {
+      void this.client?.removeChannel(this.spaceChannel)
+      this.spaceChannel = null
     }
   }
 }

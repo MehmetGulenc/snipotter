@@ -7,7 +7,7 @@ import type {
   WorkspaceMember,
 } from './types'
 import type { Notebook, NoteVersion, TrashedNote } from '@shared/types'
-import { codec } from '@shared/crypto/codec'
+import { codec, codecFor } from '@shared/crypto/codec'
 
 interface ClipboardRow {
   id: string
@@ -69,7 +69,7 @@ function noteFromRow(r: NoteRow): Note {
 
 // Rows pass through the end-to-end codec (a no-op until the workspace is encrypted).
 const openClip = async (r: ClipboardRow): Promise<ClipboardItem> => clipFromRow(await codec().openRow('clipboard_items', r))
-const openNote = async (r: NoteRow): Promise<Note> => noteFromRow(await codec().openRow('notes', r))
+const openNote = async (r: NoteRow): Promise<Note> => noteFromRow(await codecFor(r.workspace_id).openRow('notes', r))
 const openClips = (rows: unknown[] | null): Promise<ClipboardItem[]> => Promise.all(((rows ?? []) as ClipboardRow[]).map(openClip))
 const openNotes = (rows: unknown[] | null): Promise<Note[]> => Promise.all(((rows ?? []) as NoteRow[]).map(openNote))
 
@@ -320,6 +320,13 @@ export async function deleteClipMany(ids: string[]): Promise<void> {
 
 // ---------- Notes ----------
 
+/** Workspace whose notes are open: the personal one or a shared space. Clipboard stays personal. */
+let notesWs: string | null = null
+export function setNotesWorkspace(id: string | null): void {
+  notesWs = id
+}
+const nc = () => codecFor(notesWs)
+
 export async function listNotes(workspaceId: string): Promise<Note[]> {
   const { data, error } = await getSupabase()
     .from('notes')
@@ -338,7 +345,7 @@ export async function createNote(
 ): Promise<Note | null> {
   const { data, error } = await getSupabase()
     .from('notes')
-    .insert(await codec().sealRow('notes', {
+    .insert(await codecFor(workspaceId).sealRow('notes', {
       id: crypto.randomUUID(),
       workspace_id: workspaceId,
       created_by: userId,
@@ -369,7 +376,7 @@ const notebookFromRow = (r: NotebookRow): Notebook => ({
   id: r.id, workspaceId: r.workspace_id, parentId: r.parent_id, name: r.name, icon: r.icon, sort: r.sort,
 })
 const openNotebook = async (r: NotebookRow): Promise<Notebook> => {
-  const open = await codec().openRow('notebooks', r)
+  const open = await codecFor(r.workspace_id).openRow('notebooks', r)
   return notebookFromRow({ ...open, name: open.name || 'Kilitli defter' })
 }
 
@@ -386,7 +393,7 @@ export async function listNotebooks(workspaceId: string): Promise<Notebook[]> {
 export async function createNotebook(workspaceId: string, name: string, parentId: string | null): Promise<Notebook> {
   const { data, error } = await getSupabase()
     .from('notebooks')
-    .insert(await codec().sealRow('notebooks', { id: crypto.randomUUID(), workspace_id: workspaceId, name: name.trim(), parent_id: parentId }))
+    .insert(await codecFor(workspaceId).sealRow('notebooks', { id: crypto.randomUUID(), workspace_id: workspaceId, name: name.trim(), parent_id: parentId }))
     .select('*')
     .single()
   if (error) throw error
@@ -395,7 +402,7 @@ export async function createNotebook(workspaceId: string, name: string, parentId
 
 export async function updateNotebook(id: string, patch: { name?: string; parentId?: string | null; sort?: number }): Promise<Notebook> {
   const row: Record<string, unknown> = {}
-  if (patch.name !== undefined) row.name = (await codec().sealRow('notebooks', { id, name: patch.name.trim() })).name
+  if (patch.name !== undefined) row.name = (await nc().sealRow('notebooks', { id, name: patch.name.trim() })).name
   if (patch.parentId !== undefined) row.parent_id = patch.parentId
   if (patch.sort !== undefined) row.sort = patch.sort
   const { data, error } = await getSupabase().from('notebooks').update(row).eq('id', id).select('*').single()
@@ -421,7 +428,7 @@ export async function updateNote(
   id: string,
   partial: { title?: string | null; content?: string; pinned?: boolean },
 ): Promise<Note | null> {
-  const { id: _id, ...sealed } = await codec().sealRow('notes', { id, ...partial })
+  const { id: _id, ...sealed } = await nc().sealRow('notes', { id, ...partial })
   const { data, error } = await getSupabase()
     .from('notes')
     .update(sealed)
@@ -438,7 +445,7 @@ export async function updateNote(
 export async function saveNoteContent(id: string, content: string, contentSha: string): Promise<void> {
   const { data, error } = await getSupabase()
     .from('notes')
-    .update({ content: (await codec().sealRow('notes', { id, content })).content, ydoc_content_sha: contentSha })
+    .update({ content: (await nc().sealRow('notes', { id, content })).content, ydoc_content_sha: contentSha })
     .eq('id', id)
     .select('*')
     .single()
@@ -486,7 +493,7 @@ export async function listTrashedNotes(workspaceId: string): Promise<TrashedNote
   if (error) throw error
   return Promise.all(((data ?? []) as unknown as Array<{ id: string; deleted_at: string; title: string | null; content: string | null }>)
     .map(async (r) => {
-      const open = await codec().openRow('notes', { id: r.id, title: r.title, content: r.content ?? '' })
+      const open = await codecFor(workspaceId).openRow('notes', { id: r.id, title: r.title, content: r.content ?? '' })
       return { id: r.id, title: open.title, content: open.content, deletedAt: r.deleted_at }
     }))
 }
@@ -518,7 +525,7 @@ export async function listNoteVersions(noteId: string): Promise<NoteVersion[]> {
   if (error) throw error
   return Promise.all(((data ?? []) as Array<{ id: string; kind: NoteVersion['kind']; created_at: string; content: string }>)
     .map(async (r) => {
-      const open = await codec().openRow('note_versions', r)
+      const open = await nc().openRow('note_versions', r)
       return { id: r.id, kind: r.kind, createdAt: r.created_at, content: open.content }
     }))
 }
@@ -532,6 +539,8 @@ const CLIENT_ID = `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 // mutation helpers below (broadcastNoteUpsert / broadcastClipDeleted / …)
 // can push events through it without needing a handle passed around.
 let activeSyncChannel: ReturnType<ReturnType<typeof getSupabase>['channel']> | null = null
+/** The open shared space's channel; note events go there instead of the personal one. */
+let activeNoteChannel: ReturnType<ReturnType<typeof getSupabase>['channel']> | null = null
 
 /**
  * Send an instant broadcast to every other device in the workspace. Fire and
@@ -540,15 +549,18 @@ let activeSyncChannel: ReturnType<ReturnType<typeof getSupabase>['channel']> | n
  * mutation (postgres_changes is the backstop).
  */
 function broadcast(event: string, id: string, payload: Record<string, unknown>, sealed = true): void {
-  const channel = activeSyncChannel
+  const isNote = event.startsWith('note')
+  const channel = isNote ? activeNoteChannel ?? activeSyncChannel : activeSyncChannel
   if (!channel) return
   // Broadcasts travel through the server: in encrypted workspaces the payload is sealed.
-  void (sealed ? codec().sealBroadcast(event, id, payload) : Promise.resolve(payload)).then((body) =>
+  void (sealed ? (isNote ? nc() : codec()).sealBroadcast(event, id, payload) : Promise.resolve(payload)).then((body) =>
     channel.send({ type: 'broadcast', event, payload: { ...body, from: CLIENT_ID } }),
   )
 }
 
+/** Only to the note's own workspace: a personal note never reaches a shared space. */
 export function broadcastNoteUpsert(note: Note): void {
+  if (note.workspaceId && notesWs && note.workspaceId !== notesWs) return
   broadcast('note:upsert', note.id, { note })
 }
 
@@ -590,6 +602,7 @@ function dispatchNoteY(noteId: unknown, update: unknown): void {
 
 export function subscribeWorkspace(
   workspaceId: string,
+  notesWorkspaceId: string,
   handlers: {
     onClip?: (item: ClipboardItem) => void
     onClipDelete?: (id: string) => void
@@ -625,7 +638,7 @@ export function subscribeWorkspace(
     const { data } = await sb
       .from('notes')
       .select('*')
-      .eq('workspace_id', workspaceId)
+      .eq('workspace_id', notesWorkspaceId)
       .gt('updated_at', lastNoteAt)
       .order('updated_at', { ascending: true })
       .limit(500)
@@ -658,7 +671,7 @@ export function subscribeWorkspace(
     })
 
   const noteCh = sb
-    .channel(`web-notes-${workspaceId}`)
+    .channel(`web-notes-${notesWorkspaceId}`)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'notes' },
@@ -668,7 +681,7 @@ export function subscribeWorkspace(
           if (id) handlers.onNoteDelete?.(id)
         } else {
           const row = payload.new as NoteRow
-          if (row.workspace_id !== workspaceId) return
+          if (row.workspace_id !== notesWorkspaceId) return
           if (row.updated_at && row.updated_at > lastNoteAt) lastNoteAt = row.updated_at
           void openNote(row).then((note) => handlers.onNote?.(note))
         }
@@ -696,22 +709,6 @@ export function subscribeWorkspace(
       if (payload?.from === CLIENT_ID) return
       if (payload?.id) handlers.onClipDelete?.(payload.id as string)
     })
-    .on('broadcast', { event: 'note:upsert' }, async ({ payload }) => {
-      if (payload?.from === CLIENT_ID) return
-      const body = await codec().openBroadcast('note:upsert', payload ?? {})
-      if (!body?.note) return
-      const note = body.note as Note
-      if (note.updatedAt && note.updatedAt > lastNoteAt) lastNoteAt = note.updatedAt
-      handlers.onNote?.(note)
-    })
-    .on('broadcast', { event: 'note:deleted' }, ({ payload }) => {
-      if (payload?.from === CLIENT_ID) return
-      if (payload?.id) handlers.onNoteDelete?.(payload.id as string)
-    })
-    .on('broadcast', { event: 'note:y' }, ({ payload }) => {
-      if (payload?.from === CLIENT_ID) return
-      dispatchNoteY(payload?.noteId, payload?.update)
-    })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         activeSyncChannel = syncCh
@@ -728,11 +725,34 @@ export function subscribeWorkspace(
       }
     })
 
+  // Note broadcasts: on the personal channel, or on the open space's own channel.
+  const separate = notesWorkspaceId !== workspaceId
+  const noteBus = separate ? sb.channel(`sync-${notesWorkspaceId}`, { config: { broadcast: { self: false, ack: false } } }) : syncCh
+  noteBus
+    .on('broadcast', { event: 'note:upsert' }, async ({ payload }) => {
+      if (payload?.from === CLIENT_ID) return
+      const body = await codecFor(notesWorkspaceId).openBroadcast('note:upsert', payload ?? {})
+      if (!body?.note) return
+      const note = body.note as Note
+      if (note.updatedAt && note.updatedAt > lastNoteAt) lastNoteAt = note.updatedAt
+      handlers.onNote?.(note)
+    })
+    .on('broadcast', { event: 'note:deleted' }, ({ payload }) => {
+      if (payload?.from === CLIENT_ID) return
+      if (payload?.id) handlers.onNoteDelete?.(payload.id as string)
+    })
+    .on('broadcast', { event: 'note:y' }, ({ payload }) => {
+      if (payload?.from === CLIENT_ID) return
+      dispatchNoteY(payload?.noteId, payload?.update)
+    })
+  if (separate) noteBus.subscribe((status) => { if (status === 'SUBSCRIBED') activeNoteChannel = noteBus })
+  else activeNoteChannel = null
+
   const noteYCh = sb
-    .channel(`web-note-y-${workspaceId}`)
+    .channel(`web-note-y-${notesWorkspaceId}`)
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'note_updates', filter: `workspace_id=eq.${workspaceId}` },
+      { event: 'INSERT', schema: 'public', table: 'note_updates', filter: `workspace_id=eq.${notesWorkspaceId}` },
       (payload) => {
         const row = payload.new as { note_id?: string; update?: string }
         dispatchNoteY(row.note_id, row.update)
@@ -740,13 +760,15 @@ export function subscribeWorkspace(
     )
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'notebooks', filter: `workspace_id=eq.${workspaceId}` },
+      { event: '*', schema: 'public', table: 'notebooks', filter: `workspace_id=eq.${notesWorkspaceId}` },
       () => handlers.onNotebooksChanged?.(),
     )
     .subscribe()
 
   return () => {
     activeSyncChannel = null
+    activeNoteChannel = null
+    if (separate) void sb.removeChannel(noteBus)
     if (heartbeat) clearInterval(heartbeat)
     void sb.removeChannel(clipCh)
     void sb.removeChannel(noteCh)

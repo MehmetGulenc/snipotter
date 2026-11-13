@@ -4,7 +4,7 @@ import type { NoteTransport, ServerNoteState, ServerUpdate } from '@shared/notes
 import { ASSET_PREFIX } from '@shared/notes/assets'
 import type { NoteAssets } from '@shared/notes/assets'
 import { getSupabase } from './supabase'
-import { codec } from '@shared/crypto/codec'
+import { codecFor } from '@shared/crypto/codec'
 import { broadcastNoteY, listNoteVersions, listTrashedNotes, onNoteY, purgeTrashedNotes, restoreTrashedNotes, saveNoteContent } from './api'
 import type { NoteLibrary } from '@shared/notes/library'
 import type { Note } from './types'
@@ -28,7 +28,7 @@ export function createNoteTransport(workspaceId: string): NoteTransport {
         .limit(PAGE)
       if (error) throw error
       const rows = (data ?? []) as Array<{ id: number; update: string }>
-      for (const r of rows) out.push({ id: r.id, update: await codec().openNoteBlob(noteId, 'update', r.update) })
+      for (const r of rows) out.push({ id: r.id, update: await codecFor(workspaceId).openNoteBlob(noteId, 'update', r.update) })
       if (rows.length < PAGE) return out
       cursor = rows[rows.length - 1].id
     }
@@ -44,9 +44,9 @@ export function createNoteTransport(workspaceId: string): NoteTransport {
       if (error) throw error
       if (!data) return null
       const row = data as { ydoc: string | null; ydoc_seq: number; content: string; ydoc_content_sha: string | null }
-      const open = await codec().openRow('notes', { id: noteId, content: row.content ?? '' })
+      const open = await codecFor(workspaceId).openRow('notes', { id: noteId, content: row.content ?? '' })
       return {
-        ydoc: row.ydoc ? await codec().openNoteBlob(noteId, 'ydoc', row.ydoc) : null,
+        ydoc: row.ydoc ? await codecFor(workspaceId).openNoteBlob(noteId, 'ydoc', row.ydoc) : null,
         seq: Number(row.ydoc_seq ?? 0),
         content: open.content,
         contentSha: row.ydoc_content_sha,
@@ -55,28 +55,28 @@ export function createNoteTransport(workspaceId: string): NoteTransport {
     },
     updatesAfter,
     async push(noteId, plain) {
-      const update = await codec().sealNoteBlob(noteId, 'update', plain)
+      const update = await codecFor(workspaceId).sealNoteBlob(noteId, 'update', plain)
       broadcastNoteY(noteId, update)
       const { error } = await sb.from('note_updates').insert({ note_id: noteId, workspace_id: workspaceId, update })
       if (error) throw error
     },
     subscribe: (noteId, cb) => onNoteY(noteId, (sealed) => {
-      void codec().openNoteBlob(noteId, 'update', sealed).then(cb).catch(() => undefined)
+      void codecFor(workspaceId).openNoteBlob(noteId, 'update', sealed).then(cb).catch(() => undefined)
     }),
     saveContent: saveNoteContent,
     async compact(noteId, ydoc, seq, content, contentSha) {
       const { data, error } = await sb.rpc('compact_note', {
         p_note_id: noteId,
-        p_ydoc: await codec().sealNoteBlob(noteId, 'ydoc', ydoc),
+        p_ydoc: await codecFor(workspaceId).sealNoteBlob(noteId, 'ydoc', ydoc),
         p_seq: seq,
-        p_content: (await codec().sealRow('notes', { id: noteId, content })).content,
+        p_content: (await codecFor(workspaceId).sealRow('notes', { id: noteId, content })).content,
         p_content_sha: contentSha,
       })
       if (error) throw error
       return data === true
     },
     async saveVersion(noteId, content, kind) {
-      const row = await codec().sealRow('note_versions', { id: crypto.randomUUID(), note_id: noteId, workspace_id: workspaceId, kind, content })
+      const row = await codecFor(workspaceId).sealRow('note_versions', { id: crypto.randomUUID(), note_id: noteId, workspace_id: workspaceId, kind, content })
       const { error } = await sb.from('note_versions').insert(row)
       if (error) throw error
     },
@@ -92,7 +92,7 @@ export function createNoteAssets(workspaceId: string): NoteAssets {
     async upload(image, noteId) {
       const type = EXT[image.type] ? image.type : 'image/jpeg'
       const path = `${workspaceId}/${noteId}/${crypto.randomUUID()}.${EXT[type]}`
-      const body = codec().enabled ? new Blob([await codec().sealFile(path, new Uint8Array(await image.arrayBuffer())) as BlobPart], { type }) : image
+      const body = codecFor(workspaceId).enabled ? new Blob([await codecFor(workspaceId).sealFile(path, new Uint8Array(await image.arrayBuffer())) as BlobPart], { type }) : image
       const { error } = await bucket().upload(path, body, { contentType: type, upsert: false })
       if (error) throw error
       return `${ASSET_PREFIX}${path}`
@@ -100,11 +100,11 @@ export function createNoteAssets(workspaceId: string): NoteAssets {
     async signedUrl(path) {
       const { data, error } = await bucket().createSignedUrl(path, 3600)
       if (error || !data?.signedUrl) throw error ?? new Error('Görsel bağlantısı alınamadı')
-      if (!codec().enabled) return data.signedUrl
+      if (!codecFor(workspaceId).enabled) return data.signedUrl
       // Encrypted workspace: fetch, decrypt and show from memory. Images stored before
       // encryption was switched on are plain and fail authentication; show those as they are.
       const bytes = new Uint8Array(await (await fetch(data.signedUrl)).arrayBuffer())
-      const plain = await codec().openFile(path, bytes).catch(() => bytes)
+      const plain = await codecFor(workspaceId).openFile(path, bytes).catch(() => bytes)
       return URL.createObjectURL(new Blob([plain as BlobPart], { type: `image/${path.split('.').pop() === 'jpg' ? 'jpeg' : path.split('.').pop()}` }))
     },
   }

@@ -1,8 +1,9 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Copy, Pin, PinOff, Trash2, Check, Image as ImageIcon, CheckSquare, Square, Undo2, X, ClipboardPaste, Loader2, StickyNote, Eye, Timer, FileText } from 'lucide-react'
+import { Copy, Pin, PinOff, Trash2, Check, Image as ImageIcon, CheckSquare, Square, Undo2, X, ClipboardPaste, Loader2, StickyNote, Eye, Timer, FileText, Users } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { listClipboard, setClipPinned, deleteClipMany, createNote } from '@/lib/api'
+import { openSpace } from '@/lib/spaces'
 import { cn, relativeTime, firstLine } from '@/lib/utils'
 import type { ClipboardItem } from '@/lib/types'
 import { isNative, saveClipboardFromUserAction } from '@/lib/mobile'
@@ -143,16 +144,33 @@ export function Library(): JSX.Element {
     return () => clearInterval(timer)
   }, [removeClips])
 
+  const spaces = useStore((s) => s.spaces)
+  const [shareItem, setShareItem] = useState<ClipboardItem | null>(null)
+
+  /** A clip becomes a personal note; the notes view switches back to personal to show it. */
   const onMakeNote = async (item: ClipboardItem) => {
     if (!workspace || !user) return
     try {
       const note = await createNote(workspace.id, user.id, textToNoteContent(item.text))
       if (note) {
+        if (useStore.getState().activeSpaceId) openSpace(workspace.id, null)
         useStore.getState().upsertNote(note)
         useStore.getState().openNote(note.id)
       }
     } catch (e) {
       toast('Not oluşturulamadı: ' + errorText(e), 'error', 3500)
+    }
+  }
+
+  /** Shares a copy as a note in a shared space; the clip stays personal. */
+  const onShareToSpace = async (item: ClipboardItem, spaceId: string, name: string) => {
+    setShareItem(null)
+    if (!user) return
+    try {
+      await createNote(spaceId, user.id, textToNoteContent(item.text))
+      toast(`"${name}" alanına not olarak eklendi`)
+    } catch (e) {
+      toast('Gönderilemedi: ' + errorText(e), 'error', 3500)
     }
   }
 
@@ -269,6 +287,19 @@ export function Library(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
+      {shareItem && (
+        <div role="dialog" aria-modal="true" aria-label="Ortak alana gönder" className="fixed inset-0 z-40 flex items-end bg-black/50" onClick={() => setShareItem(null)}>
+          <div className="w-full rounded-t-2xl border-t border-border bg-card px-3 pb-[max(env(safe-area-inset-bottom),16px)] pt-3" onClick={(e) => e.stopPropagation()}>
+            <p className="px-2 pb-2 text-sm text-muted-foreground">Not olarak hangi alana eklensin? Pano kaydın yalnızca sende kalır.</p>
+            {spaces.map((sp) => (
+              <button key={sp.id} type="button" onClick={() => void onShareToSpace(shareItem, sp.id, sp.name)}
+                className="flex h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] active:bg-white/10">
+                <Users className="h-5 w-5 text-primary" /> {sp.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-border px-3 py-2 sm:px-6">
         {selectMode ? (
@@ -311,6 +342,7 @@ export function Library(): JSX.Element {
               onToggleSelect={() => toggleSelection(it.id)}
               onDelete={() => deleteItems([it.id])}
               onMakeNote={() => void onMakeNote(it)}
+              onShare={spaces.length > 0 ? () => setShareItem(it) : undefined}
               onCheckboxPointerDown={(e) => startDrag(it.id, isSelected, e)}
               onTouchStart={() => handleTouchStart(it.id)}
               onTouchMove={handleTouchMove}
@@ -364,6 +396,7 @@ function Card({
   onToggleSelect,
   onDelete,
   onMakeNote,
+  onShare,
   onCheckboxPointerDown,
   onTouchStart,
   onTouchMove,
@@ -376,6 +409,7 @@ function Card({
   onToggleSelect: () => void
   onDelete: () => void
   onMakeNote: () => void
+  onShare?: () => void
   onCheckboxPointerDown: (e: React.PointerEvent) => void
   onTouchStart: () => void
   onTouchMove: (e: React.TouchEvent) => void
@@ -520,6 +554,11 @@ function Card({
               {!isImage && !file && (
                 <IconButton label="Nota çevir" onClick={onMakeNote}>
                   <StickyNote className="h-4 w-4" />
+                </IconButton>
+              )}
+              {!isImage && !file && onShare && (
+                <IconButton label="Ortak alana gönder" onClick={onShare}>
+                  <Users className="h-4 w-4" />
                 </IconButton>
               )}
               <IconButton label={item.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'} onClick={onPin}>

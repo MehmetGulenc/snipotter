@@ -274,6 +274,18 @@ export const IPC = {
   E2E_PROGRESS: 'e2e:progress', // pushed from main
   E2E_TRANSFER: 'e2e:transfer',
   E2E_JOIN: 'e2e:join',
+  // Shared spaces (docs/ortak-alan-tasarimi.md)
+  SPACE_STATE: 'space:state',
+  SPACE_CHANGED: 'space:changed', // pushed from main
+  SPACE_OPEN: 'space:open',
+  SPACE_CREATE: 'space:create',
+  SPACE_JOIN: 'space:join',
+  SPACE_INVITE: 'space:invite',
+  SPACE_MEMBERS: 'space:members',
+  SPACE_RENAME: 'space:rename',
+  SPACE_SET_NAME: 'space:set-name',
+  SPACE_REMOVE: 'space:remove',
+  SPACE_SEND_NOTE: 'space:send-note',
   NOTE_TRASH_LIST: 'note:trash-list',
   NOTE_RESTORE: 'note:restore',
   NOTE_PURGE: 'note:purge',

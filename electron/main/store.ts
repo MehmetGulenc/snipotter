@@ -114,9 +114,9 @@ const authBag = new Store<{ kv: Record<string, string> }>({
  * End-to-end workspace keys, encrypted with the OS key store (macOS Keychain,
  * Windows DPAPI, libsecret) before they touch the disk. Never stored in plain.
  */
-const keyBag = new Store<{ keys: Record<string, string>; preferredWorkspace: string | null }>({
+const keyBag = new Store<{ keys: Record<string, string>; preferredWorkspace: string | null; activeSpace: string | null }>({
   name: 'snipotter-e2e',
-  defaults: { keys: {}, preferredWorkspace: null },
+  defaults: { keys: {}, preferredWorkspace: null, activeSpace: null },
 })
 
 export const workspaceKeyStore = {
@@ -144,6 +144,12 @@ export const workspaceKeyStore = {
     keyBag.set('keys', {})
     keyBag.set('preferredWorkspace', null)
   },
+}
+
+/** Shared space whose notes were open last; null = personal notes. */
+export const activeSpaceStore = {
+  get: (): string | null => keyBag.get('activeSpace') ?? null,
+  set: (id: string | null): void => keyBag.set('activeSpace', id),
 }
 
 /** Workspace to open when this device belongs to more than one (e.g. after pairing). */

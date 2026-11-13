@@ -4,6 +4,7 @@ import { Copy, Check, Loader2, LogOut, Smartphone, KeyRound, Trash2, ChevronRigh
 import { useStore } from '@/lib/store'
 import { listMembers, createPairCode, leaveWorkspace, signOut, removeWorkspaceMember, deleteOwnAccount } from '@/lib/api'
 import { createDeviceTransfer, forgetE2E } from '@/lib/e2e'
+import { forgetSpaces } from '@/lib/spaces'
 import { AddDevicePanel } from '@shared/crypto/EncryptionScreens'
 import { isNative, isAutoCaptureEnabled, setAutoCaptureEnabled, openAppSettings } from '@/lib/mobile'
 import { confirmDialog, errorText, toast } from '@/lib/feedback'
@@ -148,6 +149,7 @@ export function Settings(): JSX.Element {
     await dropPushToken()
     await leaveWorkspace(workspace.id, user.id)
     await forgetE2E(workspace.id).catch(() => undefined)
+    forgetSpaces()
     setWorkspace(null)
   }
 
@@ -162,6 +164,7 @@ export function Settings(): JSX.Element {
     await dropPushToken()
     await signOut()
     if (workspace) await forgetE2E(workspace.id).catch(() => undefined)
+    forgetSpaces()
     setUser(null)
     setWorkspace(null)
     location.reload()

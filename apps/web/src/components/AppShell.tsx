@@ -8,10 +8,11 @@ import { Notes } from './Notes'
 import { Settings } from './Settings'
 import { ActionBanner } from './ActionBanner'
 import { useStore } from '@/lib/store'
-import { subscribeWorkspace, listClipboard, listNotes, listNotebooks } from '@/lib/api'
+import { subscribeWorkspace, listClipboard, listNotes, listNotebooks, setNotesWorkspace } from '@/lib/api'
 import { initMobileBridge, isNative } from '@/lib/mobile'
 import { toast } from '@/lib/feedback'
-import { startNativeBridge } from '@/lib/native-bridge'
+import { onSpaceNotePush, startNativeBridge } from '@/lib/native-bridge'
+import { openSpace } from '@/lib/spaces'
 import { cn } from '@/lib/utils'
 import { Input } from './ui/Input'
 
@@ -32,20 +33,35 @@ export function AppShell(): JSX.Element {
   const native = isNative()
   const editingNote = useStore((s) => s.editingNote)
 
-  // Realtime subscription
+  const activeSpaceId = useStore((s) => s.activeSpaceId)
+
+  // Realtime subscription: clipboard on the personal workspace, notes on the open notes space.
   useEffect(() => {
     if (!workspace) return
-    const workspaceId = workspace.id
-    const unsub = subscribeWorkspace(workspaceId, {
+    const notesWs = activeSpaceId ?? workspace.id
+    setNotesWorkspace(notesWs)
+    const unsub = subscribeWorkspace(workspace.id, notesWs, {
       onClip: upsertClip,
       onClipDelete: removeClip,
       onNote: upsertNote,
       onNoteDelete: removeNote,
       onNotebooksChanged: () => {
-        void listNotebooks(workspaceId).then(setNotebooks).catch((e) => console.warn('[sync] notebooks', e))
+        void listNotebooks(notesWs).then(setNotebooks).catch((e) => console.warn('[sync] notebooks', e))
       },
     })
     return unsub
+  }, [workspace?.id, activeSpaceId])
+
+  // Tapped "new note in your shared space": open that space and the note.
+  useEffect(() => {
+    if (!workspace) return
+    return onSpaceNotePush(({ spaceId, noteId }) => {
+      const st = useStore.getState()
+      if (!st.spaces.some((s) => s.id === spaceId)) return
+      openSpace(workspace.id, spaceId)
+      st.setView('notes')
+      st.openNote(noteId)
+    })
   }, [workspace?.id])
 
   // Native (Android) bridge — share target, explicit clipboard save, tile
@@ -84,10 +100,11 @@ export function AppShell(): JSX.Element {
       if (cancelled || inFlight) return
       inFlight = true
       try {
+        const notesWs = activeSpaceId ?? workspace.id
         const [clips, notes, notebooks] = await Promise.all([
           listClipboard(workspace.id),
-          listNotes(workspace.id),
-          listNotebooks(workspace.id),
+          listNotes(notesWs),
+          listNotebooks(notesWs),
         ])
         if (cancelled) return
         setClipboard(clips)
@@ -117,7 +134,7 @@ export function AppShell(): JSX.Element {
       document.removeEventListener('visibilitychange', fetchData)
       window.removeEventListener('focus', fetchData)
     }
-  }, [workspace?.id, setClipboard, setNotes])
+  }, [workspace?.id, activeSpaceId, setClipboard, setNotes])
 
   return (
     <div className="flex h-[100svh] flex-col bg-background text-foreground">

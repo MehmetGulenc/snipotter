@@ -1,4 +1,5 @@
 'use client'
+import { refreshSpaces } from '@/lib/spaces'
 import { useEffect, useMemo } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
@@ -31,7 +32,10 @@ export default function Home(): JSX.Element {
       .then((status) => {
         if (!alive) return
         setE2EStatus(status)
-        if (status === 'ready') void resumeMigrationIfNeeded(workspace.id).catch((e) => console.warn('[e2e] resume', e))
+        if (status === 'ready') {
+          void resumeMigrationIfNeeded(workspace.id).catch((e) => console.warn('[e2e] resume', e))
+          void refreshSpaces(workspace.id)
+        }
       })
       .catch((e) => {
         console.warn('[e2e] activation failed', e)

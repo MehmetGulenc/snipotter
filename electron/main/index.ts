@@ -303,6 +303,7 @@ function wireSupabaseEvents(): void {
   })
   supabase.on('notebooks:changed', () => broadcast(IPC.NOTEBOOKS_CHANGED, null))
   supabase.on('e2e:status', (status: string) => broadcast(IPC.E2E_STATUS_CHANGED, status))
+  supabase.on('spaces:changed', (state: unknown) => broadcast(IPC.SPACE_CHANGED, state))
 }
 
 // ── Yjs note sync IPC. The renderer is treated as untrusted input. ─────────────
@@ -374,6 +375,30 @@ function wireNoteSyncIPC(): void {
           return ws
         })
       : INVALID)
+  // ── Shared spaces ──
+  const isSpaceName = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0 && v.trim().length <= 60
+  const isPersonName = (v: unknown): v is string => typeof v === 'string' && v.trim().length <= 40
+  const isInvite = (v: unknown): v is string => typeof v === 'string' && v.length <= 400 && /^[\w\s:/.#+,-]+$/.test(v)
+  ipcMain.handle(IPC.SPACE_STATE, () => ySafe(async () => supabase.getSpaceState()))
+  ipcMain.handle(IPC.SPACE_OPEN, (_e, id: unknown) =>
+    id === null || isNoteId(id) ? ySafe(() => supabase.openSpace(id as string | null)) : INVALID)
+  ipcMain.handle(IPC.SPACE_CREATE, (_e, p: { name?: unknown; myName?: unknown }) =>
+    isSpaceName(p?.name) && isPersonName(p.myName) ? ySafe(() => supabase.spaceCreate(p.name as string, p.myName as string)) : INVALID)
+  ipcMain.handle(IPC.SPACE_JOIN, (_e, p: { input?: unknown; myName?: unknown }) =>
+    isInvite(p?.input) && isPersonName(p.myName) ? ySafe(() => supabase.spaceJoin(p.input as string, p.myName as string)) : INVALID)
+  ipcMain.handle(IPC.SPACE_INVITE, (_e, id: unknown) => (isNoteId(id) ? ySafe(() => supabase.spaceInvite(id)) : INVALID))
+  ipcMain.handle(IPC.SPACE_MEMBERS, (_e, id: unknown) => (isNoteId(id) ? ySafe(() => supabase.spaceMembers(id)) : INVALID))
+  ipcMain.handle(IPC.SPACE_RENAME, (_e, p: { id?: unknown; name?: unknown }) =>
+    isNoteId(p?.id) && isSpaceName(p.name) ? ySafe(() => supabase.spaceRename(p.id as string, p.name as string)) : INVALID)
+  ipcMain.handle(IPC.SPACE_SET_NAME, (_e, p: { id?: unknown; name?: unknown }) =>
+    isNoteId(p?.id) && isPersonName(p.name) ? ySafe(() => supabase.spaceSetMyName(p.id as string, p.name as string)) : INVALID)
+  ipcMain.handle(IPC.SPACE_REMOVE, (_e, p: { id?: unknown; target?: unknown }) =>
+    isNoteId(p?.id) && (p.target === null || isNoteId(p.target))
+      ? ySafe(() => supabase.spaceRemove(p.id as string, p.target as string | null)) : INVALID)
+  ipcMain.handle(IPC.SPACE_SEND_NOTE, (_e, p: { id?: unknown; title?: unknown; content?: unknown }) =>
+    isNoteId(p?.id) && (p.title === null || (typeof p.title === 'string' && p.title.length <= 200)) &&
+    typeof p.content === 'string' && p.content.length <= 200_000
+      ? ySafe(() => supabase.createNoteIn(p.id as string, { title: p.title as string | null, content: p.content as string })) : INVALID)
   ipcMain.handle(IPC.NOTEBOOK_LIST, () => ySafe(() => supabase.listNotebooks()))
   ipcMain.handle(IPC.NOTEBOOK_CREATE, (_e, p: { name?: unknown; parentId?: unknown }) =>
     isName(p?.name) && isParent(p.parentId ?? null)
@@ -579,12 +604,14 @@ function wireIPC(): void {
   ipcMain.handle(
     IPC.CLIP_PROMOTE_TO_NOTE,
     async (_e, item: ClipboardItem): Promise<IpcResult<Note | null>> => {
+      // Clip notes are personal: show the personal notes so the new one is visible.
+      if (supabase.getSpaceState().activeId) await supabase.openSpace(null)
       const note = await supabase.createNote({
         title: null,
         content: item.text,
         fromClipboardId: item.id,
         ai: item.ai ?? null,
-      })
+      }, true)
       if (note) {
         supabase.broadcastNoteUpsert(note)
         // Best-effort: re-enrich with note context if no AI yet

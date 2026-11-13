@@ -75,6 +75,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         defer { completionHandler() }
         let info = response.notification.request.content.userInfo
+        // "New note in your shared space": open that space's notes. Ids only; content stays encrypted.
+        if response.notification.request.content.categoryIdentifier == "SNIPOTTER_SPACE_NOTE" {
+            guard let space = info["space_id"] as? String, UUID(uuidString: space) != nil,
+                  let note = info["note_id"] as? String, UUID(uuidString: note) != nil else { return }
+            let action: [String: Any] = ["actionId": note, "kind": "space_note", "payload": space, "button": "open"]
+            DispatchQueue.main.async {
+                AppDelegate.pendingPushAction = action
+                NotificationCenter.default.post(name: .snipotterPushAction, object: nil, userInfo: action)
+            }
+            return
+        }
         guard ["SNIPOTTER_PHONE", "SNIPOTTER_ADDRESS", "SNIPOTTER_URL", "SNIPOTTER_COPY"].contains(response.notification.request.content.categoryIdentifier),
               let id = info["action_id"] as? String, UUID(uuidString: id) != nil,
               let kind = info["kind"] as? String, ["phone", "address", "iban", "url", "text"].contains(kind),

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { ClipboardItem, Note, Notebook, SnipotterUser, Workspace } from './types'
 
 import type { NoteFilter } from '@shared/notes/organize'
+import type { Space } from '@shared/crypto/spaces'
 export type { NoteFilter }
 
 interface Store {
@@ -17,6 +18,13 @@ interface Store {
   /** End-to-end encryption state of the open workspace; 'unknown' until checked. */
   e2eStatus: 'unknown' | 'unsupported' | 'plain' | 'ready' | 'needs-key'
   setE2EStatus: (s: Store['e2eStatus']) => void
+  /** Shared spaces; activeSpaceId null = personal notes. */
+  spaces: Space[]
+  activeSpaceId: string | null
+  /** Invite link opened from outside, waiting for the user to join. */
+  pendingInvite: string | null
+  setPendingInvite: (url: string | null) => void
+  setSpaceState: (s: { spaces: Space[]; activeId: string | null }) => void
   setNotebooks: (notebooks: Notebook[]) => void
   setNoteFilter: (filter: NoteFilter) => void
 
@@ -80,6 +88,15 @@ export const useStore = create<Store>((set) => ({
   noteFilter: { kind: 'all' },
   e2eStatus: 'unknown',
   setE2EStatus: (e2eStatus) => set({ e2eStatus }),
+  spaces: [],
+  activeSpaceId: null,
+  pendingInvite: null,
+  setPendingInvite: (pendingInvite) => set({ pendingInvite }),
+  setSpaceState: ({ spaces, activeId }) =>
+    set((s) => (s.activeSpaceId === activeId
+      ? { spaces }
+      // Another notes space: drop the old list at once so nothing from it lingers.
+      : { spaces, activeSpaceId: activeId, notes: [], notebooks: [], noteFilter: { kind: 'all' }, openNoteId: null })),
   setNotebooks: (notebooks) => set({ notebooks }),
   setNoteFilter: (noteFilter) => set({ noteFilter }),
 
@@ -141,6 +158,9 @@ export const useStore = create<Store>((set) => ({
   upsertNote: (note) =>
     set((s) => {
       if (s._shieldedNoteIds.has(note.id)) return s
+      // Notes of another workspace (a personal note while a space is open, or the reverse).
+      const notesWs = s.activeSpaceId ?? s.workspace?.id
+      if (!('deleted' in note && note.deleted) && note.workspaceId && notesWs && note.workspaceId !== notesWs) return s
       if ('deleted' in note && note.deleted) {
         return { notes: s.notes.filter((n) => n.id !== note.id) }
       }

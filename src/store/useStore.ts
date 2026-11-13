@@ -8,6 +8,7 @@ import type {
   Workspace,
 } from '@shared/types'
 import type { NoteFilter } from '@shared/notes/organize'
+import type { Space } from '@shared/crypto/spaces'
 
 interface SnipotterState {
   // Auth
@@ -31,6 +32,10 @@ interface SnipotterState {
   setNoteFilter: (filter: NoteFilter) => void
   e2eStatus: 'unknown' | 'unsupported' | 'plain' | 'ready' | 'needs-key'
   setE2EStatus: (s: SnipotterState['e2eStatus']) => void
+  /** Shared spaces; activeSpaceId null = personal notes. */
+  spaces: Space[]
+  activeSpaceId: string | null
+  setSpaceState: (s: { spaces: Space[]; activeId: string | null }) => void
 
   // Settings
   settings: AppSettings | null
@@ -88,6 +93,13 @@ export const useStore = create<SnipotterState>((set) => ({
   setNoteFilter: (noteFilter) => set({ noteFilter }),
   e2eStatus: 'unknown',
   setE2EStatus: (e2eStatus) => set({ e2eStatus }),
+  spaces: [],
+  activeSpaceId: null,
+  setSpaceState: ({ spaces, activeId }) =>
+    set((s) => (s.activeSpaceId === activeId
+      ? { spaces }
+      // Another notes space: drop the old list at once so nothing from it lingers.
+      : { spaces, activeSpaceId: activeId, notes: [], notebooks: [], noteFilter: { kind: 'all' } })),
 
   settings: null,
   setSettings: (s) => set({ settings: s }),
@@ -148,6 +160,9 @@ export const useStore = create<SnipotterState>((set) => ({
   upsertNote: (note) =>
     set((state) => {
       if (state._shieldedNoteIds.has(note.id)) return state
+      // Notes of another workspace (a personal note while a space is open, or the reverse).
+      const notesWs = state.activeSpaceId ?? state.workspace?.id
+      if (!note.deleted && note.workspaceId && notesWs && note.workspaceId !== notesWs) return state
       if (note.deleted) {
         return { notes: state.notes.filter((n) => n.id !== note.id) }
       }

@@ -6,7 +6,8 @@
  */
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { ChevronDown, Smartphone, Sparkles, Table2, Type, WrapText, Link2, Landmark, User, Banknote } from 'lucide-react'
+import { ChevronDown, Smartphone, Sparkles, Table2, Type, WrapText, Link2, Landmark, User, Banknote, Users } from 'lucide-react'
+import { useStore } from '@/store/useStore'
 import type { ClipboardItem } from '@shared/types'
 import { laundryOptions } from '@shared/laundry'
 import { paymentButtons, phoneTarget } from '@/lib/clipActions'
@@ -31,11 +32,12 @@ export const ClipActions = memo(function ClipActions({ item, concealed }: Props)
   const target = useMemo(() => (text ? phoneTarget(text) : null), [text])
   const [status, setStatus] = useState<Status>(null)
   const [sending, setSending] = useState(false)
+  const spaces = useStore((s) => s.spaces)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
 
-  if (!isText || (options.length === 0 && payments.length === 0 && !target)) return null
+  if (!isText || !text.trim() || (options.length === 0 && payments.length === 0 && !target && spaces.length === 0)) return null
 
   const flash = (next: Status): void => {
     setStatus(next)
@@ -46,6 +48,12 @@ export const ClipActions = memo(function ClipActions({ item, concealed }: Props)
   const write = async (value: string, html: string | undefined, done: string): Promise<void> => {
     const res = await window.snipotter.clipboard.writeText(value, html)
     flash(res.ok ? { tone: 'ok', text: done } : { tone: 'error', text: res.error })
+  }
+
+  /** Shares a copy as a note; the clip itself stays personal. */
+  const shareToSpace = async (spaceId: string, name: string): Promise<void> => {
+    const res = await window.snipotter.spaces.sendNote(spaceId, null, text)
+    flash(res.ok ? { tone: 'ok', text: `"${name}" alanına not olarak eklendi` } : { tone: 'error', text: res.error })
   }
 
   const send = async (): Promise<void> => {
@@ -126,6 +134,26 @@ export const ClipActions = memo(function ClipActions({ item, concealed }: Props)
         >
           <Smartphone className="h-3.5 w-3.5" /> Telefona gönder
         </Button>
+      )}
+
+      {spaces.length > 0 && (
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <Button variant="outline" size="sm" className="h-7 gap-1 rounded-lg px-2 text-xs" aria-label="Ortak alana not olarak gönder">
+              <Users className="h-3.5 w-3.5" /> Ortak alana <ChevronDown className="h-3 w-3" />
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content align="start" sideOffset={4} className="z-50 min-w-[180px] rounded-xl border border-border bg-popover p-1 shadow-xl">
+              {spaces.map((sp) => (
+                <DropdownMenu.Item key={sp.id} onSelect={() => void shareToSpace(sp.id, sp.name)}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent">
+                  <Users className="h-3.5 w-3.5 text-primary" /> {sp.name}
+                </DropdownMenu.Item>
+              ))}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       )}
 
       <span

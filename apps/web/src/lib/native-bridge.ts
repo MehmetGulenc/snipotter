@@ -134,6 +134,12 @@ export function startNativeBridge(workspaceId: string, userId: string): () => vo
 
 /** snipotter://copy?id=<clip id> from the widget: copy that clip. */
 async function handleUrl(url: string): Promise<void> {
+  // Shared-space invite (snipotter://katil#…): the Notes screen offers to join.
+  if (url.startsWith('snipotter://katil')) {
+    useStore.getState().setPendingInvite(url)
+    useStore.getState().setView('notes')
+    return
+  }
   if (!url.startsWith('snipotter://copy')) return
   const id = new URL(url.replace('snipotter://', 'https://snipotter.app/')).searchParams.get('id')
   const clip = useStore.getState().clipboard.find((c) => c.id === id)
@@ -173,8 +179,18 @@ export function onPushAction(cb: (action: PushAction) => void): () => void {
   if (!nativeBridgeAvailable()) return () => {}
   // In encrypted workspaces the push carries ciphertext; open it with the action's id.
   const listener = SnipotterNative.addListener('pushAction', (action) => {
+    if ((action.kind as string) === 'space_note') return
     void codec().openRow('device_actions', { id: action.actionId, payload: action.payload })
       .then((open) => cb({ ...action, payload: open.payload }))
+  })
+  return () => { void listener.then((handle) => handle.remove()) }
+}
+
+/** Tapped "new note in your shared space" notification: ids of the space and the note. */
+export function onSpaceNotePush(cb: (p: { spaceId: string; noteId: string }) => void): () => void {
+  if (!nativeBridgeAvailable()) return () => {}
+  const listener = SnipotterNative.addListener('pushAction', (action) => {
+    if ((action.kind as string) === 'space_note') cb({ spaceId: action.payload, noteId: action.actionId })
   })
   return () => { void listener.then((handle) => handle.remove()) }
 }

@@ -9,6 +9,9 @@ import { entropyToMnemonic, mnemonicToEntropy, validateMnemonic } from '@scure/b
 import { wordlist } from '@scure/bip39/wordlists/english.js'
 
 export const ENC_PREFIX = 'enc:v1:'
+
+/** What a one-time secret unlocks: recovery words, device pairing, or a shared-space invite. */
+export type KeyPurpose = 'recovery' | 'transfer' | 'invite'
 const subtle = (): SubtleCrypto => globalThis.crypto.subtle
 /** TS 5.7+ types Uint8Array over ArrayBufferLike; WebCrypto wants ArrayBuffer-backed views. */
 const buf = (u: Uint8Array): BufferSource => u as unknown as BufferSource
@@ -121,7 +124,7 @@ export async function dedupeHash(keys: WorkspaceKeys, text: string): Promise<str
 // ── wrapping (recovery words, device pairing, invites) ───────────────────────
 
 /** Encrypts the workspace key with a secret that never reaches the server. */
-export async function wrapKey(raw: Uint8Array, secret: Uint8Array, purpose: 'recovery' | 'transfer'): Promise<string> {
+export async function wrapKey(raw: Uint8Array, secret: Uint8Array, purpose: KeyPurpose): Promise<string> {
   const k = await hkdf(secret, `wrap:${purpose}`, 'wrap')
   const iv = randomBytes(12)
   const ct = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv: buf(iv), additionalData: buf(te.encode(purpose)) }, k, buf(raw)))
@@ -131,7 +134,7 @@ export async function wrapKey(raw: Uint8Array, secret: Uint8Array, purpose: 'rec
   return toBase64(out)
 }
 
-export async function unwrapKey(wrapped: string, secret: Uint8Array, purpose: 'recovery' | 'transfer'): Promise<Uint8Array> {
+export async function unwrapKey(wrapped: string, secret: Uint8Array, purpose: KeyPurpose): Promise<Uint8Array> {
   const k = await hkdf(secret, `wrap:${purpose}`, 'wrap')
   const bytes = fromBase64(wrapped)
   try {
@@ -142,7 +145,7 @@ export async function unwrapKey(wrapped: string, secret: Uint8Array, purpose: 'r
 }
 
 /** Public lookup id derived from a secret (recovery words / transfer code). */
-export async function secretId(secret: Uint8Array, purpose: 'recovery' | 'transfer'): Promise<string> {
+export async function secretId(secret: Uint8Array, purpose: KeyPurpose): Promise<string> {
   const k = await hkdf(secret, `id:${purpose}`, 'hmac')
   return toHex(new Uint8Array(await subtle().sign('HMAC', k, buf(te.encode('id')))))
 }

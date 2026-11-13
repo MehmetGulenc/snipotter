@@ -22,6 +22,9 @@ import {
   type TrashedNote,
   type Notebook,
 } from '../../shared/types'
+import type { Space, SpaceInvite, SpaceMember } from '../../shared/crypto/spaces'
+
+type SpaceState = { spaces: Space[]; activeId: string | null }
 
 type E2EStatus = 'unknown' | 'unsupported' | 'plain' | 'ready' | 'needs-key'
 
@@ -140,6 +143,24 @@ const api = {
         return () => ipcRenderer.off(IPC.NOTE_Y_UPDATE, fn)
       },
     },
+  },
+  /** Shared spaces for notes (docs/ortak-alan-tasarimi.md). */
+  spaces: {
+    state: () => invoke<SpaceState>(IPC.SPACE_STATE),
+    onChange: (cb: (state: SpaceState) => void) => {
+      const fn = (_: unknown, state: SpaceState) => cb(state)
+      ipcRenderer.on(IPC.SPACE_CHANGED, fn)
+      return () => ipcRenderer.off(IPC.SPACE_CHANGED, fn)
+    },
+    open: (id: string | null) => invoke<SpaceState>(IPC.SPACE_OPEN, id),
+    create: (name: string, myName: string) => invoke<Space>(IPC.SPACE_CREATE, { name, myName }),
+    join: (input: string, myName: string) => invoke<Space>(IPC.SPACE_JOIN, { input, myName }),
+    invite: (id: string) => invoke<SpaceInvite>(IPC.SPACE_INVITE, id),
+    members: (id: string) => invoke<SpaceMember[]>(IPC.SPACE_MEMBERS, id),
+    rename: (id: string, name: string) => invoke<void>(IPC.SPACE_RENAME, { id, name }),
+    setMyName: (id: string, name: string) => invoke<void>(IPC.SPACE_SET_NAME, { id, name }),
+    remove: (id: string, target: string | null) => invoke<void>(IPC.SPACE_REMOVE, { id, target }),
+    sendNote: (id: string, title: string | null, content: string) => invoke<Note | null>(IPC.SPACE_SEND_NOTE, { id, title, content }),
   },
   /** End-to-end encryption (docs/sifreleme-tasarimi.md). */
   e2e: {

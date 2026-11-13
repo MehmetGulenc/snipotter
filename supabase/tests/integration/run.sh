@@ -22,4 +22,4 @@ docker run -d --name "$API" --network "$NET" -p 127.0.0.1:54321:3000 \
   -e PGRST_DB_URI="postgres://authenticator:localtest@$DB:5432/postgres" -e PGRST_DB_SCHEMAS=public \
   -e PGRST_DB_ANON_ROLE=anon -e PGRST_JWT_SECRET="$SECRET" postgrest/postgrest:v14.8 >/dev/null
 until curl -s -o /dev/null http://127.0.0.1:54321/; do sleep 1; done
-DB_CONTAINER="$DB" JWT_SECRET="$SECRET" node --test --test-force-exit supabase/tests/integration/e2e.test.cjs
+DB_CONTAINER="$DB" JWT_SECRET="$SECRET" node --test --test-force-exit --test-concurrency=1 supabase/tests/integration/*.test.cjs

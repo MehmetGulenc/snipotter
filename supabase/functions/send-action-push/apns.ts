@@ -16,6 +16,10 @@ export function pushPayload(action: Action) {
   // Avoid exposing phone numbers, IBANs or other content on the lock screen.
   return { aps: { alert: { title: 'Snipotter', body: 'Cihazından yeni bir işlem geldi' }, sound: 'default', category: ({ phone: 'SNIPOTTER_PHONE', address: 'SNIPOTTER_ADDRESS', url: 'SNIPOTTER_URL', iban: 'SNIPOTTER_COPY', text: 'SNIPOTTER_COPY' } as const)[action.kind] }, action_id: action.id, kind: action.kind, payload: new TextEncoder().encode(action.payload).length <= 3000 ? action.payload : '' };
 }
+/** Shared-space note: ids only; title and content stay encrypted and off the lock screen. */
+export function spaceNotePayload(spaceId: string, noteId: string) {
+  return { aps: { alert: { title: 'Snipotter', body: 'Ortak alanına yeni bir not eklendi' }, sound: 'default', category: 'SNIPOTTER_SPACE_NOTE', 'thread-id': spaceId }, space_id: spaceId, note_id: noteId };
+}
 export async function secretMatches(actual: string | null, expected: string): Promise<boolean> {
   if (!actual || !expected) return false;
   const digest = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
