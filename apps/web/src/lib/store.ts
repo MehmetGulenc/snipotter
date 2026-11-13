@@ -14,6 +14,9 @@ interface Store {
   notes: Note[]
   notebooks: Notebook[]
   noteFilter: NoteFilter
+  /** End-to-end encryption state of the open workspace; 'unknown' until checked. */
+  e2eStatus: 'unknown' | 'unsupported' | 'plain' | 'ready' | 'needs-key'
+  setE2EStatus: (s: Store['e2eStatus']) => void
   setNotebooks: (notebooks: Notebook[]) => void
   setNoteFilter: (filter: NoteFilter) => void
 
@@ -75,6 +78,8 @@ export const useStore = create<Store>((set) => ({
   notes: [],
   notebooks: [],
   noteFilter: { kind: 'all' },
+  e2eStatus: 'unknown',
+  setE2EStatus: (e2eStatus) => set({ e2eStatus }),
   setNotebooks: (notebooks) => set({ notebooks }),
   setNoteFilter: (noteFilter) => set({ noteFilter }),
 

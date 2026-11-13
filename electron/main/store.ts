@@ -4,6 +4,7 @@
  * anonymous user comes back across app restarts.
  */
 import Store from 'electron-store'
+import { safeStorage } from 'electron'
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/types'
 
 interface StoreSchema {
@@ -108,6 +109,48 @@ const authBag = new Store<{ kv: Record<string, string> }>({
   // Don't bother with schema-level encryption; on disk this is in the user's
   // local app-data dir and contains an opaque refresh token.
 })
+
+/**
+ * End-to-end workspace keys, encrypted with the OS key store (macOS Keychain,
+ * Windows DPAPI, libsecret) before they touch the disk. Never stored in plain.
+ */
+const keyBag = new Store<{ keys: Record<string, string>; preferredWorkspace: string | null }>({
+  name: 'snipotter-e2e',
+  defaults: { keys: {}, preferredWorkspace: null },
+})
+
+export const workspaceKeyStore = {
+  async load(workspaceId: string): Promise<Uint8Array | null> {
+    const sealed = keyBag.get('keys')[workspaceId]
+    if (!sealed || !safeStorage.isEncryptionAvailable()) return null
+    try {
+      return Uint8Array.from(Buffer.from(safeStorage.decryptString(Buffer.from(sealed, 'base64')), 'base64'))
+    } catch {
+      return null
+    }
+  },
+  async save(workspaceId: string, raw: Uint8Array): Promise<void> {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Sistem anahtar deposu kullanılamıyor')
+    const sealed = safeStorage.encryptString(Buffer.from(raw).toString('base64')).toString('base64')
+    keyBag.set('keys', { ...keyBag.get('keys'), [workspaceId]: sealed })
+  },
+  async remove(workspaceId: string): Promise<void> {
+    const next = { ...keyBag.get('keys') }
+    delete next[workspaceId]
+    keyBag.set('keys', next)
+  },
+  /** Sign-out: the next anonymous session must not inherit any key. */
+  clear(): void {
+    keyBag.set('keys', {})
+    keyBag.set('preferredWorkspace', null)
+  },
+}
+
+/** Workspace to open when this device belongs to more than one (e.g. after pairing). */
+export const preferredWorkspace = {
+  get: (): string | null => keyBag.get('preferredWorkspace'),
+  set: (id: string | null): void => keyBag.set('preferredWorkspace', id),
+}
 
 export const authStorage = {
   getItem: (key: string): Promise<string | null> =>

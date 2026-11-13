@@ -23,6 +23,8 @@ import {
   type Notebook,
 } from '../../shared/types'
 
+type E2EStatus = 'unknown' | 'unsupported' | 'plain' | 'ready' | 'needs-key'
+
 function invoke<T>(channel: string, payload?: unknown): Promise<IpcResult<T>> {
   return ipcRenderer.invoke(channel, payload)
 }
@@ -138,6 +140,26 @@ const api = {
         return () => ipcRenderer.off(IPC.NOTE_Y_UPDATE, fn)
       },
     },
+  },
+  /** End-to-end encryption (docs/sifreleme-tasarimi.md). */
+  e2e: {
+    status: () => invoke<E2EStatus>(IPC.E2E_STATUS),
+    onStatus: (cb: (status: E2EStatus) => void) => {
+      const fn = (_: unknown, status: E2EStatus) => cb(status)
+      ipcRenderer.on(IPC.E2E_STATUS_CHANGED, fn)
+      return () => ipcRenderer.off(IPC.E2E_STATUS_CHANGED, fn)
+    },
+    prepare: () => invoke<{ words: string[] }>(IPC.E2E_PREPARE),
+    commit: (answers: Array<{ index: number; word: string }>) => invoke<'enabled' | 'lost-race'>(IPC.E2E_COMMIT, answers),
+    hasPlainData: () => invoke<boolean>(IPC.E2E_HAS_PLAIN),
+    migrate: () => invoke<void>(IPC.E2E_MIGRATE),
+    onProgress: (cb: (p: { step: string; done: number }) => void) => {
+      const fn = (_: unknown, p: { step: string; done: number }) => cb(p)
+      ipcRenderer.on(IPC.E2E_PROGRESS, fn)
+      return () => ipcRenderer.off(IPC.E2E_PROGRESS, fn)
+    },
+    createTransfer: () => invoke<{ words: string[]; expiresAt: number }>(IPC.E2E_TRANSFER),
+    join: (words: string) => invoke<Workspace | null>(IPC.E2E_JOIN, words),
   },
   settings: {
     get: () => invoke<AppSettings>(IPC.SETTINGS_GET),

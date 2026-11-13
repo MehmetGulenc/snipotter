@@ -5,7 +5,8 @@ import { Logo } from './Logo'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import { useStore } from '@/lib/store'
-import { ensureWorkspace, redeemPairCode } from '@/lib/api'
+import { ensureWorkspace, redeemPairCode, getCurrentWorkspace } from '@/lib/api'
+import { joinWithWords } from '@/lib/e2e'
 import { deviceLabel } from '@/lib/utils'
 
 type Mode = 'choose' | 'create' | 'join'
@@ -16,6 +17,8 @@ export function Onboarding(): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [code, setCode] = useState('')
+  const [words, setWords] = useState('')
+  const user = useStore((s) => s.user)
 
   useEffect(() => setError(null), [mode])
 
@@ -26,6 +29,21 @@ export function Onboarding(): JSX.Element {
       const ws = await ensureWorkspace(deviceLabel())
       if (ws) setWorkspace(ws)
       else setError('Alan oluşturulamadı.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const wordCount = words.trim() ? words.trim().split(/\s+/).length : 0
+  const onJoinWords = async () => {
+    if (!user) return
+    setBusy(true)
+    setError(null)
+    try {
+      await joinWithWords(words, deviceLabel())
+      setWorkspace(await getCurrentWorkspace(user.id))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -146,6 +164,25 @@ export function Onboarding(): JSX.Element {
               >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 {busy ? 'Bağlanıyor…' : 'Eşleştir'}
+              </Button>
+            </div>
+            <div className="border-t border-border pt-4">
+              <p className="text-sm text-muted-foreground">
+                Verilerin şifreliyse diğer cihazında <strong>Ayarlar → Cihazlar → Yeni cihaz ekle</strong>'den aldığın
+                12 kelimeyi ya da 24 kelimelik kurtarma anahtarını yaz.
+              </p>
+              <textarea
+                value={words}
+                onChange={(e) => setWords(e.target.value)}
+                rows={3}
+                autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off"
+                placeholder="kelime kelime kelime …"
+                aria-label="Eşleştirme veya kurtarma kelimeleri"
+                className="mt-3 w-full rounded-xl border border-border bg-card p-3 text-[16px] outline-none focus:border-primary"
+              />
+              <Button onClick={onJoinWords} disabled={busy || (wordCount !== 12 && wordCount !== 24)} className="mt-2 w-full">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Kelimelerle bağlan ({wordCount})
               </Button>
             </div>
           </div>

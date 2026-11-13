@@ -17,6 +17,8 @@ export interface KeyBackend {
 }
 
 export type KeyStatus =
+  /** Server predates migration 0014: keep working unencrypted. */
+  | 'unsupported'
   /** Workspace not encrypted yet: this version must turn it on. */
   | 'plain'
   /** Encrypted and this device holds the right key. */
@@ -31,7 +33,7 @@ export async function activateWorkspaceKey(sb: SupabaseClient, backend: KeyBacke
     // Server without migration 0014: nothing to do yet.
     if (/encryption/.test(error.message)) {
       setCodec(new E2ECodec(null))
-      return 'plain'
+      return 'unsupported'
     }
     throw error
   }
@@ -47,6 +49,12 @@ export async function activateWorkspaceKey(sb: SupabaseClient, backend: KeyBacke
   }
   setCodec(new E2ECodec(await deriveWorkspaceKeys(workspaceId, raw)))
   return 'ready'
+}
+
+/** Leaving the workspace or signing out: the key must not outlive this device's access. */
+export async function forgetWorkspaceKey(backend: KeyBackend, workspaceId: string): Promise<void> {
+  setCodec(new E2ECodec(null))
+  await backend.remove(workspaceId)
 }
 
 export interface PreparedKey {

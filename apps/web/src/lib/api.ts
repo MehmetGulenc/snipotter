@@ -115,10 +115,12 @@ export async function getCurrentWorkspace(userId: string): Promise<Workspace | n
     .select('workspace_id, role, joined_at')
     .eq('user_id', userId)
     .order('joined_at', { ascending: true })
-    .limit(1)
   if (error) throw error
   if (!members || members.length === 0) return null
-  const m = members[0]
+  // After pairing or recovery this device may belong to more than one workspace.
+  let preferred: string | null = null
+  try { preferred = window.localStorage.getItem('snipotter.preferredWorkspace') } catch { /* private mode */ }
+  const m = members.find((x) => x.workspace_id === preferred) ?? members[0]
   const { data: ws, error: wsErr } = await sb
     .from('workspaces')
     .select('id, name, created_at')

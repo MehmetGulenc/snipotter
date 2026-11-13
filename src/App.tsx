@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from './store/useStore'
 import { Onboarding } from './components/Onboarding'
+import { EncryptionGate } from '@shared/crypto/EncryptionScreens'
+import { desktopEncryptionActions } from '@/lib/e2e'
 import { Library } from './pages/Library'
 import { Notes } from './pages/Notes'
 import { Settings } from './pages/Settings'
@@ -151,6 +153,21 @@ export default function App(): JSX.Element {
     }
   }, [workspace?.id, setClipboard, setNotes])
 
+  // End-to-end encryption: the main process activates the key when the workspace opens.
+  const e2eStatus = useStore((s) => s.e2eStatus)
+  useEffect(() => {
+    if (!workspace) return
+    const set = useStore.getState().setE2EStatus
+    void window.snipotter.e2e.status().then((r) => { if (r.ok) set(r.data) })
+    const off = window.snipotter.e2e.onStatus(set)
+    return () => { off() }
+  }, [workspace?.id])
+  useEffect(() => {
+    if (e2eStatus !== 'ready') return
+    // Finish a migration that was interrupted on this or another device.
+    void window.snipotter.e2e.hasPlainData().then((r) => { if (r.ok && r.data) void desktopEncryptionActions.migrate(() => undefined) })
+  }, [e2eStatus])
+
   // ==== Overlay windows have their own minimal routes ====
   if (route === 'quick-note') return <QuickNote />
   if (route === 'quick-paste') return <QuickPaste />
@@ -167,6 +184,17 @@ export default function App(): JSX.Element {
   // Anonymous user is auto-created on app boot. Onboarding shows when there's
   // no workspace yet (either user creates one or pairs with another device).
   if (!user || !workspace) return <Onboarding />
+
+  if (e2eStatus === 'plain' || e2eStatus === 'needs-key') {
+    return (
+      <EncryptionGate
+        status={e2eStatus}
+        actions={desktopEncryptionActions}
+        mobile={false}
+        onDone={() => void window.snipotter.e2e.status().then((r) => { if (r.ok) useStore.getState().setE2EStatus(r.data) })}
+      />
+    )
+  }
 
   return (
     <div className="flex h-full flex-col">

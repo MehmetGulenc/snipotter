@@ -29,6 +29,8 @@ interface SnipotterState {
   setNotebooks: (notebooks: Notebook[]) => void
   noteFilter: NoteFilter
   setNoteFilter: (filter: NoteFilter) => void
+  e2eStatus: 'unknown' | 'unsupported' | 'plain' | 'ready' | 'needs-key'
+  setE2EStatus: (s: SnipotterState['e2eStatus']) => void
 
   // Settings
   settings: AppSettings | null
@@ -84,6 +86,8 @@ export const useStore = create<SnipotterState>((set) => ({
   setNotebooks: (notebooks) => set({ notebooks }),
   noteFilter: { kind: 'all' },
   setNoteFilter: (noteFilter) => set({ noteFilter }),
+  e2eStatus: 'unknown',
+  setE2EStatus: (e2eStatus) => set({ e2eStatus }),
 
   settings: null,
   setSettings: (s) => set({ settings: s }),

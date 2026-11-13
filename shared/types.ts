@@ -265,6 +265,15 @@ export const IPC = {
   NOTEBOOKS_CHANGED: 'notebook:changed', // pushed from main
   NOTE_MOVE: 'note:move',
   NOTE_VERSIONS: 'note:versions',
+  E2E_STATUS: 'e2e:status',
+  E2E_STATUS_CHANGED: 'e2e:status-changed', // pushed from main
+  E2E_PREPARE: 'e2e:prepare',
+  E2E_COMMIT: 'e2e:commit',
+  E2E_HAS_PLAIN: 'e2e:has-plain',
+  E2E_MIGRATE: 'e2e:migrate',
+  E2E_PROGRESS: 'e2e:progress', // pushed from main
+  E2E_TRANSFER: 'e2e:transfer',
+  E2E_JOIN: 'e2e:join',
   NOTE_TRASH_LIST: 'note:trash-list',
   NOTE_RESTORE: 'note:restore',
   NOTE_PURGE: 'note:purge',

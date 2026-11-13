@@ -50,6 +50,17 @@ export function Onboarding(): JSX.Element {
     }
   }
 
+  const [words, setWords] = useState('')
+  const wordCount = words.trim() ? words.trim().split(/\s+/).length : 0
+  const onJoinWords = async () => {
+    setBusy(true)
+    setError(null)
+    const r = await window.snipotter.e2e.join(words)
+    setBusy(false)
+    if (r.ok && r.data) setWorkspace(r.data)
+    else if (!r.ok) setError(r.error)
+  }
+
   const formatted = formatCode(code)
 
   return (
@@ -151,6 +162,26 @@ export function Onboarding(): JSX.Element {
               >
                 {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
                 {busy ? 'Bağlanıyor…' : 'Eşleştir'}
+              </Button>
+            </div>
+            <div className="border-t border-border pt-4">
+              <p className="text-sm text-muted-foreground">
+                Verilerin şifreliyse diğer cihazındaki <strong>Yeni cihaz ekle</strong>'den aldığın 12 kelimeyi ya da
+                24 kelimelik kurtarma anahtarını yaz.
+              </p>
+              <textarea
+                value={words}
+                onChange={(e) => setWords(e.target.value)}
+                rows={3}
+                spellCheck={false}
+                autoComplete="off"
+                placeholder="kelime kelime kelime …"
+                aria-label="Eşleştirme veya kurtarma kelimeleri"
+                className="mt-3 w-full rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-primary"
+              />
+              <Button onClick={onJoinWords} disabled={busy || (wordCount !== 12 && wordCount !== 24)} className="mt-2 w-full">
+                {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                Kelimelerle bağlan ({wordCount})
               </Button>
             </div>
           </div>

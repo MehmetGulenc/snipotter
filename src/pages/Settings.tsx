@@ -15,7 +15,10 @@ import {
   Sparkles,
   AlertCircle,
   Trash2,
+  ShieldCheck,
 } from 'lucide-react'
+import { AddDevicePanel } from '@shared/crypto/EncryptionScreens'
+import { createDeviceTransfer } from '@/lib/e2e'
 import type { AppSettings, WorkspaceMember, UpdaterStatus, DiagnosticsState } from '@shared/types'
 import { isMas } from '@/lib/runtime'
 
@@ -629,6 +632,7 @@ function DevicesSection(): JSX.Element {
     return () => clearInterval(t)
   }, [code])
 
+  const e2eStatus = useStore((st) => st.e2eStatus)
   const generate = async () => {
     setBusy(true)
     const r = await window.snipotter.workspace.createPairCode()
@@ -711,7 +715,15 @@ function DevicesSection(): JSX.Element {
         ))}
       </div>
 
-      {!code ? (
+      {e2eStatus === 'ready' ? (
+        <div className="space-y-3 rounded-lg border border-border p-4">
+          <div className="flex items-center gap-2 text-sm">
+            <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />
+            <span>Uçtan uca şifreleme açık: sunucu pano ve not içeriğini okuyamaz.</span>
+          </div>
+          <AddDevicePanel create={createDeviceTransfer} />
+        </div>
+      ) : !code ? (
         <Button onClick={generate} disabled={busy} variant="outline" className="w-full">
           {busy ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

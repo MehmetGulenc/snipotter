@@ -1,8 +1,10 @@
 'use client'
 import { useEffect, useState, type ReactNode } from 'react'
-import { Copy, Check, Loader2, LogOut, Smartphone, KeyRound, Trash2, ChevronRight, Zap, Monitor, Layers, Bell } from 'lucide-react'
+import { Copy, Check, Loader2, LogOut, Smartphone, KeyRound, Trash2, ChevronRight, Zap, Monitor, Layers, Bell, ShieldCheck } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { listMembers, createPairCode, leaveWorkspace, signOut, removeWorkspaceMember, deleteOwnAccount } from '@/lib/api'
+import { createDeviceTransfer, forgetE2E } from '@/lib/e2e'
+import { AddDevicePanel } from '@shared/crypto/EncryptionScreens'
 import { isNative, isAutoCaptureEnabled, setAutoCaptureEnabled, openAppSettings } from '@/lib/mobile'
 import { confirmDialog, errorText, toast } from '@/lib/feedback'
 import { relativeTime, cn } from '@/lib/utils'
@@ -13,6 +15,7 @@ import { ShortcutGuide } from './ShortcutGuide'
 
 export function Settings(): JSX.Element {
   const workspace = useStore((s) => s.workspace)
+  const e2eStatus = useStore((s) => s.e2eStatus)
   const user = useStore((s) => s.user)
   const setWorkspace = useStore((s) => s.setWorkspace)
   const setUser = useStore((s) => s.setUser)
@@ -144,6 +147,7 @@ export function Settings(): JSX.Element {
     if (!ok) return
     await dropPushToken()
     await leaveWorkspace(workspace.id, user.id)
+    await forgetE2E(workspace.id).catch(() => undefined)
     setWorkspace(null)
   }
 
@@ -157,6 +161,7 @@ export function Settings(): JSX.Element {
     if (!ok) return
     await dropPushToken()
     await signOut()
+    if (workspace) await forgetE2E(workspace.id).catch(() => undefined)
     setUser(null)
     setWorkspace(null)
     location.reload()
@@ -232,6 +237,15 @@ export function Settings(): JSX.Element {
         </Group>
       )}
 
+      {e2eStatus === 'ready' && (
+        <Group title="Şifreleme" footer="Pano kayıtların ve notların bu cihazda şifrelenir; sunucu içeriği okuyamaz. Kurtarma kelimelerini güvenli bir yerde sakla.">
+          <Row icon={<ShieldCheck className="h-4 w-4" />} iconBg="bg-emerald-600">
+            <span className="flex-1">Uçtan uca şifreleme</span>
+            <span className="text-sm text-muted-foreground">Açık</span>
+          </Row>
+        </Group>
+      )}
+
       <Group
         title="Cihazlar"
         footer={workspace ? `${workspace.name} · ${relativeTime(workspace.createdAt)} oluşturuldu${workspace.isOwner ? ' · sahibi sensin' : ''}` : undefined}
@@ -264,7 +278,11 @@ export function Settings(): JSX.Element {
             )}
           </Row>
         ))}
-        {code ? (
+        {e2eStatus === 'ready' && workspace ? (
+          <div className="px-4 py-4">
+            <AddDevicePanel create={() => createDeviceTransfer(workspace.id)} />
+          </div>
+        ) : code ? (
           <div className="space-y-3 px-4 py-4">
             <p className="text-center text-xs text-muted-foreground">Diğer cihazda “Eşleştir” ekranına yaz · 10 dakika geçerli</p>
             <div className="text-center font-mono text-4xl font-bold tracking-[0.3em] text-primary">{formatPairCode(code)}</div>

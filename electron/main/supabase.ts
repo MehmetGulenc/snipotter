@@ -7,9 +7,14 @@
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import { codec } from '@shared/crypto/codec'
+import { codec, E2ECodec, setCodec } from '@shared/crypto/codec'
 import WebSocket from 'ws'
-import { authStorage } from './store'
+import { authStorage, preferredWorkspace, workspaceKeyStore } from './store'
+import {
+  activateWorkspaceKey, commitEncryption, createKeyTransfer, forgetWorkspaceKey, prepareEncryption, recoverWithWords, redeemKeyTransfer,
+  type KeyStatus, type PreparedKey,
+} from '@shared/crypto/workspaceKey'
+import { encryptExistingData, hasPlainData, type MigrationProgress } from '@shared/crypto/migrate'
 import type {
   ClipboardItem,
   Note,
@@ -287,6 +292,9 @@ export class SupabaseService extends EventEmitter {
     if (!this.client) return
     this.unsubscribeRealtime()
     await this.client.auth.signOut()
+    setCodec(new E2ECodec(null))
+    workspaceKeyStore.clear()
+    this.e2eStatus = 'unknown'
     this.workspaceId = null
     this.workspace = null
   }
@@ -298,14 +306,15 @@ export class SupabaseService extends EventEmitter {
       .select('workspace_id, role, joined_at')
       .eq('user_id', this.user.id)
       .order('joined_at', { ascending: true })
-      .limit(1)
     if (memberErr) throw memberErr
     if (!memberRows || memberRows.length === 0) {
       this.workspaceId = null
       this.workspace = null
       return null
     }
-    const member = memberRows[0]
+    // After pairing or recovery this device may belong to more than one workspace.
+    const preferred = preferredWorkspace.get()
+    const member = memberRows.find((m) => m.workspace_id === preferred) ?? memberRows[0]
     const { data: ws, error: wsErr } = await this.client
       .from('workspaces')
       .select('id, name, created_at')
@@ -320,8 +329,74 @@ export class SupabaseService extends EventEmitter {
       createdAt: row.created_at,
       isOwner: member.role === 'owner',
     }
+    // Keys before realtime: incoming rows must already be decryptable.
+    await this.refreshE2EStatus()
     await this.subscribeRealtime()
     return this.workspace
+  }
+
+  // ── End-to-end encryption (docs/sifreleme-tasarimi.md) ──────────────────────
+
+  e2eStatus: KeyStatus | 'unknown' = 'unknown'
+  private preparedKey: PreparedKey | null = null
+
+  async refreshE2EStatus(): Promise<KeyStatus | 'unknown'> {
+    if (!this.client || !this.workspaceId) return this.e2eStatus
+    try {
+      this.e2eStatus = await activateWorkspaceKey(this.client, workspaceKeyStore, this.workspaceId)
+    } catch (err) {
+      console.warn('[e2e] activation failed', (err as Error).message)
+    }
+    this.emit('e2e:status', this.e2eStatus)
+    return this.e2eStatus
+  }
+
+  /** Step 1: new key + 24 recovery words; nothing is stored until the user confirms them. */
+  e2ePrepare(): { words: string[] } {
+    const { workspaceId } = this.requireSync()
+    this.preparedKey = prepareEncryption(workspaceId)
+    return { words: this.preparedKey.words }
+  }
+
+  /** Step 2: the user typed back some of the words; only then is encryption switched on. */
+  async e2eCommit(answers: Array<{ index: number; word: string }>): Promise<'enabled' | 'lost-race'> {
+    const { client } = this.requireSync()
+    const prepared = this.preparedKey
+    if (!prepared) throw new Error('Önce kurtarma kelimelerini oluştur')
+    const ok = answers.length >= 3 && answers.every((a) => prepared.words[a.index] === a.word.trim().toLowerCase())
+    if (!ok) throw new Error('Kelimeler eşleşmedi; kurtarma kelimelerini tekrar kontrol et')
+    const enabled = await commitEncryption(client, workspaceKeyStore, prepared)
+    this.preparedKey = null
+    await this.refreshE2EStatus()
+    return enabled ? 'enabled' : 'lost-race'
+  }
+
+  async e2eHasPlainData(): Promise<boolean> {
+    const { client, workspaceId } = this.requireSync()
+    return this.e2eStatus === 'ready' ? hasPlainData(client, workspaceId) : false
+  }
+
+  async e2eMigrate(onProgress: (p: MigrationProgress) => void): Promise<void> {
+    const { client, workspaceId } = this.requireSync()
+    await encryptExistingData(client, workspaceId, onProgress)
+  }
+
+  async e2eCreateTransfer(): Promise<{ words: string[]; expiresAt: number }> {
+    const { client, workspaceId } = this.requireSync()
+    return createKeyTransfer(client, workspaceKeyStore, workspaceId)
+  }
+
+  /** This device joins another device's encrypted workspace (12 words) or recovers one (24 words). */
+  async e2eJoin(words: string, deviceName: string): Promise<Workspace | null> {
+    if (!this.client) throw new Error('Supabase not configured')
+    await this.ensureAnonymousSession()
+    const count = words.trim().split(/\s+/).length
+    const workspaceId = count >= 24
+      ? await recoverWithWords(this.client, workspaceKeyStore, words, deviceName)
+      : await redeemKeyTransfer(this.client, workspaceKeyStore, words, deviceName)
+    preferredWorkspace.set(workspaceId)
+    this.unsubscribeRealtime()
+    return this.fetchCurrentWorkspace()
   }
 
   async ensureWorkspace(deviceName?: string): Promise<Workspace | null> {
@@ -388,6 +463,9 @@ export class SupabaseService extends EventEmitter {
       .eq('workspace_id', this.workspaceId)
       .eq('user_id', this.user.id)
     this.unsubscribeRealtime()
+    await forgetWorkspaceKey(workspaceKeyStore, this.workspaceId)
+    if (preferredWorkspace.get() === this.workspaceId) preferredWorkspace.set(null)
+    this.e2eStatus = 'unknown'
     this.workspaceId = null
     this.workspace = null
   }

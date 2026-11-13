@@ -302,6 +302,7 @@ function wireSupabaseEvents(): void {
     broadcast(IPC.NOTE_Y_UPDATE, payload)
   })
   supabase.on('notebooks:changed', () => broadcast(IPC.NOTEBOOKS_CHANGED, null))
+  supabase.on('e2e:status', (status: string) => broadcast(IPC.E2E_STATUS_CHANGED, status))
 }
 
 // ── Yjs note sync IPC. The renderer is treated as untrusted input. ─────────────
@@ -355,6 +356,24 @@ function wireNoteSyncIPC(): void {
   const isIdList = (v: unknown): v is string[] => Array.isArray(v) && v.length > 0 && v.length <= 500 && v.every(isNoteId)
   const isName = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0 && v.trim().length <= 80
   const isParent = (v: unknown): v is string | null => v === null || isNoteId(v)
+  const isWords = (v: unknown): v is string => typeof v === 'string' && v.length <= 400 && /^[a-zA-Z\s]+$/.test(v)
+  ipcMain.handle(IPC.E2E_STATUS, () => ySafe(async () => supabase.e2eStatus))
+  ipcMain.handle(IPC.E2E_PREPARE, () => ySafe(async () => supabase.e2ePrepare()))
+  ipcMain.handle(IPC.E2E_COMMIT, (_e, answers: unknown) =>
+    Array.isArray(answers) && answers.length >= 3 && answers.length <= 6 &&
+    answers.every((a) => Number.isInteger(a?.index) && a.index >= 0 && a.index < 24 && typeof a?.word === 'string' && a.word.length <= 20)
+      ? ySafe(() => supabase.e2eCommit(answers as Array<{ index: number; word: string }>)) : INVALID)
+  ipcMain.handle(IPC.E2E_HAS_PLAIN, () => ySafe(() => supabase.e2eHasPlainData()))
+  ipcMain.handle(IPC.E2E_MIGRATE, (e) => ySafe(() => supabase.e2eMigrate((p) => e.sender.send(IPC.E2E_PROGRESS, p))))
+  ipcMain.handle(IPC.E2E_TRANSFER, () => ySafe(() => supabase.e2eCreateTransfer()))
+  ipcMain.handle(IPC.E2E_JOIN, (_e, words: unknown) =>
+    isWords(words)
+      ? ySafe(async () => {
+          const ws = await supabase.e2eJoin(words, DEVICE_NAME)
+          broadcast(IPC.WORKSPACE_CHANGED, ws)
+          return ws
+        })
+      : INVALID)
   ipcMain.handle(IPC.NOTEBOOK_LIST, () => ySafe(() => supabase.listNotebooks()))
   ipcMain.handle(IPC.NOTEBOOK_CREATE, (_e, p: { name?: unknown; parentId?: unknown }) =>
     isName(p?.name) && isParent(p.parentId ?? null)
