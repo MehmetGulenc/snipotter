@@ -18,9 +18,41 @@ interface Release {
 
 const releases: Release[] = [
   {
-    version: '0.8.0',
+    version: '0.9.0',
     date: 'Kasım 2026',
     badge: 'Güncel',
+    headline: 'Notlar Artık Profesyonel Bir Not Aracı',
+    features: [
+      {
+        emoji: '🔄',
+        title: 'Çakışmasız senkron ve çevrimdışı yazma',
+        desc: 'Aynı notu Mac\'te ve iPhone\'da aynı anda düzenlesen bile yazdıkların birbirini silmez, tek notta birleşir. Bağlantı yokken yazdıkların cihazda saklanır, bağlantı gelince gönderilir.',
+      },
+      {
+        emoji: '🕘',
+        title: 'Sürüm geçmişi ve çöp kutusu',
+        desc: 'Notun önceki hâllerine geri dön; silinen notları 30 gün boyunca geri yükle.',
+      },
+      {
+        emoji: '🗂️',
+        title: 'Defterler, #etiketler ve not bağlantıları',
+        desc: 'Notlarını iç içe defterlerde topla, #etiket ile süz, [[ yazarak notları birbirine bağla. Arama Türkçe karakter ve büyük/küçük harf ayırmaz, eşleşmeleri vurgular.',
+      },
+      {
+        emoji: '✍️',
+        title: '/ menüsü ve şablonlar',
+        desc: 'Satır başında / yazarak başlık, liste, yapılacaklar, tablo, kod ve fotoğraf ekle. Toplantı, alışveriş, günlük ve proje şablonları hazır. Kod blokları renklenir, biten görevler listenin sonuna iner.',
+      },
+      {
+        emoji: '🐛',
+        title: 'Düzeltmeler',
+        desc: 'Aynı kopyanın birden fazla kaydedilmesi düzeltildi; iPhone uygulaması öne gelir gelmez senkronlanıyor.',
+      },
+    ],
+  },
+  {
+    version: '0.8.0',
+    date: 'Kasım 2026',
     headline: 'Bilgisayar ile iPhone Artık Birlikte Çalışıyor',
     features: [
       {

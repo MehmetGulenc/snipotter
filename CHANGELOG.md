@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.9.0] - 2026-11-13
+
+### 📝 Notlar Artık Profesyonel Bir Not Aracı
+
+Notlar baştan yazıldı: aynı notu iki cihazda aynı anda düzenleyebilir, internet yokken yazmaya devam edebilirsin.
+
+- **Çakışmasız senkron**: Aynı notu Mac'te ve iPhone'da aynı anda düzenlesen bile yazdıkların birbirini silmez, tek notta birleşir.
+- **Çevrimdışı yazma**: Bağlantı yokken yazdıkların cihazda saklanır, bağlantı gelince gönderilir.
+- **Sürüm geçmişi**: Notun önceki hâllerini gör, istediğine geri dön. Geri dönmeden önce mevcut hâl de saklanır.
+- **Çöp kutusu**: Silinen notlar 30 gün boyunca geri yüklenebilir.
+- **Fotoğraflar**: Nota eklenen fotoğraflar artık notu şişirmiyor; ayrı ve özel bir depoda saklanıyor.
+
+### 🗂️ Düzen
+
+- **Defterler**: Notlarını iç içe defterlerde (en fazla 4 kat) topla; yeni not açık deftere eklenir.
+- **#etiket**: Yazarken vurgulanır, tıklayınca o etiketin notları listelenir.
+- **Not bağlantıları**: `[[` yazıp başka bir notu bağla; bağlanan notta "Bu nota bağlananlar" görünür.
+- **Arama**: Türkçe karakter ve büyük/küçük harf ayırmaz, başlık eşleşmeleri öne çıkar, eşleşen yerler vurgulanır.
+
+### ✍️ Yazma Deneyimi
+
+- **/ menüsü**: Satır başında `/` yaz; başlık, liste, yapılacaklar, tablo, kod, fotoğraf, tarih ve şablonlar.
+- **Şablonlar**: Toplantı notu, alışveriş listesi, günlük ve proje planı.
+- **Kod renklendirme**, **blok taşıma** (⌥↑ / ⌥↓, masaüstünde sürükleme tutamacı), **geri al / yinele** butonları.
+- **Biten görevler** listenin sonuna iner.
+- **iPhone**: Biçimlendirme çubuğu klavyenin hemen üstünde durur.
+
+### 🐛 Düzeltmeler
+
+- Aynı kopyanın iki-üç kez kaydedilmesi (iPhone ve Universal Clipboard) düzeltildi.
+- iPhone uygulaması öne gelir gelmez senkronlanıyor.
+- Masaüstünden kopyalanan görseller iPhone'da metin yerine görsel olarak görünüyor.
+- Maddeli notların liste önizlemesi satır satır gösteriliyor.
+
 ## [0.8.0] - 2026-11-12
 
 ### 📲 İş PC ↔ iPhone Aksiyon Köprüsü
