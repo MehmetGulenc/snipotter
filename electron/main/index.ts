@@ -30,6 +30,7 @@ import { hostname, userInfo } from 'node:os'
 import { createKeyedQueue } from '@shared/keyedQueue'
 import { decideOtpAutoCopy, OtpLedger, otpNotificationBody } from './actionBridge'
 import { validateSendToPhone } from './sendToPhone'
+import { codec } from '@shared/crypto/codec'
 import {
   IPC,
   type IpcResult,
@@ -167,6 +168,13 @@ async function handleClipboardChange(
   if (!supabase.getWorkspaceId()) {
     if (draft.contentType === 'file') console.warn('[clip-file] skipped: workspace not ready')
     return
+  }
+
+  // Encrypted workspaces store a keyed hash of the trimmed text instead of the plain
+  // one, identical on every device, so Universal Clipboard copies still dedupe.
+  if (codec().enabled) {
+    const isText = draft.contentType === 'text' || draft.contentType === 'rich-text'
+    draft = { ...draft, hash: await codec().clipHash(isText ? draft.text.trim() : draft.text, () => draft.hash) }
   }
 
   // Dedupe by content hash: if the user re-copies a clip we already have,

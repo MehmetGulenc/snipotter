@@ -7,6 +7,7 @@ import type {
   WorkspaceMember,
 } from './types'
 import type { Notebook, NoteVersion, TrashedNote } from '@shared/types'
+import { codec } from '@shared/crypto/codec'
 
 interface ClipboardRow {
   id: string
@@ -65,6 +66,12 @@ function noteFromRow(r: NoteRow): Note {
     notebookId: r.notebook_id ?? null,
   }
 }
+
+// Rows pass through the end-to-end codec (a no-op until the workspace is encrypted).
+const openClip = async (r: ClipboardRow): Promise<ClipboardItem> => clipFromRow(await codec().openRow('clipboard_items', r))
+const openNote = async (r: NoteRow): Promise<Note> => noteFromRow(await codec().openRow('notes', r))
+const openClips = (rows: unknown[] | null): Promise<ClipboardItem[]> => Promise.all(((rows ?? []) as ClipboardRow[]).map(openClip))
+const openNotes = (rows: unknown[] | null): Promise<Note[]> => Promise.all(((rows ?? []) as NoteRow[]).map(openNote))
 
 // ---------- Auth ----------
 
@@ -203,7 +210,7 @@ export async function listClipboard(workspaceId: string): Promise<ClipboardItem[
     .order('created_at', { ascending: false })
     .limit(200)
   if (error) throw error
-  return ((data ?? []) as ClipboardRow[]).map(clipFromRow)
+  return openClips(data)
 }
 
 /**
@@ -219,7 +226,7 @@ export async function createClipFromText(
 ): Promise<ClipboardItem | null> {
   const trimmed = text?.trim()
   if (!trimmed) return null
-  const hash = await sha1(`${trimmed}`)
+  const hash = await codec().clipHash(trimmed, () => sha1(`${trimmed}`))
 
   // Skip if the same payload was just inserted from another device. The
   // desktop monitor does the same in-memory check; we go to the DB because we
@@ -232,11 +239,12 @@ export async function createClipFromText(
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
-  if (existing) return clipFromRow(existing as ClipboardRow)
+  if (existing) return openClip(existing as ClipboardRow)
 
   // Desktop hashes text + HTML, so a copy that reached the Mac via Universal
   // Clipboard has a different hash; match recent identical text instead.
-  if (trimmed.length <= 2000) {
+  // Encrypted workspaces share one keyed hash of the trimmed text, so the hash check covers it.
+  if (!codec().enabled && trimmed.length <= 2000) {
     const { data: sameText } = await getSupabase()
       .from('clipboard_items')
       .select('*')
@@ -246,12 +254,13 @@ export async function createClipFromText(
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
-    if (sameText) return clipFromRow(sameText as ClipboardRow)
+    if (sameText) return openClip(sameText as ClipboardRow)
   }
 
   const { data, error } = await getSupabase()
     .from('clipboard_items')
-    .insert({
+    .insert(await codec().sealRow('clipboard_items', {
+      id: crypto.randomUUID(),
       workspace_id: workspaceId,
       created_by: userId,
       content_type: 'text',
@@ -261,11 +270,11 @@ export async function createClipFromText(
       source_app: sourceApp,
       pinned: false,
       ai: null,
-    })
+    }))
     .select('*')
     .single()
   if (error) throw error
-  const clip = clipFromRow(data as ClipboardRow)
+  const clip = await openClip(data as ClipboardRow)
   broadcastClipUpsert(clip)
   return clip
 }
@@ -286,7 +295,7 @@ export async function setClipPinned(id: string, pinned: boolean): Promise<void> 
     .select('*')
     .single()
   if (error) throw error
-  if (data) broadcastClipUpsert(clipFromRow(data as ClipboardRow))
+  if (data) broadcastClipUpsert(await openClip(data as ClipboardRow))
 }
 
 export async function deleteClip(id: string): Promise<void> {
@@ -317,7 +326,7 @@ export async function listNotes(workspaceId: string): Promise<Note[]> {
     .order('pinned', { ascending: false })
     .order('updated_at', { ascending: false })
   if (error) throw error
-  return ((data ?? []) as NoteRow[]).map(noteFromRow)
+  return openNotes(data)
 }
 
 export async function createNote(
@@ -327,17 +336,18 @@ export async function createNote(
 ): Promise<Note | null> {
   const { data, error } = await getSupabase()
     .from('notes')
-    .insert({
+    .insert(await codec().sealRow('notes', {
+      id: crypto.randomUUID(),
       workspace_id: workspaceId,
       created_by: userId,
       content,
       title: null,
       pinned: false,
-    })
+    }))
     .select('*')
     .single()
   if (error) throw error
-  const note = noteFromRow(data as NoteRow)
+  const note = await openNote(data as NoteRow)
   broadcastNoteUpsert(note)
   return note
 }
@@ -356,6 +366,10 @@ interface NotebookRow {
 const notebookFromRow = (r: NotebookRow): Notebook => ({
   id: r.id, workspaceId: r.workspace_id, parentId: r.parent_id, name: r.name, icon: r.icon, sort: r.sort,
 })
+const openNotebook = async (r: NotebookRow): Promise<Notebook> => {
+  const open = await codec().openRow('notebooks', r)
+  return notebookFromRow({ ...open, name: open.name || 'Kilitli defter' })
+}
 
 /** Empty when the server predates notebooks (migration 0013). */
 export async function listNotebooks(workspaceId: string): Promise<Notebook[]> {
@@ -364,27 +378,27 @@ export async function listNotebooks(workspaceId: string): Promise<Notebook[]> {
     if (error.code === '42P01' || error.code === 'PGRST205') return []
     throw error
   }
-  return ((data ?? []) as NotebookRow[]).map(notebookFromRow)
+  return Promise.all(((data ?? []) as NotebookRow[]).map(openNotebook))
 }
 
 export async function createNotebook(workspaceId: string, name: string, parentId: string | null): Promise<Notebook> {
   const { data, error } = await getSupabase()
     .from('notebooks')
-    .insert({ workspace_id: workspaceId, name: name.trim(), parent_id: parentId })
+    .insert(await codec().sealRow('notebooks', { id: crypto.randomUUID(), workspace_id: workspaceId, name: name.trim(), parent_id: parentId }))
     .select('*')
     .single()
   if (error) throw error
-  return notebookFromRow(data as NotebookRow)
+  return openNotebook(data as NotebookRow)
 }
 
 export async function updateNotebook(id: string, patch: { name?: string; parentId?: string | null; sort?: number }): Promise<Notebook> {
   const row: Record<string, unknown> = {}
-  if (patch.name !== undefined) row.name = patch.name.trim()
+  if (patch.name !== undefined) row.name = (await codec().sealRow('notebooks', { id, name: patch.name.trim() })).name
   if (patch.parentId !== undefined) row.parent_id = patch.parentId
   if (patch.sort !== undefined) row.sort = patch.sort
   const { data, error } = await getSupabase().from('notebooks').update(row).eq('id', id).select('*').single()
   if (error) throw error
-  return notebookFromRow(data as NotebookRow)
+  return openNotebook(data as NotebookRow)
 }
 
 /** Child notebooks go with it; its notes stay, unfiled. */
@@ -396,7 +410,7 @@ export async function deleteNotebook(id: string): Promise<void> {
 export async function moveNoteToNotebook(noteId: string, notebookId: string | null): Promise<Note> {
   const { data, error } = await getSupabase().from('notes').update({ notebook_id: notebookId }).eq('id', noteId).select('*').single()
   if (error) throw error
-  const note = noteFromRow(data as NoteRow)
+  const note = await openNote(data as NoteRow)
   broadcastNoteUpsert(note)
   return note
 }
@@ -405,14 +419,15 @@ export async function updateNote(
   id: string,
   partial: { title?: string | null; content?: string; pinned?: boolean },
 ): Promise<Note | null> {
+  const { id: _id, ...sealed } = await codec().sealRow('notes', { id, ...partial })
   const { data, error } = await getSupabase()
     .from('notes')
-    .update(partial)
+    .update(sealed)
     .eq('id', id)
     .select('*')
     .single()
   if (error) throw error
-  const note = noteFromRow(data as NoteRow)
+  const note = await openNote(data as NoteRow)
   broadcastNoteUpsert(note)
   return note
 }
@@ -421,12 +436,12 @@ export async function updateNote(
 export async function saveNoteContent(id: string, content: string, contentSha: string): Promise<void> {
   const { data, error } = await getSupabase()
     .from('notes')
-    .update({ content, ydoc_content_sha: contentSha })
+    .update({ content: (await codec().sealRow('notes', { id, content })).content, ydoc_content_sha: contentSha })
     .eq('id', id)
     .select('*')
     .single()
   if (error) throw error
-  broadcastNoteUpsert(noteFromRow(data as NoteRow))
+  broadcastNoteUpsert(await openNote(data as NoteRow))
 }
 
 export async function deleteNote(id: string): Promise<void> {
@@ -467,8 +482,11 @@ export async function listTrashedNotes(workspaceId: string): Promise<TrashedNote
     .order('deleted_at', { ascending: false })
     .limit(500)
   if (error) throw error
-  return ((data ?? []) as unknown as Array<{ id: string; deleted_at: string; title: string | null; content: string | null }>)
-    .map((r) => ({ id: r.id, title: r.title, content: r.content ?? '', deletedAt: r.deleted_at }))
+  return Promise.all(((data ?? []) as unknown as Array<{ id: string; deleted_at: string; title: string | null; content: string | null }>)
+    .map(async (r) => {
+      const open = await codec().openRow('notes', { id: r.id, title: r.title, content: r.content ?? '' })
+      return { id: r.id, title: open.title, content: open.content, deletedAt: r.deleted_at }
+    }))
 }
 
 /** Restores trashed notes and returns them so lists can show them again. */
@@ -478,7 +496,7 @@ export async function restoreTrashedNotes(ids: string[]): Promise<Note[]> {
   if (error) throw error
   const { data, error: readError } = await sb.from('notes').select('*').in('id', ids)
   if (readError) throw readError
-  const notes = ((data ?? []) as NoteRow[]).map(noteFromRow)
+  const notes = await openNotes(data)
   notes.forEach(broadcastNoteUpsert)
   return notes
 }
@@ -496,8 +514,11 @@ export async function listNoteVersions(noteId: string): Promise<NoteVersion[]> {
     .order('created_at', { ascending: false })
     .limit(100)
   if (error) throw error
-  return ((data ?? []) as Array<{ id: string; kind: NoteVersion['kind']; created_at: string; content: string }>)
-    .map((r) => ({ id: r.id, kind: r.kind, createdAt: r.created_at, content: r.content }))
+  return Promise.all(((data ?? []) as Array<{ id: string; kind: NoteVersion['kind']; created_at: string; content: string }>)
+    .map(async (r) => {
+      const open = await codec().openRow('note_versions', r)
+      return { id: r.id, kind: r.kind, createdAt: r.created_at, content: open.content }
+    }))
 }
 
 // ---------- Realtime ----------
@@ -516,37 +537,38 @@ let activeSyncChannel: ReturnType<ReturnType<typeof getSupabase>['channel']> | n
  * independent of the DB write. Caller is still responsible for the durable
  * mutation (postgres_changes is the backstop).
  */
-function broadcast(event: string, payload: Record<string, unknown>): void {
-  if (!activeSyncChannel) return
-  void activeSyncChannel.send({
-    type: 'broadcast',
-    event,
-    payload: { ...payload, from: CLIENT_ID },
-  })
+function broadcast(event: string, id: string, payload: Record<string, unknown>, sealed = true): void {
+  const channel = activeSyncChannel
+  if (!channel) return
+  // Broadcasts travel through the server: in encrypted workspaces the payload is sealed.
+  void (sealed ? codec().sealBroadcast(event, id, payload) : Promise.resolve(payload)).then((body) =>
+    channel.send({ type: 'broadcast', event, payload: { ...body, from: CLIENT_ID } }),
+  )
 }
 
 export function broadcastNoteUpsert(note: Note): void {
-  broadcast('note:upsert', { note })
+  broadcast('note:upsert', note.id, { note })
 }
 
 export function broadcastNoteDeleted(id: string): void {
-  broadcast('note:deleted', { id })
+  broadcast('note:deleted', id, { id }, false)
 }
 
 export function broadcastClipUpsert(item: ClipboardItem): void {
-  broadcast('clip:upsert', { item })
+  broadcast('clip:upsert', item.id, { item })
 }
 
 export function broadcastClipDeleted(id: string): void {
-  broadcast('clip:deleted', { id })
+  broadcast('clip:deleted', id, { id }, false)
 }
 
 // Yjs note updates arrive twice (instant broadcast + durable postgres_changes);
 // applying the same update again is a no-op in Yjs.
 const noteYListeners = new Map<string, Set<(update: string) => void>>()
 
+/** `update` is already sealed by the note transport. */
 export function broadcastNoteY(noteId: string, update: string): void {
-  broadcast('note:y', { noteId, update })
+  broadcast('note:y', noteId, { noteId, update }, false)
 }
 
 export function onNoteY(noteId: string, cb: (update: string) => void): () => void {
@@ -592,7 +614,7 @@ export function subscribeWorkspace(
       .limit(500)
     for (const row of (data ?? []) as ClipboardRow[]) {
       if (row.created_at && row.created_at > lastClipAt) lastClipAt = row.created_at
-      handlers.onClip?.(clipFromRow(row))
+      handlers.onClip?.(await openClip(row))
     }
   }
 
@@ -607,7 +629,7 @@ export function subscribeWorkspace(
       .limit(500)
     for (const row of (data ?? []) as NoteRow[]) {
       if (row.updated_at && row.updated_at > lastNoteAt) lastNoteAt = row.updated_at
-      handlers.onNote?.(noteFromRow(row))
+      handlers.onNote?.(await openNote(row))
     }
   }
 
@@ -625,7 +647,7 @@ export function subscribeWorkspace(
           const row = payload.new as ClipboardRow
           if (row.workspace_id !== workspaceId) return
           if (row.created_at && row.created_at > lastClipAt) lastClipAt = row.created_at
-          handlers.onClip?.(clipFromRow(row))
+          void openClip(row).then((item) => handlers.onClip?.(item))
         }
       },
     )
@@ -646,7 +668,7 @@ export function subscribeWorkspace(
           const row = payload.new as NoteRow
           if (row.workspace_id !== workspaceId) return
           if (row.updated_at && row.updated_at > lastNoteAt) lastNoteAt = row.updated_at
-          handlers.onNote?.(noteFromRow(row))
+          void openNote(row).then((note) => handlers.onNote?.(note))
         }
       },
     )
@@ -660,10 +682,11 @@ export function subscribeWorkspace(
     .channel(`sync-${workspaceId}`, {
       config: { broadcast: { self: false, ack: false } },
     })
-    .on('broadcast', { event: 'clip:upsert' }, ({ payload }) => {
+    .on('broadcast', { event: 'clip:upsert' }, async ({ payload }) => {
       if (payload?.from === CLIENT_ID) return
-      if (!payload?.item) return
-      const item = payload.item as ClipboardItem
+      const body = await codec().openBroadcast('clip:upsert', payload ?? {})
+      if (!body?.item) return
+      const item = body.item as ClipboardItem
       if (item.createdAt && item.createdAt > lastClipAt) lastClipAt = item.createdAt
       handlers.onClip?.(item)
     })
@@ -671,10 +694,11 @@ export function subscribeWorkspace(
       if (payload?.from === CLIENT_ID) return
       if (payload?.id) handlers.onClipDelete?.(payload.id as string)
     })
-    .on('broadcast', { event: 'note:upsert' }, ({ payload }) => {
+    .on('broadcast', { event: 'note:upsert' }, async ({ payload }) => {
       if (payload?.from === CLIENT_ID) return
-      if (!payload?.note) return
-      const note = payload.note as Note
+      const body = await codec().openBroadcast('note:upsert', payload ?? {})
+      if (!body?.note) return
+      const note = body.note as Note
       if (note.updatedAt && note.updatedAt > lastNoteAt) lastNoteAt = note.updatedAt
       handlers.onNote?.(note)
     })

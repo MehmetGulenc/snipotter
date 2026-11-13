@@ -4,6 +4,7 @@
  * keeps the push token for this device in push_tokens.
  */
 import { getSupabase } from './supabase'
+import { codec } from '@shared/crypto/codec'
 
 export type ActionKind = 'phone' | 'address' | 'iban' | 'url' | 'text'
 export type ActionButton = 'call' | 'map' | 'copy' | 'open'
@@ -43,6 +44,9 @@ const fromRow = (r: DeviceActionRow): DeviceAction => ({
   expiresAt: r.expires_at,
 })
 
+/** Payload and label are end-to-end encrypted in encrypted workspaces. */
+const openAction = async (r: DeviceActionRow): Promise<DeviceAction> => fromRow(await codec().openRow('device_actions', r))
+
 const usable = (r: DeviceActionRow): boolean =>
   !r.consumed_at && new Date(r.expires_at).getTime() > Date.now()
 
@@ -58,7 +62,7 @@ export async function listPendingActions(workspaceId: string): Promise<DeviceAct
     .order('created_at', { ascending: true })
     .limit(20)
   if (error) throw error
-  return ((data ?? []) as DeviceActionRow[]).filter(usable).map(fromRow)
+  return Promise.all(((data ?? []) as DeviceActionRow[]).filter(usable).map(openAction))
 }
 
 /** Calls back for every new action of this workspace; returns the unsubscribe. */
@@ -72,7 +76,7 @@ export function subscribeActions(workspaceId: string, onAction: (a: DeviceAction
       (payload) => {
         const row = payload.new as DeviceActionRow
         if (row.target_platform !== 'any' && row.target_platform !== 'ios') return
-        if (usable(row)) onAction(fromRow(row))
+        if (usable(row)) void openAction(row).then(onAction)
       },
     )
     .subscribe()
@@ -96,7 +100,7 @@ export async function fetchUsableAction(id: string): Promise<DeviceAction | null
   const { data, error } = await getSupabase().from('device_actions').select('*').eq('id', id).maybeSingle()
   if (error) throw error
   const row = data as DeviceActionRow | null
-  return row && usable(row) ? fromRow(row) : null
+  return row && usable(row) ? openAction(row) : null
 }
 
 /** What the primary buttons of an action do. */

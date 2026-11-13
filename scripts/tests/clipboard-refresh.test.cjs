@@ -6,7 +6,9 @@ const ts = require('typescript')
 const source = fs.readFileSync(path.join(__dirname, '../../electron/main/supabase.ts'), 'utf8')
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true, target: ts.ScriptTarget.ES2022 } })
 const loaded = { exports: {} }
-new Function('require', 'exports', compiled.outputText)((id) => id === './store' ? { authStorage: {} } : require(id), loaded.exports)
+const jiti = require('jiti')(__filename, { interopDefault: true })
+const resolveShared = (id) => (id.startsWith('@shared/') ? jiti(path.join(__dirname, '../../shared', id.slice('@shared/'.length))) : require(id))
+new Function('require', 'exports', compiled.outputText)((id) => id === './store' ? { authStorage: {} } : resolveShared(id), loaded.exports)
 const { SupabaseService } = loaded.exports
 
 function setup() {

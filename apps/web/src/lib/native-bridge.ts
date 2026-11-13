@@ -17,6 +17,7 @@ import { getSupabase } from './supabase'
 import { createClipFromText } from './api'
 import { useStore } from './store'
 import { toast } from './feedback'
+import { codec } from '@shared/crypto/codec'
 import type { ClipboardItem } from './types'
 
 export interface PushAction {
@@ -167,7 +168,11 @@ export async function registerPush(): Promise<{ token: string; environment: 'san
 
 export function onPushAction(cb: (action: PushAction) => void): () => void {
   if (!nativeBridgeAvailable()) return () => {}
-  const listener = SnipotterNative.addListener('pushAction', cb)
+  // In encrypted workspaces the push carries ciphertext; open it with the action's id.
+  const listener = SnipotterNative.addListener('pushAction', (action) => {
+    void codec().openRow('device_actions', { id: action.actionId, payload: action.payload })
+      .then((open) => cb({ ...action, payload: open.payload }))
+  })
   return () => { void listener.then((handle) => handle.remove()) }
 }
 

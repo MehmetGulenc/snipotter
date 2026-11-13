@@ -7,6 +7,7 @@
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
+import { codec } from '@shared/crypto/codec'
 import WebSocket from 'ws'
 import { authStorage } from './store'
 import type {
@@ -100,6 +101,12 @@ function clipboardFromRow(row: ClipboardRow): ClipboardItem {
   }
 }
 
+// Rows pass through the end-to-end codec (a no-op until the workspace is encrypted).
+const openClip = async (r: ClipboardRow): Promise<ClipboardItem> => clipboardFromRow(await codec().openRow('clipboard_items', r))
+const openNote = async (r: NoteRow): Promise<Note> => noteFromRow(await codec().openRow('notes', r))
+const openClips = (rows: unknown[] | null): Promise<ClipboardItem[]> => Promise.all(((rows ?? []) as ClipboardRow[]).map(openClip))
+const openNotes = (rows: unknown[] | null): Promise<Note[]> => Promise.all(((rows ?? []) as NoteRow[]).map(openNote))
+
 interface NotebookRow {
   id: string
   workspace_id: string
@@ -111,6 +118,11 @@ interface NotebookRow {
 
 function notebookFromRow(r: NotebookRow): Notebook {
   return { id: r.id, workspaceId: r.workspace_id, parentId: r.parent_id, name: r.name, icon: r.icon, sort: r.sort }
+}
+
+async function openNotebook(r: NotebookRow): Promise<Notebook> {
+  const open = await codec().openRow('notebooks', r)
+  return notebookFromRow({ ...open, name: open.name || 'Kilitli defter' })
 }
 
 function noteFromRow(row: NoteRow): Note {
@@ -411,14 +423,15 @@ export class SupabaseService extends EventEmitter {
       .order('created_at', { ascending: false })
       .limit(limit)
     if (error) throw error
-    return ((data ?? []) as ClipboardRow[]).map(clipboardFromRow)
+    return openClips(data)
   }
 
   async insertClipboard(
     item: Omit<ClipboardItem, 'id' | 'userId' | 'synced'>,
   ): Promise<ClipboardItem | null> {
     if (!this.client || !this.workspaceId || !this.user) return null
-    const payload = {
+    const payload = await codec().sealRow('clipboard_items', {
+      id: randomUUID(),
       workspace_id: this.workspaceId,
       created_by: this.user.id,
       content_type: item.contentType,
@@ -428,7 +441,7 @@ export class SupabaseService extends EventEmitter {
       source_app: item.sourceApp ?? null,
       pinned: item.pinned,
       ai: item.ai ?? null,
-    }
+    })
     const { data, error } = await this.client
       .from('clipboard_items')
       .insert(payload)
@@ -438,7 +451,7 @@ export class SupabaseService extends EventEmitter {
       console.warn('[supabase] insert clipboard failed', error.message)
       return null
     }
-    return clipboardFromRow(data as ClipboardRow)
+    return openClip(data as ClipboardRow)
   }
 
   /**
@@ -459,7 +472,7 @@ export class SupabaseService extends EventEmitter {
       console.warn('[supabase] find by hash failed', error.message)
       return null
     }
-    return data ? clipboardFromRow(data as ClipboardRow) : null
+    return data ? openClip(data as ClipboardRow) : null
   }
 
   /**
@@ -469,7 +482,8 @@ export class SupabaseService extends EventEmitter {
    */
   async findRecentClipboardByText(text: string, windowMs = 10 * 60 * 1000): Promise<ClipboardItem | null> {
     const trimmed = text.trim()
-    if (!this.client || !this.workspaceId || !trimmed || trimmed.length > 2000) return null
+    // Encrypted workspaces dedupe by the shared keyed hash; ciphertext cannot be compared.
+    if (codec().enabled || !this.client || !this.workspaceId || !trimmed || trimmed.length > 2000) return null
     const { data, error } = await this.client
       .from('clipboard_items')
       .select('*')
@@ -483,7 +497,7 @@ export class SupabaseService extends EventEmitter {
       console.warn('[supabase] find by text failed', error.message)
       return null
     }
-    return data ? clipboardFromRow(data as ClipboardRow) : null
+    return data ? openClip(data as ClipboardRow) : null
   }
 
   /**
@@ -500,10 +514,10 @@ export class SupabaseService extends EventEmitter {
     // A prior failed capture may have stored plain text under this same hash.
     // Re-copying a file must repair its payload, not just bump that stale row.
     if (file?.contentType === 'file') {
-      Object.assign(updates, {
-        content_type: file.contentType, text: file.text, html: file.html ?? null,
-        source_app: file.sourceApp ?? null, ai: file.ai ?? null,
+      const { id: _id, ...sealed } = await codec().sealRow('clipboard_items', {
+        id, text: file.text, html: file.html ?? null, ai: file.ai ?? null,
       })
+      Object.assign(updates, { content_type: file.contentType, source_app: file.sourceApp ?? null, ...sealed })
     }
     const { data, error } = await this.client
       .from('clipboard_items')
@@ -516,7 +530,7 @@ export class SupabaseService extends EventEmitter {
       console.warn('[supabase] touch clipboard failed', error.message)
       return null
     }
-    return clipboardFromRow(data as ClipboardRow)
+    return openClip(data as ClipboardRow)
   }
 
   /**
@@ -535,7 +549,8 @@ export class SupabaseService extends EventEmitter {
     const clipId = action.clipId && UUID_RE.test(action.clipId) ? action.clipId : null
     const { data, error } = await this.client
       .from('device_actions')
-      .insert({
+      .insert(await codec().sealRow('device_actions', {
+        id: randomUUID(),
         workspace_id: this.workspaceId,
         sender_device: senderDevice.slice(0, 200) || 'Masaüstü',
         target_platform: 'ios',
@@ -543,7 +558,7 @@ export class SupabaseService extends EventEmitter {
         payload: action.payload,
         label: action.label ?? null,
         clip_id: clipId,
-      })
+      }))
       .select('id')
       .single()
     if (error) {
@@ -558,7 +573,7 @@ export class SupabaseService extends EventEmitter {
 
   async updateClipboardAI(id: string, ai: ClipboardItem['ai']): Promise<void> {
     if (!this.client || !this.workspaceId) return
-    const { error } = await this.client.from('clipboard_items').update({ ai }).eq('id', id)
+    const { error } = await this.client.from('clipboard_items').update({ ai: (await codec().sealRow('clipboard_items', { id, ai })).ai }).eq('id', id)
     if (error) console.warn('[supabase] update ai failed', error.message)
   }
 
@@ -607,12 +622,13 @@ export class SupabaseService extends EventEmitter {
       .order('pinned', { ascending: false })
       .order('updated_at', { ascending: false })
     if (error) throw error
-    return ((data ?? []) as NoteRow[]).map(noteFromRow)
+    return openNotes(data)
   }
 
   async createNote(partial: Partial<Note>): Promise<Note | null> {
     if (!this.client || !this.workspaceId || !this.user) return null
-    const payload = {
+    const payload = await codec().sealRow('notes', {
+      id: randomUUID(),
       workspace_id: this.workspaceId,
       created_by: this.user.id,
       title: partial.title ?? null,
@@ -620,13 +636,13 @@ export class SupabaseService extends EventEmitter {
       pinned: partial.pinned ?? false,
       from_clipboard_id: partial.fromClipboardId ?? null,
       ai: partial.ai ?? null,
-    }
+    })
     const { data, error } = await this.client.from('notes').insert(payload).select('*').single()
     if (error) {
       console.warn('[supabase] create note failed', error.message)
       return null
     }
-    return noteFromRow(data as NoteRow)
+    return openNote(data as NoteRow)
   }
 
   async updateNote(id: string, partial: Partial<Note>): Promise<Note | null> {
@@ -636,9 +652,10 @@ export class SupabaseService extends EventEmitter {
     if (partial.content !== undefined) updates['content'] = partial.content
     if (partial.pinned !== undefined) updates['pinned'] = partial.pinned
     if (partial.ai !== undefined) updates['ai'] = partial.ai
+    const { id: _id, ...sealed } = await codec().sealRow('notes', { id, ...updates })
     const { data, error } = await this.client
       .from('notes')
-      .update(updates)
+      .update(sealed)
       .eq('id', id)
       .select('*')
       .single()
@@ -646,7 +663,7 @@ export class SupabaseService extends EventEmitter {
       console.warn('[supabase] update note failed', error.message)
       return null
     }
-    return noteFromRow(data as NoteRow)
+    return openNote(data as NoteRow)
   }
 
   // ── Yjs note sync (shared/notes/sync.ts). These throw so the renderer can tell
@@ -667,10 +684,11 @@ export class SupabaseService extends EventEmitter {
     if (error) throw new Error(error.message)
     if (!data) return null
     const seq = Number(data.ydoc_seq ?? 0)
+    const open = await codec().openRow('notes', { id: noteId, content: (data.content as string) ?? '' })
     return {
-      ydoc: data.ydoc as string | null,
+      ydoc: data.ydoc ? await codec().openNoteBlob(noteId, 'ydoc', data.ydoc as string) : null,
       seq,
-      content: (data.content as string) ?? '',
+      content: open.content,
       contentSha: data.ydoc_content_sha as string | null,
       updates: await this.noteUpdatesAfter(noteId, seq),
     }
@@ -690,14 +708,15 @@ export class SupabaseService extends EventEmitter {
         .limit(1000)
       if (error) throw new Error(error.message)
       const rows = (data ?? []) as Array<{ id: number; update: string }>
-      out.push(...rows)
+      for (const r of rows) out.push({ id: r.id, update: await codec().openNoteBlob(noteId, 'update', r.update) })
       if (rows.length < 1000) return out
       cursor = rows[rows.length - 1].id
     }
   }
 
-  async notePushUpdate(noteId: string, update: string): Promise<void> {
+  async notePushUpdate(noteId: string, plain: string): Promise<void> {
     const { client, workspaceId } = this.requireSync()
+    const update = await codec().sealNoteBlob(noteId, 'update', plain)
     void this.broadcastChannel?.send({ type: 'broadcast', event: 'note:y', payload: { noteId, update, from: this.clientId } })
     const { error } = await client.from('note_updates').insert({ note_id: noteId, workspace_id: workspaceId, update })
     if (error) throw new Error(error.message)
@@ -707,12 +726,12 @@ export class SupabaseService extends EventEmitter {
     const { client } = this.requireSync()
     const { data, error } = await client
       .from('notes')
-      .update({ content, ydoc_content_sha: contentSha })
+      .update({ content: (await codec().sealRow('notes', { id: noteId, content })).content, ydoc_content_sha: contentSha })
       .eq('id', noteId)
       .select('*')
       .single()
     if (error) throw new Error(error.message)
-    const note = noteFromRow(data as NoteRow)
+    const note = await openNote(data as NoteRow)
     this.broadcastNoteUpsert(note)
     return note
   }
@@ -720,7 +739,11 @@ export class SupabaseService extends EventEmitter {
   async noteCompact(noteId: string, ydoc: string, seq: number, content: string, contentSha: string): Promise<boolean> {
     const { client } = this.requireSync()
     const { data, error } = await client.rpc('compact_note', {
-      p_note_id: noteId, p_ydoc: ydoc, p_seq: seq, p_content: content, p_content_sha: contentSha,
+      p_note_id: noteId,
+      p_ydoc: await codec().sealNoteBlob(noteId, 'ydoc', ydoc),
+      p_seq: seq,
+      p_content: (await codec().sealRow('notes', { id: noteId, content })).content,
+      p_content_sha: contentSha,
     })
     if (error) throw new Error(error.message)
     return data === true
@@ -728,7 +751,8 @@ export class SupabaseService extends EventEmitter {
 
   async noteSaveVersion(noteId: string, content: string, kind: 'auto' | 'manual' | 'restore'): Promise<void> {
     const { client, workspaceId } = this.requireSync()
-    const { error } = await client.from('note_versions').insert({ note_id: noteId, workspace_id: workspaceId, kind, content })
+    const row = await codec().sealRow('note_versions', { id: randomUUID(), note_id: noteId, workspace_id: workspaceId, kind, content })
+    const { error } = await client.from('note_versions').insert(row)
     if (error) throw new Error(error.message)
   }
 
@@ -742,29 +766,29 @@ export class SupabaseService extends EventEmitter {
       if (error.code === '42P01' || error.code === 'PGRST205') return []
       throw new Error(error.message)
     }
-    return ((data ?? []) as NotebookRow[]).map(notebookFromRow)
+    return Promise.all(((data ?? []) as NotebookRow[]).map(openNotebook))
   }
 
   async createNotebook(name: string, parentId: string | null): Promise<Notebook> {
     const { client, workspaceId } = this.requireSync()
     const { data, error } = await client
       .from('notebooks')
-      .insert({ workspace_id: workspaceId, name: name.trim(), parent_id: parentId })
+      .insert(await codec().sealRow('notebooks', { id: randomUUID(), workspace_id: workspaceId, name: name.trim(), parent_id: parentId }))
       .select('*')
       .single()
     if (error) throw new Error(error.message)
-    return notebookFromRow(data as NotebookRow)
+    return openNotebook(data as NotebookRow)
   }
 
   async updateNotebook(id: string, patch: { name?: string; parentId?: string | null; sort?: number }): Promise<Notebook> {
     const { client } = this.requireSync()
     const row: Record<string, unknown> = {}
-    if (patch.name !== undefined) row.name = patch.name.trim()
+    if (patch.name !== undefined) row.name = (await codec().sealRow('notebooks', { id, name: patch.name.trim() })).name
     if (patch.parentId !== undefined) row.parent_id = patch.parentId
     if (patch.sort !== undefined) row.sort = patch.sort
     const { data, error } = await client.from('notebooks').update(row).eq('id', id).select('*').single()
     if (error) throw new Error(error.message)
-    return notebookFromRow(data as NotebookRow)
+    return openNotebook(data as NotebookRow)
   }
 
   async deleteNotebook(id: string): Promise<void> {
@@ -777,7 +801,7 @@ export class SupabaseService extends EventEmitter {
     const { client } = this.requireSync()
     const { data, error } = await client.from('notes').update({ notebook_id: notebookId }).eq('id', noteId).select('*').single()
     if (error) throw new Error(error.message)
-    const note = noteFromRow(data as NoteRow)
+    const note = await openNote(data as NoteRow)
     this.broadcastNoteUpsert(note)
     return note
   }
@@ -786,7 +810,8 @@ export class SupabaseService extends EventEmitter {
   async noteAssetUpload(noteId: string, mime: string, bytes: Buffer, ext: string): Promise<string> {
     const { client, workspaceId } = this.requireSync()
     const path = `${workspaceId}/${noteId}/${randomUUID()}.${ext}`
-    const { error } = await client.storage.from('note-assets').upload(path, bytes, { contentType: mime, upsert: false })
+    const body = codec().enabled ? Buffer.from(await codec().sealFile(path, new Uint8Array(bytes))) : bytes
+    const { error } = await client.storage.from('note-assets').upload(path, body, { contentType: mime, upsert: false })
     if (error) throw new Error(error.message)
     return path
   }
@@ -797,7 +822,15 @@ export class SupabaseService extends EventEmitter {
     if (!path.startsWith(`${workspaceId}/`) || path.includes('..')) throw new Error('Görsel bu çalışma alanına ait değil')
     const { data, error } = await client.storage.from('note-assets').createSignedUrl(path, 3600)
     if (error || !data?.signedUrl) throw new Error(error?.message ?? 'Görsel bağlantısı alınamadı')
-    return data.signedUrl
+    if (!codec().enabled) return data.signedUrl
+    // Encrypted workspace: decrypt here and hand the renderer a data: URL. Images stored
+    // before encryption fail authentication and are shown as they are.
+    const res = await fetch(data.signedUrl)
+    if (!res.ok) throw new Error(`Görsel indirilemedi (${res.status})`)
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    const plain = await codec().openFile(path, bytes).catch(() => bytes)
+    const ext = path.split('.').pop() ?? 'jpeg'
+    return `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${Buffer.from(plain).toString('base64')}`
   }
 
   /**
@@ -821,8 +854,11 @@ export class SupabaseService extends EventEmitter {
       .order('deleted_at', { ascending: false })
       .limit(500)
     if (error) throw new Error(error.message)
-    return ((data ?? []) as unknown as Array<{ id: string; deleted_at: string; title: string | null; content: string | null }>)
-      .map((r) => ({ id: r.id, title: r.title, content: r.content ?? '', deletedAt: r.deleted_at }))
+    return Promise.all(((data ?? []) as unknown as Array<{ id: string; deleted_at: string; title: string | null; content: string | null }>)
+      .map(async (r) => {
+        const open = await codec().openRow('notes', { id: r.id, title: r.title, content: r.content ?? '' })
+        return { id: r.id, title: open.title, content: open.content, deletedAt: r.deleted_at }
+      }))
   }
 
   async restoreNotes(ids: string[]): Promise<Note[]> {
@@ -831,7 +867,7 @@ export class SupabaseService extends EventEmitter {
     if (error) throw new Error(error.message)
     const { data, error: readError } = await client.from('notes').select('*').in('id', ids)
     if (readError) throw new Error(readError.message)
-    const notes = ((data ?? []) as NoteRow[]).map(noteFromRow)
+    const notes = await openNotes(data)
     notes.forEach((n) => this.broadcastNoteUpsert(n))
     return notes
   }
@@ -851,8 +887,11 @@ export class SupabaseService extends EventEmitter {
       .order('created_at', { ascending: false })
       .limit(100)
     if (error) throw new Error(error.message)
-    return ((data ?? []) as Array<{ id: string; kind: NoteVersion['kind']; created_at: string; content: string }>)
-      .map((r) => ({ id: r.id, kind: r.kind, createdAt: r.created_at, content: r.content }))
+    return Promise.all(((data ?? []) as Array<{ id: string; kind: NoteVersion['kind']; created_at: string; content: string }>)
+      .map(async (r) => {
+        const open = await codec().openRow('note_versions', r)
+        return { id: r.id, kind: r.kind, createdAt: r.created_at, content: open.content }
+      }))
   }
 
   async deleteNote(id: string): Promise<void> {
@@ -918,9 +957,10 @@ export class SupabaseService extends EventEmitter {
           if (row.created_at && row.created_at > this.lastClipEventAt) {
             this.lastClipEventAt = row.created_at
           }
-          const item = clipboardFromRow(row)
-          this.recordClipEvent('postgres_changes', item, false)
-          this.emit('clip:upsert', item)
+          void openClip(row).then((item) => {
+            this.recordClipEvent('postgres_changes', item, false)
+            this.emit('clip:upsert', item)
+          })
         },
       )
       .subscribe((status, err) => {
@@ -952,7 +992,7 @@ export class SupabaseService extends EventEmitter {
           if (row.updated_at && row.updated_at > this.lastNoteEventAt) {
             this.lastNoteEventAt = row.updated_at
           }
-          this.emit('note:upsert', noteFromRow(row))
+          void openNote(row).then((note) => this.emit('note:upsert', note))
         },
       )
       .on(
@@ -960,7 +1000,7 @@ export class SupabaseService extends EventEmitter {
         { event: 'INSERT', schema: 'public', table: 'note_updates', filter: `workspace_id=eq.${wsId}` },
         (payload) => {
           const row = payload.new as { note_id?: string; update?: string }
-          if (row.note_id && row.update) this.emit('note:y', { noteId: row.note_id, update: row.update })
+          if (row.note_id && row.update) this.emitNoteY(row.note_id, row.update)
         },
       )
       .on(
@@ -990,10 +1030,11 @@ export class SupabaseService extends EventEmitter {
           broadcast: { self: false, ack: false },
         },
       })
-      .on('broadcast', { event: 'clip:upsert' }, ({ payload }) => {
+      .on('broadcast', { event: 'clip:upsert' }, async ({ payload }) => {
         if (payload?.from === this.clientId) return // ignore own echo
-        if (!payload?.item) return
-        const item = payload.item as ClipboardItem
+        const body = await codec().openBroadcast('clip:upsert', payload ?? {})
+        if (!body?.item) return
+        const item = body.item as ClipboardItem
         if (item.createdAt && item.createdAt > this.lastClipEventAt) {
           this.lastClipEventAt = item.createdAt
         }
@@ -1004,10 +1045,11 @@ export class SupabaseService extends EventEmitter {
         if (payload?.from === this.clientId) return
         if (payload?.id) this.emit('clip:deleted', payload.id as string)
       })
-      .on('broadcast', { event: 'note:upsert' }, ({ payload }) => {
+      .on('broadcast', { event: 'note:upsert' }, async ({ payload }) => {
         if (payload?.from === this.clientId) return
-        if (!payload?.note) return
-        const note = payload.note as Note
+        const body = await codec().openBroadcast('note:upsert', payload ?? {})
+        if (!body?.note) return
+        const note = body.note as Note
         if (note.updatedAt && note.updatedAt > this.lastNoteEventAt) {
           this.lastNoteEventAt = note.updatedAt
         }
@@ -1020,7 +1062,7 @@ export class SupabaseService extends EventEmitter {
       .on('broadcast', { event: 'note:y' }, ({ payload }) => {
         if (payload?.from === this.clientId) return
         if (typeof payload?.noteId === 'string' && typeof payload?.update === 'string') {
-          this.emit('note:y', { noteId: payload.noteId, update: payload.update })
+          this.emitNoteY(payload.noteId, payload.update)
         }
       })
       .subscribe((status, err) => {
@@ -1099,7 +1141,7 @@ export class SupabaseService extends EventEmitter {
         if (row.created_at && row.created_at > this.lastClipEventAt) {
           this.lastClipEventAt = row.created_at
         }
-        this.emit('clip:upsert', clipboardFromRow(row))
+        this.emit('clip:upsert', await openClip(row))
       }
       if (data && data.length > 0) {
         console.log(`[supabase] replayed ${data.length} clips since ${sinceIso}`)
@@ -1128,7 +1170,7 @@ export class SupabaseService extends EventEmitter {
         if (row.updated_at && row.updated_at > this.lastNoteEventAt) {
           this.lastNoteEventAt = row.updated_at
         }
-        this.emit('note:upsert', noteFromRow(row))
+        this.emit('note:upsert', await openNote(row))
       }
       if (data && data.length > 0) {
         console.log(`[supabase] replayed ${data.length} notes since ${sinceIso}`)
@@ -1143,13 +1185,24 @@ export class SupabaseService extends EventEmitter {
    * Fire-and-forget: we don't wait for an ack. The DB mutation happens
    * separately and acts as the durable source of truth.
    */
+  /** Yjs updates arrive sealed (realtime row or broadcast); the renderer gets plain base64. */
+  private emitNoteY(noteId: string, sealed: string): void {
+    void codec().openNoteBlob(noteId, 'update', sealed)
+      .then((update) => this.emit('note:y', { noteId, update }))
+      .catch(() => undefined)
+  }
+
+  /** Broadcasts travel through the server: in encrypted workspaces the payload is sealed. */
+  private sendSealed(event: string, id: string, payload: Record<string, unknown>): void {
+    const channel = this.broadcastChannel
+    if (!channel) return
+    void codec().sealBroadcast(event, id, payload).then((body) =>
+      channel.send({ type: 'broadcast', event, payload: { ...body, from: this.clientId } }),
+    )
+  }
+
   broadcastClipUpsert(item: ClipboardItem): void {
-    if (!this.broadcastChannel) return
-    void this.broadcastChannel.send({
-      type: 'broadcast',
-      event: 'clip:upsert',
-      payload: { item, from: this.clientId },
-    })
+    this.sendSealed('clip:upsert', item.id, { item })
   }
 
   broadcastClipDeleted(id: string): void {
@@ -1162,12 +1215,7 @@ export class SupabaseService extends EventEmitter {
   }
 
   broadcastNoteUpsert(note: Note): void {
-    if (!this.broadcastChannel) return
-    void this.broadcastChannel.send({
-      type: 'broadcast',
-      event: 'note:upsert',
-      payload: { note, from: this.clientId },
-    })
+    this.sendSealed('note:upsert', note.id, { note })
   }
 
   broadcastNoteDeleted(id: string): void {
