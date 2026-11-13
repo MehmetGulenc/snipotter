@@ -19,6 +19,9 @@ public class SnipotterNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setRecentClips", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "takePending", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addEvent", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setWorkspaceKey", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getWorkspaceKey", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "deleteWorkspaceKey", returnType: CAPPluginReturnPromise),
     ]
 
     private var pushCall: CAPPluginCall?
@@ -132,6 +135,29 @@ public class SnipotterNativePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func takePending(_ call: CAPPluginCall) {
         let items = SnipotterShared.takePending().map { ["text": $0.text, "source": $0.source] }
         call.resolve(["items": items])
+    }
+
+    // MARK: End-to-end encryption key (shared Keychain, readable by the extensions)
+
+    @objc func setWorkspaceKey(_ call: CAPPluginCall) {
+        guard let workspaceId = call.getString("workspaceId"), UUID(uuidString: workspaceId) != nil,
+              let b64 = call.getString("key"), let key = Data(base64Encoded: b64), key.count == 32 else {
+            call.reject("Geçersiz anahtar")
+            return
+        }
+        SnipotterShared.storeWorkspaceKey(key, workspaceId: workspaceId)
+        call.resolve()
+    }
+
+    @objc func getWorkspaceKey(_ call: CAPPluginCall) {
+        guard let workspaceId = call.getString("workspaceId") else { call.reject("Eksik çalışma alanı"); return }
+        call.resolve(["key": SnipotterShared.loadWorkspaceKey(workspaceId: workspaceId)?.base64EncodedString() as Any])
+    }
+
+    @objc func deleteWorkspaceKey(_ call: CAPPluginCall) {
+        guard let workspaceId = call.getString("workspaceId") else { call.reject("Eksik çalışma alanı"); return }
+        SnipotterShared.deleteWorkspaceKey(workspaceId: workspaceId)
+        call.resolve()
     }
 
     private let eventStore = EKEventStore()

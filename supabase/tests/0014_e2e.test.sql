@@ -4,7 +4,8 @@ begin;
 insert into auth.users (id) values
   ('00000000-0000-0000-0000-00000000000a'),
   ('00000000-0000-0000-0000-00000000000b'),
-  ('00000000-0000-0000-0000-00000000000c');
+  ('00000000-0000-0000-0000-00000000000c'),
+  ('00000000-0000-0000-0000-00000000000d');
 insert into public.workspaces (id) values ('10000000-0000-0000-0000-000000000001'), ('10000000-0000-0000-0000-000000000002');
 insert into public.workspace_members (workspace_id, user_id) values
   ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000a'),
@@ -82,11 +83,41 @@ select pg_temp.expect((select wrapped_recovery from public.recover_workspace(rep
 select pg_temp.expect(public.is_workspace_member('10000000-0000-0000-0000-000000000001'), 'recovered device joined');
 reset role;
 
+-- Re-sealing helpers: ciphertext only, own workspace only.
+insert into public.note_versions (id, note_id, workspace_id, kind, content)
+values ('40000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'manual', 'enc:v1:ESKI');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select pg_temp.rejects($$select public.reseal_note_version('40000000-0000-0000-0000-000000000001', null, 'düz')$$, 'reseal refuses plaintext');
+select public.reseal_note_version('40000000-0000-0000-0000-000000000001', null, 'enc:v1:YENI');
+reset role;
+select pg_temp.expect((select content from public.note_versions where id = '40000000-0000-0000-0000-000000000001') = 'enc:v1:YENI', 'version resealed');
+-- D never joined workspace 1 (C did, through the recovery words above).
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+select public.reseal_note_version('40000000-0000-0000-0000-000000000001', null, 'enc:v1:SIZMA');
+reset role;
+select pg_temp.expect((select content from public.note_versions where id = '40000000-0000-0000-0000-000000000001') = 'enc:v1:YENI', 'outsider cannot reseal');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select public.trash_notes(array['20000000-0000-0000-0000-000000000001']::uuid[]);
+select pg_temp.rejects($$select public.reseal_trashed_note('20000000-0000-0000-0000-000000000001', null, 'düz', null, '[]')$$, 'trash reseal refuses plaintext');
+select public.reseal_trashed_note('20000000-0000-0000-0000-000000000001', 'enc:v1:T', 'enc:v1:C', null, '[{"update":"enc:v1:U"}]');
+select pg_temp.expect((select note->>'content' from public.notes_trash where id = '20000000-0000-0000-0000-000000000001') = 'enc:v1:C', 'trashed note resealed');
+reset role;
+
 -- Ciphertext of an action payload fits.
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 insert into public.device_actions (workspace_id, sender_device, kind, payload)
 values ('10000000-0000-0000-0000-000000000001', 'Mac', 'text', 'enc:v1:' || repeat('A', 3500));
 select pg_temp.expect(true, 'long encrypted action payload accepted');
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select pg_temp.expect(public.purge_spent_device_actions('10000000-0000-0000-0000-000000000001') = 0, 'encrypted actions kept');
+reset role;
+alter table public.device_actions disable trigger require_ciphertext;
+insert into public.device_actions (workspace_id, sender_user_id, sender_device, kind, payload)
+values ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000a', 'Mac', 'text', 'eski düz');
+alter table public.device_actions enable trigger require_ciphertext;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select pg_temp.expect(public.purge_spent_device_actions('10000000-0000-0000-0000-000000000001') = 1, 'plaintext actions purged');
 reset role;
 
 rollback;

@@ -43,9 +43,12 @@ interface SnipotterNativePlugin {
   setRecentClips(options: { items: Array<Pick<ClipboardItem, 'id' | 'text' | 'createdAt' | 'pinned'>> }): Promise<void>
   takePending(): Promise<{ items: Array<{ text: string; source: string }> }>
   addEvent(options: { title: string; start: number; durationMin?: number; notes?: string }): Promise<{ saved: boolean }>
+  setWorkspaceKey(options: { workspaceId: string; key: string }): Promise<void>
+  getWorkspaceKey(options: { workspaceId: string }): Promise<{ key: string | null }>
+  deleteWorkspaceKey(options: { workspaceId: string }): Promise<void>
 }
 
-const SnipotterNative = registerPlugin<SnipotterNativePlugin>('SnipotterNative')
+export const SnipotterNative = registerPlugin<SnipotterNativePlugin>('SnipotterNative')
 
 export const nativeBridgeAvailable = (): boolean =>
   Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
