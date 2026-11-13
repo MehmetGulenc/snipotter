@@ -18,9 +18,36 @@ interface Release {
 
 const releases: Release[] = [
   {
-    version: '0.10.0',
+    version: '0.11.0',
     date: 'Kasım 2026',
     badge: 'Güncel',
+    headline: 'Ortak Çalışma Alanları',
+    features: [
+      {
+        emoji: '👥',
+        title: 'Notları birlikte yazın',
+        desc: 'Eşinle, ailenle ya da arkadaşlarınla ortak bir alan aç; herkes aynı notu aynı anda düzenler. Notlar ekranındaki "Notlarım ▾" menüsünden kendi notlarınla ortak alanlar arasında geçiş yap.',
+      },
+      {
+        emoji: '🔗',
+        title: 'Bağlantıyla davet',
+        desc: 'Tek kullanımlık, 7 gün geçerli bir bağlantı gönder. iPhone\'da bağlantıya dokunmak yeterli; bilgisayarda bağlantıyı ya da 12 kelimeyi "Davete katıl" ekranına yapıştır.',
+      },
+      {
+        emoji: '🔐',
+        title: 'Ortak alan da uçtan uca şifreli',
+        desc: 'Notlar, alan adı ve kişi adları cihazlarınızda şifrelenir; sunucu okuyamaz. Pano geçmişin her zaman yalnızca sende kalır; istersen bir kaydı ortak alana not olarak gönderirsin.',
+      },
+      {
+        emoji: '🔔',
+        title: 'Yeni not bildirimi',
+        desc: 'Ortak alana yeni not eklenince diğer kişilerin iPhone\'una bildirim gelir; dokununca not açılır. Bildirimde not içeriği görünmez.',
+      },
+    ],
+  },
+  {
+    version: '0.10.0',
+    date: 'Kasım 2026',
     headline: 'Pano ve Notlar Artık Uçtan Uca Şifreli',
     features: [
       {

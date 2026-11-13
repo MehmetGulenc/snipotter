@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.11.0] - 2026-11-13
+
+### 👥 Ortak Çalışma Alanları
+
+Eşinle, ailenle ya da arkadaşlarınla notları birlikte yazın. İçerik uçtan uca şifreli kalır; pano geçmişin her zaman yalnızca sende.
+
+- **Ortak alan**: Notlar ekranındaki "Notlarım ▾" menüsünden yeni alan aç ya da alanlar arasında geçiş yap. Herkes aynı notu aynı anda düzenleyebilir.
+- **Davet**: "Davet bağlantısı oluştur" tek kullanımlık, 7 gün geçerli bir bağlantı verir. iPhone'da bağlantıya dokununca katılma ekranı açılır; bilgisayarda bağlantı ya da 12 kelime "Davete katıl" ekranına yapıştırılır.
+- **Kişiler**: Alandaki kişileri gör; alanı kuran kişi başkasını çıkarabilir, herkes alandan çıkabilir. Son kişi çıkınca alan ve notları silinir.
+- **Ortak alana gönder**: Bir pano kaydını ortak alana not olarak ekle; kayıt yalnızca sende kalır.
+- **Bildirim**: Ortak alana yeni not eklenince diğer kişilerin iPhone'una bildirim gelir, dokununca not açılır. Bildirimde içerik görünmez.
+- **Şifreleme**: Notlar, alan adı ve kişi adları cihazlarda şifrelenir; bir kişinin tüm cihazları alanı otomatik görür.
+
+### 🔒 Güvenlik
+
+- Sunucuda şifreleme ayarı artık uygulama dışından kapatılamaz.
+
 ## [0.10.0] - 2026-11-13
 
 ### 🔐 Pano ve Notlar Artık Uçtan Uca Şifreli
